@@ -1,0 +1,514 @@
+"use client";
+
+import {
+  Children,
+  Fragment,
+  isValidElement,
+  useEffect,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import type { Fabric, GrainDirection, StitchId } from "@/types";
+import { fabricRepeatCm, useFabricArtwork } from "@/lib/fabrics/artwork";
+import { printKeep } from "@/lib/fabrics/printScale";
+import { stitchById } from "@/lib/data/stitches";
+import { clothSurface, clothWarp, type Uid } from "@/lib/garments/shading";
+
+/**
+ * One area of cloth, at its true print size.
+ *
+ * Bottom to top: the fabric fill (an SVG `<pattern>` whose tile size comes from
+ * the motif's real repeat, never chosen by hand), then a fixed greyscale
+ * shading layer composited with `multiply`, then the topstitch. The shading
+ * belongs to the piece, not to the fabric, so swapping cloth never disturbs how
+ * the piece is lit.
+ *
+ * Both engines draw through this: a garment region on the mannequin and a
+ * cushion on a sofa are the same problem.
+ */
+
+/** Anything drawable in a fabric: an outline, its light, and its stitching. */
+export interface RegionDrawing {
+  /** Geometry filled with this region's fabric. `fill` is a `url(#…)` pattern. */
+  shape: (fill: string) => ReactNode;
+  /** Gradients the shading needs. Ids must be namespaced through `uid`. */
+  defs?: (uid: Uid) => ReactNode;
+  /**
+   * Fixed greyscale shading, painted over the fabric with `multiply`.
+   *
+   * Optional, because `surface` took over describing form. What is left here is
+   * only what an outline cannot know it has: a hem's weight, the shadow a
+   * collar's fall throws on its own stand, a cut edge. Several pieces now have
+   * none of that and draw no shading at all.
+   */
+  shading?: (uid: Uid) => ReactNode;
+  /**
+   * Light the cloth catches, painted over it with `screen` and clipped to the
+   * region, after the shading. Like the shading it never changes with the
+   * fabric, and it can only lighten: the lit crest of a fold — see `folds.tsx`.
+   */
+  light?: (uid: Uid) => ReactNode;
+  /**
+   * The shadow this piece throws onto whatever lies beneath it.
+   *
+   * Drawn *before* the cloth and deliberately outside the region mask, because
+   * a contact shadow belongs to the garment underneath rather than to the piece
+   * casting it. Everything else here is clipped to the region; this is the one
+   * layer that must not be.
+   */
+  cast?: (uid: Uid) => ReactNode;
+  /**
+   * How this piece is cut relative to the outfit's grain: a turn in degrees,
+   * and an offset along it in canvas units.
+   *
+   * Without it every region shares one pattern lattice, and a stripe runs
+   * unbroken from a shirt body straight through the collar sewn onto it — which
+   * is the strongest possible signal that the collar is printed on rather than
+   * sewn on. Real pieces are cut from different parts of the cloth, and a band
+   * is cut across the grain on purpose.
+   */
+  grain?: { turn?: number; shift?: readonly [number, number] };
+  /**
+   * Form shading built from this piece's own outline — see `clothSurface`.
+   * Replaces the bounding-box gradients, which could not describe a surface.
+   *
+   * `joined` lights every piece of the region as one surface instead of each
+   * on its own. That is what a robe needs: its sleeves are sewn on, but the
+   * cloth runs on over the seam, and lit piece by piece every armhole reads as
+   * the edge of a cushion. Below the underarm a sleeve hangs clear of the body,
+   * so it still turns as its own tube there.
+   *
+   * `ridges` are folds the weave is bent along — see `clothWarp`.
+   */
+  surface?: { blur?: number; relief?: number; warp?: number; joined?: boolean; ridges?: string };
+  /**
+   * The outline drawn round each piece, when it is not the whole outline: one
+   * element per piece, in the order `shape` draws them, each an open line along
+   * the edges that are free. A seam is not an edge — see `SleeveCut.seamed`.
+   */
+  edge?: () => ReactNode;
+  /** Dashed topstitch route along this region's seams. */
+  stitch?: string;
+}
+
+interface Props {
+  /** Namespace for this region's SVG ids — they are global to the document. */
+  uidBase: string;
+  drawing: RegionDrawing;
+  fabric: Fabric;
+  /** Real-world centimetres represented by one SVG unit in this canvas. */
+  cmPerUnit: number;
+  /** Screen pixels per SVG unit — how sharp the print is drawn, never how big. */
+  pxPerUnit: number;
+  /** Grain angle in degrees: 0 straight, 45 bias, 90 cross grain. */
+  direction: GrainDirection;
+  /**
+   * The point the pattern lattice pivots around when the grain angle changes.
+   *
+   * A rotation is applied about a point, and everything at a distance from that
+   * point also *translates*. Pivoting at the user-space origin swings the
+   * lattice out from under a piece drawn elsewhere: a 12° change slid the motif
+   * most of a tile sideways. Pivoting at the centre of the canvas keeps the
+   * pattern turning in place beneath the piece, which is what a tailor rotating
+   * a pattern piece on cloth actually sees.
+   */
+  pivot: readonly [x: number, y: number];
+  /** The canvas box the mask covers. */
+  canvas: readonly [width: number, height: number];
+  stitch: StitchId;
+  /**
+   * What lies under the cloth's edges, as mask ids — see `MannequinStage`.
+   * With it, an edge lying on anything — skin, or another piece of cloth — is
+   * drawn dark in either theme and throws a soft shadow onto what it lies on;
+   * an edge with nothing under it but the page keeps its rim in the page's
+   * text colour. Without it, every edge takes the rim.
+   */
+  beneath?: BeneathMasks;
+}
+
+/**
+ * Mask ids: where anything lies under the cloth, for its shadow; where an edge
+ * lies on something, to draw it dark; and the rest, the page, for the rim.
+ */
+export interface BeneathMasks {
+  shade: string;
+  dark: string;
+  rim: string;
+}
+
+/** The ids `beneathDefs` gives its masks, in a drawing namespaced by `uid`. */
+export const beneathMasks = (uid: (name: string) => string): BeneathMasks => ({
+  shade: uid("under"),
+  dark: uid("under-dark"),
+  rim: uid("under-rim"),
+});
+
+/**
+ * The masks a `beneath` names, built from everything that lies under the
+ * edges — the figure and the cloth on it, or a product's own pieces:
+ * `under` itself, where a shadow may fall; `under-dark` the same shrunk by
+ * `reach`, which an edge lies inside only where something runs on past it;
+ * and `under-rim`, the rest, where an edge is against the page. `contact`
+ * adds the drawing's own soft-shadow blur among them.
+ */
+export function beneathDefs(
+  uid: (name: string) => string,
+  canvas: readonly [number, number],
+  under: ReactNode,
+  { reach, contact }: { reach: number; contact?: number }
+) {
+  return (
+    <>
+      <filter id={uid("shrunk")} filterUnits="userSpaceOnUse" x="0" y="0" width={canvas[0]} height={canvas[1]}>
+        <feMorphology operator="erode" radius={reach} />
+      </filter>
+      <filter id={uid("shrunk-dark")} filterUnits="userSpaceOnUse" x="0" y="0" width={canvas[0]} height={canvas[1]}>
+        <feMorphology operator="erode" radius={reach} />
+        <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" />
+      </filter>
+      {contact !== undefined && (
+        <filter id={uid("contact")} filterUnits="userSpaceOnUse" x="0" y="0" width={canvas[0]} height={canvas[1]}>
+          <feGaussianBlur stdDeviation={contact} />
+        </filter>
+      )}
+      <mask id={uid("under")} maskUnits="userSpaceOnUse" x="0" y="0" width={canvas[0]} height={canvas[1]}>
+        {under}
+      </mask>
+      <mask id={uid("under-dark")} maskUnits="userSpaceOnUse" x="0" y="0" width={canvas[0]} height={canvas[1]}>
+        <g filter={`url(#${uid("shrunk")})`}>{under}</g>
+      </mask>
+      <mask id={uid("under-rim")} maskUnits="userSpaceOnUse" x="0" y="0" width={canvas[0]} height={canvas[1]}>
+        <rect x="0" y="0" width={canvas[0]} height={canvas[1]} fill="#fff" />
+        <g filter={`url(#${uid("shrunk-dark")})`}>{under}</g>
+      </mask>
+    </>
+  );
+}
+
+/**
+ * The colour of an edge lying on something: the light theme's text colour,
+ * kept in the dark theme too. Stroked in the page's own text colour, which is
+ * cream on a dark page, every neckline, sleeve hem and strapless top was a
+ * pale ring between the cloth and the skin, and a shirt's hem on its trousers
+ * a white stripe.
+ */
+const EDGE_DARK = "#241e19";
+
+/**
+ * The shadow a cloth edge throws on what it lies on: cloth has a thickness and
+ * stands a little off whatever is under it at its edge. A thin warm line,
+ * blurred — as close to nothing as still reads as the cloth lying there.
+ */
+const CONTACT = { color: "#5c4a3e", width: 3.2, opacity: 0.5, soft: 1.6 } as const;
+
+/**
+ * Apply a filter to each piece of a region separately, rather than once to the
+ * group.
+ *
+ * This is the difference between a blouse and a cape. `clothSurface` lights a
+ * shape by blurring its own alpha into a height field, and a filter on a group
+ * sees the *union* of what is inside it: body and both sleeves merged into one
+ * silhouette, lit as one smooth slab, with no arm in it anywhere. Filtering
+ * piece by piece gives the body a body's form and each sleeve its own tube, and
+ * the seam between them appears because two surfaces meet there.
+ *
+ * A region that draws one path is unaffected — one child in, one group out.
+ */
+/**
+ * The separate pieces a region draws, with any fragments opened.
+ *
+ * `Children.toArray` does not look inside a fragment, and nearly every
+ * `shape` returns one — so a region of five pieces arrived here as one, and
+ * everything this file does "per piece" was being done to the union.
+ */
+function piecesOf(node: ReactNode): ReactNode[] {
+  return Children.toArray(node).flatMap((child) =>
+    isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment
+      ? piecesOf(child.props.children)
+      : [child]
+  );
+}
+
+export function FabricRegion({
+  uidBase,
+  drawing,
+  fabric,
+  cmPerUnit,
+  pxPerUnit,
+  direction,
+  pivot,
+  canvas,
+  stitch,
+  beneath,
+}: Props) {
+  const uid = (name: string) => `${uidBase}-${name}`;
+
+  // The line that makes scale honest: a repeat that is `repeatCm` wide in the
+  // real world occupies exactly that many centimetres of the piece — at every
+  // zoom, on every screen. Only its sharpness follows its size on screen: a
+  // repeat a few pixels across is drawn softened rather than sharp and beating
+  // against the pixel grid. See `printScale.ts`.
+  const tile = fabricRepeatCm(fabric) / cmPerUnit;
+  const artwork = useFabricArtwork(fabric, printKeep(tile * pxPerUnit));
+
+  const thread = stitchById(stitch);
+  const threadColor =
+    stitch === "hidden"
+      ? null
+      : stitch === "tonal"
+      ? fabric.palette?.accent ?? fabric.color
+      : thread.color;
+
+  const fill = `url(#${uid("pattern")})`;
+  /*
+    The outfit's grain, plus however this particular piece is cut from it. The
+    turn is applied about the canvas pivot as before; the shift comes after, so
+    it slides the lattice *along the turned grain* — a piece cut further down
+    the roll, which is what breaks the pattern at a seam.
+  */
+  const [slideX, slideY] = drawing.grain?.shift ?? [0, 0];
+  const spin =
+    `rotate(${direction + (drawing.grain?.turn ?? 0)} ${pivot[0]} ${pivot[1]}) ` +
+    `translate(${slideX} ${slideY})`;
+
+  /* One list per pass, index for index: the same pieces, filled, edged and lit. */
+  const cloth = piecesOf(drawing.shape(fill));
+  const edges = piecesOf(drawing.edge?.() ?? drawing.shape("none"));
+  const joined = Boolean(drawing.surface?.joined);
+  const forms = drawing.surface && !joined ? piecesOf(drawing.shape("#fff")) : [];
+
+  return (
+    <>
+      <defs>
+        {/* one repeat a tile, at its true size: softened in its own drawing when small, never enlarged */}
+        <pattern
+          id={uid("pattern")}
+          patternUnits="userSpaceOnUse"
+          width={tile}
+          height={tile}
+          patternTransform={spin}
+        >
+          <image
+            href={artwork.url}
+            x="0"
+            y="0"
+            width={tile}
+            height={tile}
+            preserveAspectRatio="xMidYMid slice"
+          />
+          {artwork.veil > 0 && (
+            <rect width={tile} height={tile} fill={artwork.averageColor} opacity={artwork.veil} />
+          )}
+        </pattern>
+        {/*
+          A <mask>, not a <clipPath>: regions are free to be groups of shapes
+          (a sofa is six rects, a collar is two leaves), and only masks accept
+          a <g>.
+        */}
+        <mask
+          id={uid("mask")}
+          maskUnits="userSpaceOnUse"
+          x="0"
+          y="0"
+          width={canvas[0]}
+          height={canvas[1]}
+        >
+          {drawing.shape("#fff")}
+        </mask>
+        {drawing.defs?.(uid)}
+        {drawing.surface && clothSurface(uid("surface"), drawing.surface)}
+        {drawing.surface?.warp !== undefined &&
+          clothWarp(uid("warp"), {
+            blur: drawing.surface.blur,
+            scale: drawing.surface.warp,
+            ridges: drawing.surface.ridges,
+            canvas,
+          })}
+        {beneath && (
+          /* over the whole canvas: a thin level line has no height for a filter box to be a share of */
+          <filter
+            id={uid("contact")}
+            filterUnits="userSpaceOnUse"
+            x="0"
+            y="0"
+            width={canvas[0]}
+            height={canvas[1]}
+          >
+            <feGaussianBlur stdDeviation={CONTACT.soft} />
+          </filter>
+        )}
+      </defs>
+
+      {/*
+        What this piece throws onto the cloth below it. Unmasked, and first:
+        it is a shadow *on the garment*, not a shadow on the collar.
+      */}
+      {drawing.cast && (
+        <g style={{ mixBlendMode: "multiply" }}>{drawing.cast(uid)}</g>
+      )}
+
+
+      {/*
+        The cloth. Warped, when the piece asks for it, by the slope of its own
+        surface — so the weave foreshortens where the form turns away instead of
+        lying flat across it. The outline is stroked outside the filter, or the
+        displacement drags the edge off the shape.
+      */}
+      {/*
+        Each piece whole — cloth, outline, form — before the next piece starts.
+
+        They used to be three passes over every piece: all the cloth, then all
+        the outlines, then all the form. So nothing a region drew later could
+        hide an earlier piece's edge. A shirt collar's stand runs under its
+        leaves, and its outline and its shading were painted over the leaves
+        anyway: the whole oval of the band showed through the collar, a ring
+        drawn in front of the neck. Piece by piece, a piece drawn later covers
+        what it lies on, edges included.
+
+        Within a piece the order is unchanged. The cloth is warped by the slope
+        of its own surface; the outline is stroked outside that filter, or the
+        displacement drags the edge off the shape; and the form — the piece's
+        silhouette blurred into a height field and lit — is multiplied over the
+        cloth, never changing when the fabric does. Lit per piece, a body and
+        its sleeves each get their own form, and the seam between them shows
+        because two surfaces meet there.
+      */}
+      {cloth.map((piece, i) => (
+        <g key={i}>
+          {/*
+            The soft shadow the piece's edge throws on whatever it lies on — skin,
+            another garment, or a piece of this region drawn before it, as a
+            placket lies on its bodice. Drawn just before the piece, which covers
+            the half of it on its own side; masked to what lies beneath, so it
+            never falls on the page.
+          */}
+          {beneath && (
+            <g mask={`url(#${beneath.shade})`} style={{ mixBlendMode: "multiply" }}>
+              <g
+                filter={`url(#${uid("contact")})`}
+                fill="none"
+                stroke={CONTACT.color}
+                strokeOpacity={CONTACT.opacity}
+                strokeWidth={CONTACT.width}
+                strokeLinejoin="round"
+              >
+                {edges[i]}
+              </g>
+            </g>
+          )}
+          <g
+            filter={
+              drawing.surface?.warp !== undefined ? `url(#${uid("warp")})` : undefined
+            }
+          >
+            {piece}
+          </g>
+          {/* against the page, the rim in the page's text colour; on anything else, dark in either theme */}
+          <g
+            mask={beneath ? `url(#${beneath.rim})` : undefined}
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity="0.18"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          >
+            {edges[i]}
+          </g>
+          {beneath && (
+            <g
+              mask={`url(#${beneath.dark})`}
+              fill="none"
+              stroke={EDGE_DARK}
+              strokeOpacity="0.18"
+              strokeWidth="2"
+              strokeLinejoin="round"
+            >
+              {edges[i]}
+            </g>
+          )}
+          {forms[i] && (
+            <g style={{ mixBlendMode: "multiply" }}>
+              <g filter={`url(#${uid("surface")})`}>
+                {forms[i]}
+              </g>
+            </g>
+          )}
+        </g>
+      ))}
+      {joined && (
+        <g style={{ mixBlendMode: "multiply" }}>
+          <g filter={`url(#${uid("surface")})`}>{drawing.shape("#fff")}</g>
+        </g>
+      )}
+
+      {/* fixed shading — never changes with the fabric */}
+      {drawing.shading && (
+        <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "multiply" }}>
+          {drawing.shading(uid)}
+        </g>
+      )}
+
+      {/*
+        Fixed light, the shading's counterpart — a fold's lit crest. Screened,
+        so it can only lighten, as multiply can only darken: between the two the
+        cloth's light changes and its print does not.
+      */}
+      {drawing.light && (
+        <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "screen" }}>
+          {drawing.light(uid)}
+        </g>
+      )}
+
+      {/*
+        Topstitch, at the size topstitch actually is.
+
+        It was 2 units thick with 6-unit dashes at 0.9 opacity — and a unit is
+        1.9 mm, so that is a 3.8 mm thread laying 11 mm stitches, roughly four
+        times life size and about as subtle. Real topstitch is a 2–3 mm stitch
+        in thread too fine to measure at this scale; what the eye reads is a
+        faint dotted line, not a row of dashes. Hence 0.9 thick, 2.6-unit
+        dashes, and enough transparency to sit in the cloth rather than on it.
+
+        Masked to the region, which it was not. A stitch is sewn *on* cloth, so
+        any part of one that falls outside the piece should simply not be there
+        — and the neckline stitches all did, crossing the opening and painting
+        on the throat.
+      */}
+      {threadColor && drawing.stitch && (
+        <g mask={`url(#${uid("mask")})`}>
+          <path
+            d={drawing.stitch}
+            fill="none"
+            stroke={threadColor}
+            strokeWidth="0.9"
+            strokeLinecap="round"
+            strokeDasharray="2.6 2.2"
+            strokeOpacity="0.55"
+          />
+        </g>
+      )}
+    </>
+  );
+}
+
+/** Assumed render width before the element is measured — keeps SSR stable. */
+const ASSUMED_RENDER_PX = 440;
+
+/** The element's rendered CSS width, so we can reason in screen pixels. */
+export function useRenderedWidth(ref: RefObject<SVGSVGElement | null>) {
+  const [px, setPx] = useState(ASSUMED_RENDER_PX);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width;
+      if (w > 0) setPx(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+
+  return px;
+}

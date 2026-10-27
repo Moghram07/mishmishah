@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light — warm cream & charcoal */
+    --background: 36 40% 99%;
+    --foreground: 24 18% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 24 18% 12%;
+    --muted: 30 30% 96%;
+    --muted-foreground: 25 8% 42%;
+    --border: 30 20% 90%;
+    --ring: 18 100% 58%;
+  }
+
+  .dark {
+    /* Dark — deep warm charcoal */
+    --background: 24 14% 7%;
+    --foreground: 36 24% 95%;
+    --card: 24 12% 10%;
+    --card-foreground: 36 24% 95%;
+    --muted: 24 10% 15%;
+    --muted-foreground: 30 10% 64%;
+    --border: 28 10% 20%;
+    --ring: 18 100% 60%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Arabic script uses the Arabic display face and slightly looser leading */
+  [dir="rtl"] body {
+    font-family: var(--font-arabic), var(--font-sans), sans-serif;
+    line-height: 1.75;
+  }
+
+  ::selection {
+    background-color: hsl(18 100% 58% / 0.25);
+  }
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .container-wide {
+    @apply container mx-auto;
+  }
+
+  .eyebrow {
+    @apply inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-apricot-600 dark:text-apricot-400;
+  }
+
+  .heading-display {
+    @apply font-display font-semibold tracking-tight text-foreground;
+  }
+
+  /* Frosted surface used across nav, cards, sheets */
+  .glass {
+    @apply bg-card/70 backdrop-blur-xl backdrop-saturate-150;
+  }
+
+  .btn-focus {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  /* Warm apricot brand gradient text */
+  .text-gradient {
+    @apply bg-gradient-to-br from-apricot-500 via-apricot-500 to-apricot-700 bg-clip-text text-transparent;
+  }
+  /* Subtle top-lit apricot glow used behind hero art */
+  .bg-apricot-radial {
+    background-image: radial-gradient(
+      70% 60% at 50% 0%,
+      hsl(18 100% 60% / 0.22),
+      transparent 70%
+    );
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  /* Loading shimmer sweep */
+  .shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(0 0% 100% / 0.12),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+}

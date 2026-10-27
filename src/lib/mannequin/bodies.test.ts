@@ -1,0 +1,233 @@
+import { describe, expect, it } from "vitest";
+import * as femaleYoke from "@/lib/garments/art/female/yoke";
+import * as maleYoke from "@/lib/garments/art/male/yoke";
+import { FEMALE_ANCHORS, MALE_ANCHORS, bodies } from "./bodies";
+import { FEMALE_PROFILE, MALE_PROFILE } from "./profile";
+
+/**
+ * The two skeletons.
+ *
+ * Bodies used to share one anchor table and one zone object, which is why a
+ * female dress could be drawn on the male mannequin without anything erroring
+ * — the geometry genuinely fitted, because it had been cut loose enough to
+ * clear whichever body was wider. Each body now carries its own, and these
+ * tests hold that split in place.
+ */
+
+describe("each body has its own geometry", () => {
+  it("does not share one zone object between the bodies", () => {
+    // The original bug in one line: `bodies.female.zones === bodies.male.zones`.
+    expect(bodies.female.zones).not.toBe(bodies.male.zones);
+    expect(bodies.female.anchors).not.toBe(bodies.male.anchors);
+  });
+
+  it("shapes the load-bearing zones differently for each body", () => {
+    // He is wider at chest and waist, so his torso is a taper where hers is a
+    // box, and his arm zones stop sooner because his torso takes over earlier.
+    for (const zone of ["torso", "forearm", "hand"] as const) {
+      expect(bodies.female.zones[zone], zone).not.toBe(bodies.male.zones[zone]);
+    }
+  });
+
+  /** A zone's corners, from a path of straight lines (`M`, `L`, `H`, `V`). */
+  const corners = (d: string): [number, number][] => {
+    const pts: [number, number][] = [];
+    let [x, y] = [0, 0];
+    for (const [, cmd, args] of d.matchAll(/([MLHVZ])([^MLHVZ]*)/g)) {
+      const n = args.trim() ? args.trim().split(/[\s,]+/).map(Number) : [];
+      if (cmd === "H") x = n[0];
+      else if (cmd === "V") y = n[0];
+      else if (cmd === "M" || cmd === "L") [x, y] = n;
+      else continue;
+      pts.push([x, y]);
+    }
+    return pts;
+  };
+  /** Where a zone crosses a row: its leftmost and rightmost crossing. */
+  const across = (d: string, y: number): [number, number] => {
+    const pts = corners(d);
+    const xs: number[] = [];
+    pts.forEach(([ax, ay], i) => {
+      const [bx, by] = pts[(i + 1) % pts.length];
+      if ((ay <= y && by > y) || (by <= y && ay > y)) xs.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
+    });
+    return [Math.min(...xs), Math.max(...xs)];
+  };
+
+  it("keeps the hip zone hers where the thigh is, on purpose", () => {
+    // His hip is 7 narrower — but his thigh is 2 wider and is the outer
+    // surface by y≈420, so the silhouette here is 209 against her 208.
+    for (const y of [460, 480, 500, 515]) {
+      expect(across(bodies.male.zones.hip, y), `y ${y}`).toEqual(across(bodies.female.zones.hip, y));
+    }
+  });
+
+  it("cuts his hip zone back only beside his arms, and well clear of his body", () => {
+    // Above y 458 his arms hang beside his hips, and the zone keeps to the
+    // daylight between, so trousers erase no arm — see `MALE_ZONES.hip`.
+    const { fromY, step, x } = MALE_PROFILE.torso;
+    for (let y = 400; y <= 456; y += 4) {
+      const torso = x[Math.round((y - fromY) / step)]!;
+      expect(torso - across(bodies.male.zones.hip, y)[0], `y ${y}`).toBeGreaterThan(10);
+    }
+  });
+});
+
+describe("each body's landmarks are its own", () => {
+  it("lands shoulder, knee and floor on the same y", () => {
+    // What makes one canvas, one fabric scale and one coverage vocabulary
+    // describe both bodies at all.
+    for (const y of ["shoulderY", "kneeY", "floorY"] as const) {
+      expect(MALE_ANCHORS[y], y).toBe(FEMALE_ANCHORS[y]);
+    }
+  });
+
+  it("reads waist, hip and crotch from each body's own photograph", () => {
+    // Spread from hers, his trousers were cut to her waist.
+    for (const y of ["waistY", "hipY", "crotchY"] as const) {
+      expect(MALE_ANCHORS[y], y).toBe(MALE_PROFILE[y]);
+      expect(FEMALE_ANCHORS[y], y).toBe(FEMALE_PROFILE[y]);
+    }
+    expect(MALE_ANCHORS.waistY).toBeGreaterThan(FEMALE_ANCHORS.waistY);
+  });
+
+  it("gives him his own shoulder width", () => {
+    expect(MALE_ANCHORS.shoulderX).not.toEqual(FEMALE_ANCHORS.shoulderX);
+    expect(MALE_ANCHORS.shoulderX.left).toBeLessThan(
+      FEMALE_ANCHORS.shoulderX.left
+    );
+    // Symmetric about the centre line, or every garment sits off-centre.
+    const { left, right } = MALE_ANCHORS.shoulderX;
+    expect(left + right).toBe(MALE_ANCHORS.centerX * 2);
+  });
+});
+
+/**
+ * The shoulder every female top is hung from.
+ *
+ * It is no longer a snapshot, and that is the point. These used to be four
+ * pinned strings — `"M272 178 C242 196 180 196 194 220"` and its three
+ * relatives — because the seam was a cubic somebody had solved by hand against
+ * her alpha channel, and a pinned string was the only way to notice it had
+ * been re-solved. It is a walked edge now: sixty-odd segments read straight off
+ * the measurement, regenerated by `npm run measure:body`, and guarded by
+ * `check:garments`, which re-reads the photograph on every run and fails if the
+ * profile has drifted from it.
+ *
+ * So what is left to assert is what is actually true of a shoulder, none of
+ * which a snapshot ever said:
+ *
+ *   • it starts at the collar point and ends at the shoulder point;
+ *   • the right side is the left side reflected;
+ *   • except at the collar points, which are cut to the throat rather than to
+ *     the canvas — his sits about three units right of centre.
+ */
+describe("the female yoke follows the shoulder it is drafted against", () => {
+  const points = (d: string) => {
+    const xs = (d.match(/-?\d*\.?\d+/g) ?? []).map(Number);
+    return Array.from({ length: xs.length / 2 }, (_, i) => [
+      xs[2 * i],
+      xs[2 * i + 1],
+    ]);
+  };
+
+  it("starts and ends where the tops expect", () => {
+    const start = points(femaleYoke.YOKE_START);
+    expect(start[0]).toEqual([femaleYoke.NECK_LEFT[0], femaleYoke.NECK_LEFT[1]]);
+    expect(start[start.length - 1]).toEqual([
+      femaleYoke.TIP_LEFT[0],
+      femaleYoke.TIP_LEFT[1],
+    ]);
+
+    const end = points(femaleYoke.YOKE_END);
+    expect(end[0]).toEqual([femaleYoke.TIP_RIGHT[0], femaleYoke.TIP_RIGHT[1]]);
+    expect(end[end.length - 1]).toEqual([
+      femaleYoke.NECK_RIGHT[0],
+      femaleYoke.NECK_RIGHT[1],
+    ]);
+  });
+
+  it("cuts outerwear a little wider", () => {
+    const start = points(femaleYoke.OUTER_YOKE_START);
+    expect(start[0]).toEqual([
+      femaleYoke.OUTER_NECK_LEFT[0],
+      femaleYoke.OUTER_NECK_LEFT[1],
+    ]);
+    expect(start[start.length - 1]).toEqual([
+      femaleYoke.OUTER_TIP_LEFT[0],
+      femaleYoke.OUTER_TIP_LEFT[1],
+    ]);
+  });
+
+  /**
+   * The right shoulder is the left one reflected — asserted, not eyeballed.
+   *
+   * The two used to be written out independently, and the comment above the
+   * second called it "the same curve run the other way". It was not: its
+   * control points were `406 190 379 205` where the reflection is
+   * `420 196 358 196`, which put the two sides **5.2 units apart at y 194** —
+   * the steepest part of her shoulder slope, and exactly where the eye reads
+   * shoulder shape. One side bowed over the deltoid and the other cut straight
+   * across, which is the crooked shoulder that was visible on the figure.
+   *
+   * The last point is exempt, and only the last: it is the collar point, and
+   * the neckline is cut about the throat rather than about the canvas. On her
+   * the two differ by about a unit and on him by three, which is exactly the
+   * amount his photograph is turned.
+   */
+  it("makes the right shoulder the mirror of the left", () => {
+    for (const [start, end] of [
+      [femaleYoke.YOKE_START, femaleYoke.YOKE_END],
+      [femaleYoke.OUTER_YOKE_START, femaleYoke.OUTER_YOKE_END],
+    ]) {
+      const left = points(start);
+      const mirrored = points(end)
+        .reverse()
+        .map(([x, y]) => [600 - x, y]);
+
+      expect(mirrored.length).toBe(left.length);
+      /*
+        Compared on the points the seam actually passes through — the `M` and
+        every third point after it — rather than on the Bézier handles. Handles
+        are derived from their neighbours, so the first pair inherits the collar
+        point's offset and differs by a fraction of it; the seam still passes
+        through exactly the same places, which is the thing being asserted.
+
+        Both runs start at the collar point and end at the shoulder point, so it
+        is index 0 that is exempt and every on-curve point after it that must
+        match to the last decimal.
+      */
+      for (let i = 3; i < left.length; i += 3) {
+        expect(mirrored[i][0]).toBeCloseTo(left[i][0], 6);
+        expect(mirrored[i][1]).toBeCloseTo(left[i][1], 6);
+      }
+      // the collar point, cut to the throat and not to the centre line
+      expect(Math.abs(mirrored[0][0] - left[0][0])).toBeLessThan(8);
+    }
+  });
+
+  it("hangs both yokes off the same anchors", () => {
+    // The outer yoke is the base one moved out, not a second set of numbers.
+    // Three units wider than a top: the top under it and the cloth, no more.
+    expect(femaleYoke.OUTER_TIP_LEFT[0]).toBe(femaleYoke.TIP_LEFT[0] - 3);
+    expect(femaleYoke.OUTER_NECK_LEFT[1]).toBe(femaleYoke.NECK_LEFT[1] - 4);
+  });
+});
+
+describe("the male yoke is built the same way, one body out", () => {
+  it("hangs its sleeve heads off the male shoulder", () => {
+    expect(maleYoke.TIP_LEFT).toEqual([
+      MALE_ANCHORS.shoulderX.left - 3,
+      MALE_ANCHORS.shoulderY,
+    ]);
+    expect(maleYoke.TIP_RIGHT).toEqual([
+      MALE_ANCHORS.shoulderX.right + 3,
+      MALE_ANCHORS.shoulderY,
+    ]);
+  });
+
+  it("sits outside the female yoke at the shoulder", () => {
+    expect(maleYoke.TIP_LEFT[0]).toBeLessThan(femaleYoke.TIP_LEFT[0]);
+    expect(maleYoke.TIP_RIGHT[0]).toBeGreaterThan(femaleYoke.TIP_RIGHT[0]);
+  });
+});

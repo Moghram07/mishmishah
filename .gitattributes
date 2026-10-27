@@ -1,0 +1,2 @@
+# Unix line endings everywhere: the garment checker reads these sources as text.
+* text=auto eol=lf
