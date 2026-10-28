@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { garmentById } from "@/lib/data/garments";
 import { effectiveCoverage, skirtOf } from "./outfit";
 import { HEM_AT, SKIRT_LENGTHS } from "./skirts";
-import { DEFAULT_SKIRT as DRESS_DEFAULT, skirtFor as dressSkirt } from "./art/female/dressCut";
+import { DEFAULT_SKIRT as DRESS_DEFAULT, WAIST_Y, details, seamAt, skirtFor as dressSkirt } from "./art/female/dressCut";
 import { DEFAULT_SKIRT as SKIRT_DEFAULT, cloth, skirtFor } from "./art/female/skirtCut";
 
 describe("skirts", () => {
@@ -54,6 +54,26 @@ describe("skirts", () => {
     expect(zones("midi")).toEqual(["shoulderCap", "torso", "hip", "thigh"]);
     expect(zones("maxi")).toEqual(expect.arrayContaining(["thigh", "knee", "calf"]));
     expect(zones("knee")).not.toContain("calf");
+  });
+
+  it("sews a dropped waist's skirt on at its seam, 13 cm below her own", () => {
+    expect(seamAt("dropped")).toBe(WAIST_Y + 70);
+    /* the skirt starts under the bodice's hem, as at her own waist */
+    expect(dressSkirt(undefined, { ...DRESS_DEFAULT, waist: "dropped" }).waistY).toBe(seamAt("dropped") - 8);
+    expect(dressSkirt(undefined, DRESS_DEFAULT).waistY).toBe(WAIST_Y - 8);
+  });
+
+  it("moves the bodice's details down with a dropped waist", () => {
+    for (const waist of ["natural", "dropped"] as const) {
+      const seam = seamAt(waist);
+      expect(details("wrap", waist).tie![1], waist).toBe(seam);
+      const buttons = details("collared", waist).buttons!;
+      expect(Math.max(...buttons.at.map(([, y]) => y)) + buttons.r, waist).toBeLessThan(seam);
+      expect(details("sweetheart", waist).seams.length, waist).toBe(2);
+    }
+    /* the dropped waist's buttons run on down the longer bodice */
+    const low = (waist: "natural" | "dropped") => Math.max(...details("collared", waist).buttons!.at.map(([, y]) => y));
+    expect(low("dropped")).toBeGreaterThan(low("natural") + 60);
   });
 
   it("draws the skirt's band, except under a jacket, which hides it", () => {

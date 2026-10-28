@@ -79,6 +79,8 @@ export interface CutSpec {
   neckEase?: number;
   /** The row the throat is measured at — the column, not the flare. */
   columnY?: number;
+  /** The row the bodice ends at, where a skirt is sewn on: her own waist, unless given. */
+  waistY?: number;
   /** The ease the shoulder seam is walked at. */
   shoulderEase?: number;
 }
@@ -335,7 +337,8 @@ function anatomy(body: BodyType, spec: CutSpec) {
 
   /** Half the neck's own width, above where it widens into the shoulders. */
   const column = width / 2;
-  return { d, center, half, column, seamY, ease, tip, neckLeft, neckRight, shoulder, underarm };
+  const waistY = spec.waistY ?? d.waistY;
+  return { d, center, half, column, seamY, ease, tip, neckLeft, neckRight, shoulder, underarm, waistY };
 }
 
 type Anatomy = ReturnType<typeof anatomy>;
@@ -762,7 +765,7 @@ const CUTS: Record<NecklineId, (a: Anatomy) => NecklineCut> = {
   wrap: (a) => {
     const t = 0.05;
     const { strapLeft, strapRight, cornerLeft, cornerRight } = acrossShoulders(a, t, () => []);
-    const waistY = a.d.waistY;
+    const waistY = a.waistY;
     const tie: Pt = [2 * CENTER_X - a.d.sideAt(waistY, a.ease) - WRAP_TIE_IN, waistY];
     /* steep from the neck, flattening as it crosses to the waist */
     const pull: Pt = [a.center - 6, a.seamY + WRAP_PULL];
@@ -836,7 +839,7 @@ const CUTS: Record<NecklineId, (a: Anatomy) => NecklineCut> = {
       and not as a necktie.
     */
     const half = 8;
-    const footY = a.d.waistY;
+    const footY = a.waistY;
     const buttons = Array.from({ length: COLLARED_BUTTONS }, (_, i) => {
       const [first, last] = [a.seamY + COLLARED_FIRST_BUTTON, footY - COLLARED_LAST_BUTTON];
       return [a.center, first + ((last - first) * i) / (COLLARED_BUTTONS - 1)] as Pt;
@@ -1148,7 +1151,7 @@ const CUTS: Record<NecklineId, (a: Anatomy) => NecklineCut> = {
     const lobeLeft = curve(meetLeft, tip, SWEETHEART_CREST);
     /* from the crown of each curve, over the bust, to the waist */
     const crown = (lobe: Pt[]) => lobe.reduce((top, p) => (p[1] < top[1] ? p : top));
-    const seamDown = (from: Pt, bust: Pt): Pt[] => [from, [(from[0] + bust[0]) / 2, (from[1] + bust[1]) / 2], bust, [bust[0] + (bust[0] - from[0]) * 0.15, (bust[1] + a.d.waistY) / 2], [bust[0], a.d.waistY]];
+    const seamDown = (from: Pt, bust: Pt): Pt[] => [from, [(from[0] + bust[0]) / 2, (from[1] + bust[1]) / 2], bust, [bust[0] + (bust[0] - from[0]) * 0.15, (bust[1] + a.waistY) / 2], [bust[0], a.waistY]];
     const [bustLeft, bustRight] = SWEETHEART_BUST;
     return {
       tip,

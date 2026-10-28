@@ -13,9 +13,9 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, skirtFor } from "./dressCut";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, seamAt, skirtFor } from "./dressCut";
 import { sameSkirt, skirtKey } from "@/lib/garments/skirts";
-import type { FabricRegionId, SkirtChoice, SleeveChoice } from "@/types";
+import type { FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { litButtons } from "../buttons";
 import { puffLightDefs, puffShade, seamShadows, sleeveFoldDefs, sleeveFolds } from "../sleeveFolds";
@@ -49,21 +49,32 @@ const SEAM: readonly [Pt, Pt] = [
   [SKIRT.waistLeft[0] + 6, WAIST_Y],
   [600 - SKIRT.waistLeft[0] - 6, WAIST_Y],
 ];
+/** The seam a skirt in a style is gathered into, across its waist's row. */
+const seamOf = (skirt: SkirtChoice): readonly [Pt, Pt] => {
+  if (!skirt.waist || skirt.waist === "natural") return SEAM;
+  const sk = skirtFor(undefined, skirt);
+  const y = seamAt(skirt.waist);
+  return [
+    [sk.waistLeft[0] + 6, y],
+    [600 - sk.waistLeft[0] - 6, y],
+  ];
+};
 /**
  * The skirt's folds, from the waist — or, under a jacket, from the jacket's
  * hem, where the skirt comes out, so they follow the outline it has there.
  */
 const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] => {
   const sk = skirtFor(inside, skirt);
+  const seam = seamOf(skirt);
   const hem: readonly [Pt, Pt] = [sk.hemLeft, [600 - sk.hemLeft[0], sk.hemLeft[1]]];
   const from: readonly [Pt, Pt] = inside
     ? [
         [inside.x + 6, inside.y],
         [600 - inside.x - 6, inside.y],
       ]
-    : SEAM;
+    : seam;
   return [
-    ...gathers({ seam: SEAM, count: 12, length: [12, 34], width: 2.4, shadow: 0.3, light: 0.22, seed: 3 }),
+    ...gathers({ seam, count: 12, length: [12, 34], width: 2.4, shadow: 0.3, light: 0.22, seed: 3 }),
     ...hangingFolds({
       seam: from,
       hem,
@@ -427,8 +438,8 @@ const BODICE_DRAPE: Stop[] = [
   [1, "#c6c6c6"],
 ];
 
-const topRegion = (id: NecklineId, sleeve: SleeveChoice): RegionArt => {
-  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, princess } = bodiceFor(id, sleeve);
+const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): RegionArt => {
+  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, princess } = bodiceFor(id, sleeve, waist);
   /* a puff is lit round and gathered at both ends — see `PuffShape` */
   const puffFolds = puff ? puff.shapes.flatMap((s, i) => puffDrape(s, 60 + i)) : [];
   const puffed = new Set(puff?.sleeves ?? []);
@@ -713,16 +724,17 @@ const DEFAULT_CUT: NecklineId = "round";
 
 const tops = new Map<string, RegionArt>();
 
-/** The bodice region for a cut and a sleeve, drawn once and kept. */
+/** The bodice region for a cut, a sleeve and a waist, drawn once and kept. */
 const topFor = (choice: GarmentChoice): RegionArt => {
   const id = (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")
     ? (choice.neckline as NecklineId)
     : DEFAULT_CUT;
   const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
-  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}`;
+  const waist = choice.skirt?.waist ?? "natural";
+  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}`;
   let region = tops.get(key);
   if (!region) {
-    region = topRegion(id, sleeve);
+    region = topRegion(id, sleeve, waist);
     tops.set(key, region);
   }
   return region;
@@ -749,7 +761,7 @@ const bottomRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Region
       </>
     ),
     light: (uid) => foldLights(uid, folds),
-    stitch: `M${sk.waistLeft[0] + 6} ${WAIST_Y - 2} L${594 - sk.waistLeft[0]} ${WAIST_Y - 2}`,
+    stitch: `M${sk.waistLeft[0] + 6} ${seamAt(skirt.waist) - 2} L${594 - sk.waistLeft[0]} ${seamAt(skirt.waist) - 2}`,
   };
 };
 
@@ -777,7 +789,7 @@ export const dressFront: GarmentArt = {
     const id = (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")
       ? (choice.neckline as NecklineId)
       : DEFAULT_CUT;
-    const cuff = bodiceFor(id, choice.sleeve ?? DEFAULT_SLEEVE).cuff;
+    const cuff = bodiceFor(id, choice.sleeve ?? DEFAULT_SLEEVE, choice.skirt?.waist).cuff;
     if (!cuff) return null;
     const { left, right } = cuff.cut.trim;
     return <CuffHardware trims={cuff.oneSided ? [left] : [left, right]} />;
@@ -787,7 +799,7 @@ export const dressFront: GarmentArt = {
     const id = (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")
       ? (choice.neckline as NecklineId)
       : DEFAULT_CUT;
-    const buttons = bodiceFor(id, choice.sleeve ?? DEFAULT_SLEEVE).cut.buttons;
+    const buttons = bodiceFor(id, choice.sleeve ?? DEFAULT_SLEEVE, choice.skirt?.waist).cut.buttons;
     if (!buttons) return null;
     return litButtons(buttons.at, buttons.r);
   },
@@ -796,7 +808,8 @@ export const dressFront: GarmentArt = {
       (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")
         ? (choice.neckline as NecklineId)
         : DEFAULT_CUT,
-      choice.sleeve ?? DEFAULT_SLEEVE
+      choice.sleeve ?? DEFAULT_SLEEVE,
+      choice.skirt?.waist
     ).armCover,
 };
 

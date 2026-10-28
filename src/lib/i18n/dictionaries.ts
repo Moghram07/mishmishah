@@ -91,6 +91,7 @@ export const dictionaries = {
     "viz.cuff": "Cuff",
     "viz.sleeveHint": "How the sleeve is built, and where it ends on the arm.",
     "viz.length": "Length",
+    "viz.waist": "Waist",
     "viz.collar": "Collar",
     "viz.noCollar": "Plain",
     "viz.collarHint":
@@ -243,6 +244,7 @@ export const dictionaries = {
     "viz.cuff": "الكبك",
     "viz.sleeveHint": "طريقة تركيب الكم، وأين ينتهي على الذراع.",
     "viz.length": "الطول",
+    "viz.waist": "الخصر",
     "viz.collar": "الياقة",
     "viz.noCollar": "بدون ياقة",
     "viz.collarHint": "يمكن تفصيل الياقة من قماش مختلف.",

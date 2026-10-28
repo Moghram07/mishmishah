@@ -1437,6 +1437,61 @@ describe("skirt lengths, light and dark", () => {
 });
 
 /**
+ * Every neckline at every waist the dress is cut with, on a light page and a
+ * dark one: in a plain cloth in the sleeve it arrives in, and in a print in
+ * long sleeves — so the same sheet shows whatever waists the code has.
+ */
+describe("dress waists, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  const ROWS = [
+    ["fb-apricot-linen", "plain", null],
+    ["fb-indigo-plaid", "plaid, long sleeves", { type: "set-in", length: "long" }],
+  ] as const;
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles4-waists-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const dress = garmentById("female-dress")!;
+    const stage = (necklineId: string, waist: string, clothId: string, sleeve: SleeveChoice | null) => {
+      const cloth = f(clothId);
+      let worn = wear([], cutFrom(dress, cloth.id));
+      worn = setNeckline(worn, dress.id, necklineId);
+      if (sleeve) worn = setSleeve(worn, dress.id, sleeve);
+      worn = worn.map((w) => {
+        const skirt = skirtOf(w);
+        return skirt ? { ...w, skirt: { ...skirt, waist } as typeof skirt } : w;
+      });
+      const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+      for (const r of dress.fabricRegions) regions[r] = cloth;
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={{ [dress.id]: regions }} zoom={1} focus={[300, 500]} />;
+    };
+    const rows = (dress.skirt!.waists ?? ["natural"]).flatMap((waist) =>
+      ROWS.map(([cloth, kind, sleeve]) => (
+        <div key={`${waist}-${cloth}`} className="row">
+          {necklinesForGarment(dress).map((n) => (
+            <figure key={n.id}>
+              {stage(n.id, waist, cloth, sleeve)}
+              <figcaption>{`${n.cut}, ${waist} waist, ${kind}`}</figcaption>
+            </figure>
+          ))}
+        </div>
+      ))
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles4-waists-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
+    );
+  });
+});
+
+/**
  * Round 4's details, on a light page and a dark one, in a plain cloth and a
  * print: both jackets over the top each is worn over — whole, and the end of
  * a sleeve close up, where its buttons are and the cuff under it shows — and

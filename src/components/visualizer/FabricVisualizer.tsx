@@ -23,7 +23,7 @@ import { productTemplates } from "@/lib/data/products";
 import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
 import { collarsForGarment } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
-import { skirtLengthsFor } from "@/lib/data/skirts";
+import { skirtLengthsFor, waistsFor } from "@/lib/data/skirts";
 import {
   sleeveCuffById,
   sleeveCuffsFor,
@@ -649,10 +649,11 @@ export function FabricVisualizer() {
   */
   const onBottom = subject === "wardrobe" && cutting.region === "bottom";
   const skirtLengthChoices = cuttingGarment ? skirtLengthsFor(cuttingGarment) : [];
+  const waistChoices = cuttingGarment ? waistsFor(cuttingGarment) : [];
   const wornSkirt = cuttingEntry ? skirtOf(cuttingEntry.worn) : undefined;
   const showSkirt =
     subject === "wardrobe" &&
-    skirtLengthChoices.length > 1 &&
+    (skirtLengthChoices.length > 1 || waistChoices.length > 1) &&
     (onBottom || !cuttingGarment?.fabricRegions.includes("bottom"));
 
   const regions =
@@ -1109,7 +1110,7 @@ export function FabricVisualizer() {
             )}
 
             {/* the skirt's length: three choices, one row */}
-            {showSkirt && wornSkirt && (
+            {showSkirt && wornSkirt && skirtLengthChoices.length > 1 && (
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {t("viz.length")}
@@ -1133,6 +1134,37 @@ export function FabricVisualizer() {
                       )}
                     >
                       {pick(l.name)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* the waist its skirt hangs from, a dress's: one row */}
+            {showSkirt && wornSkirt && waistChoices.length > 1 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("viz.waist")}
+                </p>
+                <div
+                  role="group"
+                  aria-label={t("viz.waist")}
+                  className="grid gap-1 rounded-full bg-muted/60 p-1"
+                  style={{ gridTemplateColumns: `repeat(${waistChoices.length}, minmax(0, 1fr))` }}
+                >
+                  {waistChoices.map((w) => (
+                    <button
+                      key={w.id}
+                      onClick={() => chooseSkirt({ waist: w.id })}
+                      aria-pressed={wornSkirt.waist === w.id}
+                      className={cn(
+                        "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
+                        wornSkirt.waist === w.id
+                          ? "bg-card text-foreground shadow-soft"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {pick(w.name)}
                     </button>
                   ))}
                 </div>

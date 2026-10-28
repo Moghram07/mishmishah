@@ -145,7 +145,7 @@ export const garments: Garment[] = [
     skirt: {
       shapes: ["flared"],
       lengths: ["knee", "midi", "maxi"],
-      waists: ["natural"],
+      waists: ["natural", "dropped"],
       default: { shape: "flared", length: "midi", waist: "natural" },
     },
     asset: { front: "female-dress-front" },

@@ -13,8 +13,8 @@
 */
 import { draft, line, mirrorPts, outline, princess, reverse, run, setIn, span, type Pt, type Tuck } from "../../fit.ts";
 import { hasArmhole, hemRow, top, type Frame, type PuffShape, type SleeveChoice, type SleeveCut } from "../../sleeves.ts";
-import { sameSkirt, skirtCut, skirtKey, type CutSkirt, type SkirtFinish } from "../../skirts.ts";
-import type { SkirtChoice } from "@/types";
+import { WAIST_DROP, sameSkirt, skirtCut, skirtKey, type CutSkirt, type SkirtFinish } from "../../skirts.ts";
+import type { SkirtChoice, WaistId } from "@/types";
 import type { GarmentChoice } from "../index.ts";
 import { mirror as mirrorPath } from "../../collar.ts";
 import {
@@ -36,6 +36,9 @@ import { BUST, NECK_BASE_SEAM, NECK_LEFT, NECK_RIGHT, SHOULDER_EASE, TIP_LEFT } 
  * started out from there.
  */
 export const WAIST_Y = draft("female").waistY;
+
+/** Where a waist's seam is sewn: her waist, or lower for a dropped one — see `WAIST_DROP`. */
+export const seamAt = (waist: WaistId = "natural"): number => WAIST_Y + WAIST_DROP[waist];
 
 /**
  * The bodice's ease, and the skirt's at the seam — the same number, because a
@@ -142,9 +145,9 @@ export const DEFAULT_SLEEVE: SleeveChoice = { type: "set-in", length: "short" };
  * sleeve cut a little fuller at its hem than at its head, which is what keeps a
  * dress sleeve from reading as a t-shirt's.
  */
-/** The skirt's left edge at a row: what a long sleeve hangs beside below the waist. */
-const skirtEdge = (y: number): number => {
-  const n = (SKIRT.path.match(/-?[0-9]*[.]?[0-9]+/g) ?? []).map(Number);
+/** A skirt's left edge at a row: what a long sleeve hangs beside below the waist. */
+const edgeOf = (path: string) => (y: number): number => {
+  const n = (path.match(/-?[0-9]*[.]?[0-9]+/g) ?? []).map(Number);
   let left = Infinity;
   for (let i = 0; i + 3 < n.length; i += 2) {
     const [ax, ay, bx, by] = [n[i], n[i + 1], n[i + 2], n[i + 3]];
@@ -165,8 +168,35 @@ const SLEEVES = top("female", {
   fitted: true,
   sleeve: [5, 8],
   inner: [3, 4],
-  below: skirtEdge,
+  below: edgeOf(SKIRT.path),
 });
+
+/**
+ * The bodice and its sleeves drafted to a waist: a dropped waist's bodice runs
+ * on down to its seam, and a long sleeve hangs beside that waist's skirt. The
+ * natural waist's is the one above; each other waist is drafted once, kept.
+ */
+const builders = new Map<WaistId, typeof SLEEVES>([["natural", SLEEVES]]);
+const sleevesFor = (waist: WaistId): typeof SLEEVES => {
+  let b = builders.get(waist);
+  if (!b) {
+    b = top("female", {
+      tip: TIP,
+      neck: [NECK_LEFT[0], NECK_LEFT[1]],
+      neckRight: [NECK_RIGHT[0], NECK_RIGHT[1]],
+      shoulderEase: SHOULDER_EASE,
+      ease: EASE,
+      hemY: seamAt(waist),
+      dip: 0,
+      fitted: true,
+      sleeve: [5, 8],
+      inner: [3, 4],
+      below: edgeOf(skirtFor(undefined, { ...DEFAULT_SKIRT, waist }).path),
+    });
+    builders.set(waist, b);
+  }
+  return b;
+};
 
 /** How far up under the band a sleeve hung from it runs, so no hairline shows where it is sewn on. */
 const UNDER_BAND = 6;
@@ -228,7 +258,7 @@ function blendOuter(outer: Pt[], along: Pt, span: number): Pt[] {
  * down beside the bodice to the waist — three tubes side by side, and no
  * daylight between the arm and the body.
  */
-function raglanSleeves(raglan: OffShoulderBand["raglan"], sleeve: SleeveChoice) {
+function raglanSleeves(raglan: OffShoulderBand["raglan"], sleeve: SleeveChoice, S: typeof SLEEVES) {
   const fitted = sleeve.type === "off-shoulder";
   /* the fitted one is the shared fitted sleeve; the others are themselves */
   const drafted: SleeveChoice = fitted ? { ...sleeve, type: "set-in" } : sleeve;
@@ -252,7 +282,7 @@ function raglanSleeves(raglan: OffShoulderBand["raglan"], sleeve: SleeveChoice) 
     /* hung from the band: the fitted one carries straight on from it, a puff balloons from it — see `Frame.hang` */
     hang: { ease: raglan.ease },
   };
-  const k = SLEEVES.cut(drafted, frame);
+  const k = S.cut(drafted, frame);
   /* the others leave the band along its line — see `blendOuter` */
   const [px, py] = side[side.length - 2];
   const along: Pt = [(start[0] - px) / (Math.hypot(start[0] - px, start[1] - py) || 1), (start[1] - py) / (Math.hypot(start[0] - px, start[1] - py) || 1)];
@@ -299,7 +329,7 @@ function raglanSleeves(raglan: OffShoulderBand["raglan"], sleeve: SleeveChoice) 
     under,
     fitted,
     hem,
-    ...(fitted && style ? { cuffTop: SLEEVES.cuffRows(style, hem).seam } : {}),
+    ...(fitted && style ? { cuffTop: S.cuffRows(style, hem).seam } : {}),
   };
 }
 
@@ -312,17 +342,19 @@ function raglanSleeves(raglan: OffShoulderBand["raglan"], sleeve: SleeveChoice) 
  * is drafted into whatever the cut left. The cut decides where the bodice's top
  * corner is; the sleeve decides everything below it.
  */
-function bodice(id: NecklineId, sleeve: SleeveChoice): Bodice {
+function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Bodice {
   const sleeves = NECKLINE_SLEEVES[id];
+  const S = sleevesFor(waist);
   const cut = necklineCut("female", id, {
-    shoulderTip: sleeves === "both" ? SLEEVES.shoulderEnd(sleeve) : TIP,
+    shoulderTip: sleeves === "both" ? S.shoulderEnd(sleeve) : TIP,
     ease: EASE,
     seamY: NECK_BASE_SEAM,
+    waistY: seamAt(waist),
   });
 
   if (sleeves === "none" || sleeves === "band") {
     /* No sleeves: the bodice is the panel below whatever the cut left. */
-    const T = setIn("female", { tip: cut.tip, ease: EASE, hemY: WAIST_Y, dip: 0, fitted: true });
+    const T = setIn("female", { tip: cut.tip, ease: EASE, hemY: seamAt(waist), dip: 0, fitted: true });
     /*
       A one-sided cut has an armhole on its covered side only. Closed through
       `sides`, which mirrors the left armhole too, the panel climbed the bare
@@ -340,7 +372,7 @@ function bodice(id: NecklineId, sleeve: SleeveChoice): Bodice {
     */
     const hung =
       sleeves === "band" && cut.band && sleeve.length !== "sleeveless" && !(sleeve.type === "off-shoulder" && sleeve.length === "short")
-        ? raglanSleeves(cut.band.raglan, sleeve)
+        ? raglanSleeves(cut.band.raglan, sleeve, S)
         : null;
     if (hung && cut.band) {
       const { raglan } = cut.band;
@@ -394,7 +426,7 @@ function bodice(id: NecklineId, sleeve: SleeveChoice): Bodice {
     edge: cut.edge,
     parts: cut.parts,
   };
-  const k = SLEEVES.cut(sleeve, frame);
+  const k = S.cut(sleeve, frame);
 
   /* a cut's own extra pieces are outlined whole: none of their edges is a seam */
   if (sleeves === "both") {
@@ -474,7 +506,7 @@ function bodice(id: NecklineId, sleeve: SleeveChoice): Bodice {
  * None on a cut with seams of its own, which do the same work: a
  * sweetheart's, from each curve to the waist.
  */
-function princessSeams(cut: NecklineCut, id: NecklineId, sleeve: SleeveChoice): [string, string] | undefined {
+function princessSeams(cut: NecklineCut, id: NecklineId, sleeve: SleeveChoice, waist: WaistId): [string, string] | undefined {
   if (cut.seams) return undefined;
   const left = princess(draft("female"), {
     tip: TIP,
@@ -482,8 +514,8 @@ function princessSeams(cut: NecklineCut, id: NecklineId, sleeve: SleeveChoice): 
     ease: EASE,
     bust: [BUST.points[0][0], BUST.points[0][1]],
     waistY: WAIST_Y,
-    /* into the waist seam, which the skirt is sewn across */
-    to: WAIST_Y + 2,
+    /* into the waist seam, which the skirt is sewn across — her waist's, or a dropped one's below it */
+    to: seamAt(waist) + 2,
     from: NECKLINE_SLEEVES[id] === "both" && !hasArmhole(sleeve.type) ? "shoulder" : "armhole",
   });
   return [line(left), line(mirrorPts(left))];
@@ -507,9 +539,10 @@ const cache = new Map<string, Bodice>();
  */
 export function bandArm(
   id: NecklineId,
-  sleeve: SleeveChoice
+  sleeve: SleeveChoice,
+  waist: WaistId = "natural"
 ): { pieces: string[]; underarm: number; hem: number; join: number; fitted: boolean; cuffTop?: number } | null {
-  const b = bodiceFor(id, sleeve);
+  const b = bodiceFor(id, sleeve, waist);
   if (!b.bandSleeves || !b.cut.band) return null;
   const pieces = [b.bandSleeves.band, b.bandSleeves.paths[0], ...(b.cuff ? [b.cuff.bands[0]] : [])];
   return {
@@ -522,12 +555,12 @@ export function bandArm(
   };
 }
 
-export function bodiceFor(id: NecklineId, sleeve: SleeveChoice = DEFAULT_SLEEVE): Bodice {
-  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}`;
+export function bodiceFor(id: NecklineId, sleeve: SleeveChoice = DEFAULT_SLEEVE, waist: WaistId = "natural"): Bodice {
+  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}`;
   let b = cache.get(key);
   if (!b) {
-    const made = bodice(id, sleeve);
-    const seams = princessSeams(made.cut, id, sleeve);
+    const made = bodice(id, sleeve, waist);
+    const seams = princessSeams(made.cut, id, sleeve, waist);
     b = seams ? { ...made, princess: seams } : made;
     cache.set(key, b);
   }
@@ -561,6 +594,34 @@ export const DEFAULT_CUT: NecklineId = "round";
  * two different answers.
  */
 export const cloth = ({ neckline, sleeve, inside, skirt }: GarmentChoice = {}): string[] => [
-  ...bodiceFor((NECKLINE_IDS as readonly string[]).includes(neckline ?? "") ? (neckline as NecklineId) : DEFAULT_CUT, sleeve).pieces,
+  ...bodiceFor(
+    (NECKLINE_IDS as readonly string[]).includes(neckline ?? "") ? (neckline as NecklineId) : DEFAULT_CUT,
+    sleeve,
+    skirt?.waist
+  ).pieces,
   skirtFor(inside, skirt).path,
 ];
+
+/**
+ * A bodice's details for one cut at one waist — its seams, its buttons, its
+ * tie — beside the cloth they must lie on and the seam they must end at, for
+ * `check:garments` to hold them to it: moved with the waist, every one of
+ * them has to move with it.
+ */
+export function details(id: NecklineId, waist: WaistId = "natural") {
+  const b = bodiceFor(id, DEFAULT_SLEEVE, waist);
+  return {
+    pieces: b.pieces,
+    seamY: seamAt(waist),
+    /*
+      Where a seam must lie on the bodice from: under the bust. Above it a
+      princess seam is drafted past its start and clipped where a sleeve or a
+      band is drawn over it; at the bottom it runs a little past the hem, into
+      the waist seam the skirt is sewn across.
+    */
+    seamsFrom: BUST.creaseY,
+    seams: [...(b.princess ?? []), ...(b.cut.seams ?? []).map((pts) => line(pts))],
+    buttons: b.cut.buttons ?? null,
+    tie: b.cut.wrap?.tie ?? null,
+  };
+}

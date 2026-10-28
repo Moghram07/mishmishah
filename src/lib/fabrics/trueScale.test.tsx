@@ -135,8 +135,8 @@ describe("every print at its true size", () => {
   */
   it("on every skirt style, in every size of repeat", () => {
     for (const garment of garments.filter((g) => g.skirt)) {
-      const { default: own, lengths } = garment.skirt!;
-      for (const length of lengths) {
+      const { default: own, lengths, waists } = garment.skirt!;
+      for (const waist of waists ?? [undefined]) for (const length of lengths) {
         for (const fabric of byRepeat) {
           const repeat = fabricRepeatCm(fabric) / BODY_CANVAS.cmPerUnit;
           const regions = Object.fromEntries(
@@ -146,13 +146,13 @@ describe("every print at its true size", () => {
             bodyType: garment.gender,
             skinTone: DEFAULT_SKIN_TONE,
             direction: 0,
-            worn: [{ ...cutFrom(garment, fabric.id), skirt: { ...own, length } }],
+            worn: [{ ...cutFrom(garment, fabric.id), skirt: { ...own, length, ...(waist ? { waist } : {}) } }],
           };
           const html = renderToStaticMarkup(
             <MannequinStage outfit={outfit} fabrics={{ [garment.id]: regions }} zoom={2} focus={[300, 640]} />
           );
           const frameW = Number(html.match(/<svg[^>]*viewBox="[^ ]+ [^ ]+ ([^ ]+) [^"]+"/)?.[1]);
-          expectTrueTiles(html, repeat, RENDER_PX / frameW, `${garment.id}, ${length}, in ${fabric.id}`);
+          expectTrueTiles(html, repeat, RENDER_PX / frameW, `${garment.id}, ${waist ?? ""} ${length}, in ${fabric.id}`);
         }
       }
     }
