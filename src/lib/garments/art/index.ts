@@ -133,6 +133,12 @@ export interface RegionArt {
   edge?: () => ReactNode;
   /** Dashed topstitch route along this region's seams. */
   stitch?: string;
+  /**
+   * The garment's cloth from an earlier region that hangs in front of this
+   * one — a dress's sleeves, beside a skirt hung from above her waist. See
+   * `RegionDrawing`.
+   */
+  under?: string[];
   /** Where a close-up should centre. */
   focus?: [x: number, y: number];
 }

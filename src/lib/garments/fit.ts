@@ -1868,6 +1868,14 @@ export function column(
     wave?: { at: number[]; depth: number };
     /** The hem of a jacket worn over it — see `tucked`. */
     inside?: Tuck;
+    /**
+     * Where it hangs from, if above her waist: how far below it, so negative
+     * — an empire's seam, under the bust. From there to the hip it does not
+     * follow her in at the waist but falls past it, on the line a string
+     * pulled from the seam to the hip takes round the outside of her: see
+     * `taut`. Omitted, it is close from its top edge to the hip.
+     */
+    hang?: number;
   }
 ): {
   path: string;
@@ -1895,12 +1903,27 @@ export function column(
   const easeAt = (y: number) =>
     y <= hipY ? ease : ease + (flare * (y - hipY)) / Math.max(1, (spec.flareTo ?? toY) - hipY);
 
+  /*
+    Hung from above the waist, it is close only from its top edge to the seam
+    it hangs from — under the bodice there — and falls from the seam to the
+    hip on the taut line, at the same ease, so it leaves the seam exactly
+    where the bodice ends and meets the hip where it rests.
+  */
+  const hangY = spec.hang === undefined ? hipY : Math.min(hipY, Math.max(fromY, d.waistY + spec.hang));
+  const hung =
+    hangY < hipY
+      ? taut(d.side({ from: hangY, to: hipY, ease: 0 }))
+          .map(([x, y]) => [x - ease, y] as Pt)
+          .slice(1)
+      : [];
+
   const trunkTo = Math.min(d.crotchY, toY);
   const upper =
     fromY >= trunkTo
       ? []
       : [
-          ...d.side({ from: fromY, to: hipY, ease }),
+          ...d.side({ from: fromY, to: hangY, ease }),
+          ...hung,
           ...(hipY < trunkTo
             ? d.side({ from: hipY, to: trunkTo, ease, toEase: easeAt(trunkTo) }).slice(1)
             : []),

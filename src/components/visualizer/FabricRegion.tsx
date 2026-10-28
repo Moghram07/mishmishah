@@ -90,6 +90,13 @@ export interface RegionDrawing {
   edge?: () => ReactNode;
   /** Dashed topstitch route along this region's seams. */
   stitch?: string;
+  /**
+   * Cloth drawn before this region that hangs in front of it — a dress's
+   * sleeves, beside a skirt hung from above her waist. The region is drawn
+   * everywhere but under it, and takes the soft shadow its edges throw, as
+   * cloth does wherever an edge lies on it.
+   */
+  under?: string[];
 }
 
 interface Props {
@@ -278,6 +285,16 @@ export function FabricRegion({
   const joined = Boolean(drawing.surface?.joined);
   const forms = drawing.surface && !joined ? piecesOf(drawing.shape("#fff")) : [];
 
+  /*
+    The cloth hanging in front of this region, if any: everything drawn here
+    stays out from under it. Masked inside each layer, never round the whole
+    region — a mask round a group isolates it, and the form and shadows it
+    multiplies would then paint as colour, a pale halo along every edge,
+    rather than darken what lies under them.
+  */
+  const over = drawing.under?.length ? drawing.under : null;
+  const behind = (node: ReactNode) => (over ? <g mask={`url(#${uid("behind")})`}>{node}</g> : node);
+
   return (
     <>
       <defs>
@@ -325,7 +342,7 @@ export function FabricRegion({
             ridges: drawing.surface.ridges,
             canvas,
           })}
-        {beneath && (
+        {(beneath || over) && (
           /* over the whole canvas: a thin level line has no height for a filter box to be a share of */
           <filter
             id={uid("contact")}
@@ -338,6 +355,14 @@ export function FabricRegion({
             <feGaussianBlur stdDeviation={CONTACT.soft} />
           </filter>
         )}
+        {over && (
+          <mask id={uid("behind")} maskUnits="userSpaceOnUse" x="0" y="0" width={canvas[0]} height={canvas[1]}>
+            <rect x="0" y="0" width={canvas[0]} height={canvas[1]} fill="#fff" />
+            {over.map((d, i) => (
+              <path key={i} d={d} fill="#000" />
+            ))}
+          </mask>
+        )}
       </defs>
 
       {/*
@@ -345,7 +370,7 @@ export function FabricRegion({
         it is a shadow *on the garment*, not a shadow on the collar.
       */}
       {drawing.cast && (
-        <g style={{ mixBlendMode: "multiply" }}>{drawing.cast(uid)}</g>
+        <g style={{ mixBlendMode: "multiply" }}>{behind(drawing.cast(uid))}</g>
       )}
 
 
@@ -385,41 +410,35 @@ export function FabricRegion({
           */}
           {beneath && (
             <g mask={`url(#${beneath.shade})`} style={{ mixBlendMode: "multiply" }}>
-              <g
-                filter={`url(#${uid("contact")})`}
-                fill="none"
-                stroke={CONTACT.color}
-                strokeOpacity={CONTACT.opacity}
-                strokeWidth={CONTACT.width}
-                strokeLinejoin="round"
-              >
-                {edges[i]}
-              </g>
+              {behind(
+                <g
+                  filter={`url(#${uid("contact")})`}
+                  fill="none"
+                  stroke={CONTACT.color}
+                  strokeOpacity={CONTACT.opacity}
+                  strokeWidth={CONTACT.width}
+                  strokeLinejoin="round"
+                >
+                  {edges[i]}
+                </g>
+              )}
             </g>
           )}
-          <g
-            filter={
-              drawing.surface?.warp !== undefined ? `url(#${uid("warp")})` : undefined
-            }
-          >
-            {piece}
-          </g>
-          {/* against the page, the rim in the page's text colour; on anything else, dark in either theme */}
-          <g
-            mask={beneath ? `url(#${beneath.rim})` : undefined}
-            fill="none"
-            stroke="currentColor"
-            strokeOpacity="0.18"
-            strokeWidth="2"
-            strokeLinejoin="round"
-          >
-            {edges[i]}
-          </g>
-          {beneath && (
+          {behind(
             <g
-              mask={`url(#${beneath.dark})`}
+              filter={
+                drawing.surface?.warp !== undefined ? `url(#${uid("warp")})` : undefined
+              }
+            >
+              {piece}
+            </g>
+          )}
+          {/* against the page, the rim in the page's text colour; on anything else, dark in either theme */}
+          {behind(
+            <g
+              mask={beneath ? `url(#${beneath.rim})` : undefined}
               fill="none"
-              stroke={EDGE_DARK}
+              stroke="currentColor"
               strokeOpacity="0.18"
               strokeWidth="2"
               strokeLinejoin="round"
@@ -427,25 +446,60 @@ export function FabricRegion({
               {edges[i]}
             </g>
           )}
+          {beneath &&
+            behind(
+              <g
+                mask={`url(#${beneath.dark})`}
+                fill="none"
+                stroke={EDGE_DARK}
+                strokeOpacity="0.18"
+                strokeWidth="2"
+                strokeLinejoin="round"
+              >
+                {edges[i]}
+              </g>
+            )}
           {forms[i] && (
             <g style={{ mixBlendMode: "multiply" }}>
-              <g filter={`url(#${uid("surface")})`}>
-                {forms[i]}
-              </g>
+              {behind(
+                <g filter={`url(#${uid("surface")})`}>
+                  {forms[i]}
+                </g>
+              )}
             </g>
           )}
         </g>
       ))}
       {joined && (
         <g style={{ mixBlendMode: "multiply" }}>
-          <g filter={`url(#${uid("surface")})`}>{drawing.shape("#fff")}</g>
+          {behind(<g filter={`url(#${uid("surface")})`}>{drawing.shape("#fff")}</g>)}
         </g>
       )}
 
       {/* fixed shading — never changes with the fabric */}
       {drawing.shading && (
         <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "multiply" }}>
-          {drawing.shading(uid)}
+          {behind(drawing.shading(uid))}
+        </g>
+      )}
+
+      {/* the soft shadow the edges of the cloth hanging in front throw on this */}
+      {over && (
+        <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "multiply" }}>
+          {behind(
+            <g
+              filter={`url(#${uid("contact")})`}
+              fill="none"
+              stroke={CONTACT.color}
+              strokeOpacity={CONTACT.opacity}
+              strokeWidth={CONTACT.width}
+              strokeLinejoin="round"
+            >
+              {over.map((d, i) => (
+                <path key={i} d={d} />
+              ))}
+            </g>
+          )}
         </g>
       )}
 
@@ -456,7 +510,7 @@ export function FabricRegion({
       */}
       {drawing.light && (
         <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "screen" }}>
-          {drawing.light(uid)}
+          {behind(drawing.light(uid))}
         </g>
       )}
 
@@ -477,15 +531,17 @@ export function FabricRegion({
       */}
       {threadColor && drawing.stitch && (
         <g mask={`url(#${uid("mask")})`}>
-          <path
-            d={drawing.stitch}
-            fill="none"
-            stroke={threadColor}
-            strokeWidth="0.9"
-            strokeLinecap="round"
-            strokeDasharray="2.6 2.2"
-            strokeOpacity="0.55"
-          />
+          {behind(
+            <path
+              d={drawing.stitch}
+              fill="none"
+              stroke={threadColor}
+              strokeWidth="0.9"
+              strokeLinecap="round"
+              strokeDasharray="2.6 2.2"
+              strokeOpacity="0.55"
+            />
+          )}
         </g>
       )}
     </>

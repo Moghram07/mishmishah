@@ -4,6 +4,19 @@ import { effectiveCoverage, skirtOf } from "./outfit";
 import { HEM_AT, SKIRT_LENGTHS } from "./skirts";
 import { DEFAULT_SKIRT as DRESS_DEFAULT, WAIST_Y, details, seamAt, skirtFor as dressSkirt } from "./art/female/dressCut";
 import { DEFAULT_SKIRT as SKIRT_DEFAULT, cloth, skirtFor } from "./art/female/skirtCut";
+import { BUST } from "./art/female/yoke";
+import { draft } from "./fit";
+
+/** A closed outline's leftmost x on a row. */
+const leftAt = (path: string, y: number): number => {
+  const n = (path.match(/-?[0-9]*[.]?[0-9]+/g) ?? []).map(Number);
+  let left = Infinity;
+  for (let i = 0; i + 3 < n.length; i += 2) {
+    const [ax, ay, bx, by] = [n[i], n[i + 1], n[i + 2], n[i + 3]];
+    if ((ay <= y && by > y) || (by <= y && ay > y)) left = Math.min(left, ax + ((y - ay) * (bx - ax)) / (by - ay));
+  }
+  return left;
+};
 
 describe("skirts", () => {
   it("draws each garment's skirt as its record says it arrives", () => {
@@ -63,17 +76,35 @@ describe("skirts", () => {
     expect(dressSkirt(undefined, DRESS_DEFAULT).waistY).toBe(WAIST_Y - 8);
   });
 
-  it("moves the bodice's details down with a dropped waist", () => {
-    for (const waist of ["natural", "dropped"] as const) {
+  it("sews an empire waist's skirt on under the bust, and hangs it past her waist to the hip", () => {
+    expect(seamAt("empire")).toBe(WAIST_Y - 50);
+    expect(seamAt("empire")).toBeGreaterThan(BUST.creaseY);
+    const empire = dressSkirt(undefined, { ...DRESS_DEFAULT, waist: "empire" });
+    const natural = dressSkirt(undefined, DRESS_DEFAULT);
+    expect(empire.waistY).toBe(seamAt("empire") - 8);
+    /* clear of her waist, where a skirt sewn there is on it */
+    expect(leftAt(empire.path, WAIST_Y)).toBeLessThan(leftAt(natural.path, WAIST_Y) - 10);
+    /* never back in toward it, from the seam down to the hip */
+    const { hipY } = draft("female");
+    for (let y = seamAt("empire") + 6; y <= hipY; y += 6) {
+      expect(leftAt(empire.path, y), `y ${y}`).toBeLessThanOrEqual(leftAt(empire.path, y - 6) + 0.1);
+    }
+    /* and on the hip, as the skirt sewn at her waist is, and the same below it */
+    for (const y of [hipY, 600, 750]) expect(Math.abs(leftAt(empire.path, y) - leftAt(natural.path, y)), `y ${y}`).toBeLessThan(0.5);
+  });
+
+  it("moves the bodice's details with its waist", () => {
+    for (const waist of ["empire", "natural", "dropped"] as const) {
       const seam = seamAt(waist);
       expect(details("wrap", waist).tie![1], waist).toBe(seam);
       const buttons = details("collared", waist).buttons!;
       expect(Math.max(...buttons.at.map(([, y]) => y)) + buttons.r, waist).toBeLessThan(seam);
       expect(details("sweetheart", waist).seams.length, waist).toBe(2);
     }
-    /* the dropped waist's buttons run on down the longer bodice */
-    const low = (waist: "natural" | "dropped") => Math.max(...details("collared", waist).buttons!.at.map(([, y]) => y));
+    /* the buttons run down the bodice to its seam: up under the bust, or on down a dropped one */
+    const low = (waist: "empire" | "natural" | "dropped") => Math.max(...details("collared", waist).buttons!.at.map(([, y]) => y));
     expect(low("dropped")).toBeGreaterThan(low("natural") + 60);
+    expect(low("empire")).toBeLessThan(low("natural") - 40);
   });
 
   it("draws the skirt's band, except under a jacket, which hides it", () => {

@@ -34,6 +34,7 @@ export interface Waist {
 }
 
 const WAIST_NAMES: Record<WaistId, { en: string; ar: string }> = {
+  empire: { en: "Empire", ar: "عالٍ" },
   natural: { en: "Natural", ar: "طبيعي" },
   dropped: { en: "Dropped", ar: "منخفض" },
 };

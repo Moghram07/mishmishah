@@ -36,17 +36,25 @@ const SHAPES: Record<SkirtShapeId, { flare: number; flareTo: number }> = {
 };
 
 /**
- * How far below her own waist each waist's seam is sewn: natural at the waist
- * itself, dropped at the low hip — 70 units, about 13 cm down, between the
- * waist at y 350 and the hip at 454.
+ * How far below her own waist each waist's seam is sewn: empire under the
+ * bust — 50 units up, about 9.5 cm, and 10 below the crease under it at
+ * y 290; natural at the waist itself; dropped at the low hip — 70 units,
+ * about 13 cm down, between the waist at y 350 and the hip at 454.
  */
 export const WAIST_DROP: Record<WaistId, number> = {
+  empire: -50,
   natural: 0,
   dropped: 70,
 };
 
 /** The waists, highest first — the order the picker offers them in. */
-export const WAISTS: readonly WaistId[] = ["natural", "dropped"];
+export const WAISTS: readonly WaistId[] = ["empire", "natural", "dropped"];
+
+/**
+ * Whether a skirt hangs from a seam above her waist — an empire's — rather
+ * than resting on her: it falls past her waist, beside her arms.
+ */
+export const hangs = (skirt: SkirtChoice): boolean => WAIST_DROP[skirt.waist ?? "natural"] < 0;
 
 /** The lengths, shortest first — the order the picker offers them in. */
 export const SKIRT_LENGTHS: readonly SkirtLengthId[] = ["knee", "midi", "maxi"];
@@ -90,12 +98,15 @@ export const sameSkirt = (a: SkirtChoice, b: SkirtChoice): boolean => skirtKey(a
 
 /**
  * One skirt, cut to a style: on its own, or under a jacket's hem — see
- * `tucked`. A dress's skirt is sewn on at its waist's seam, wherever that is.
+ * `tucked`. A dress's skirt is sewn on at its waist's seam, wherever that is;
+ * from a seam above her waist it hangs — see `column`'s `hang`.
  */
 export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck): CutSkirt {
   const { flare, flareTo } = SHAPES[skirt.shape];
+  const drop = WAIST_DROP[skirt.waist ?? "natural"];
   return column("female", {
-    rise: finish.rise + WAIST_DROP[skirt.waist ?? "natural"],
+    rise: finish.rise + drop,
+    ...(hangs(skirt) ? { hang: drop } : {}),
     toY: HEM_AT[skirt.length],
     ease: finish.ease,
     flare,

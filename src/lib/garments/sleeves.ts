@@ -1481,7 +1481,8 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
     /* ---------------------------------------- cut in one with the body */
     if (kind === "cut-on") {
       const dolman = c.type === "dolman";
-      const joinY = d.armpitY + (dolman ? DOLMAN_DEPTH : KIMONO_DEPTH) * (d.waistY - d.armpitY);
+      /* never below the hem: under a seam above the waist, an empire's, a dolman's underarm comes up to meet it */
+      const joinY = Math.min(d.armpitY + (dolman ? DOLMAN_DEPTH : KIMONO_DEPTH) * (d.waistY - d.armpitY), hemY);
       const loose = dolman ? capE + 14 : capE + 5;
       const end = f.tipLeft;
       const walked = rows(end[1], cuff).map((y) => {

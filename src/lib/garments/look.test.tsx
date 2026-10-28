@@ -1492,6 +1492,75 @@ describe("dress waists, light and dark", () => {
 });
 
 /**
+ * The sleeves beside an empire waist's skirt, on a light page and a dark one.
+ * Hung from under the bust, the skirt falls past her waist beside her arms, so
+ * each sleeve whose shape it changes — the long ones, and those cut to swing
+ * free over it — is shown at her own waist and at the empire, whole in a print
+ * and its arm close up in a plain cloth, where an edge shows best.
+ */
+describe("sleeves at an empire waist, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  const SLEEVES: [neckline: string, sleeve: SleeveChoice][] = [
+    ["round", { type: "set-in", length: "long" }],
+    ["round", { type: "raglan", length: "long" }],
+    ["round", { type: "drop", length: "long" }],
+    ["round", { type: "dolman", length: "long" }],
+    ["round", { type: "puff", length: "elbow" }],
+    ["round", { type: "bishop", length: "long" }],
+    ["round", { type: "bell", length: "elbow" }],
+    ["round", { type: "bell", length: "long" }],
+    ["off-shoulder", { type: "bishop", length: "long" }],
+  ];
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles5-sleeves-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const dress = garmentById("female-dress")!;
+    const stage = (cut: string, sleeve: SleeveChoice, waist: "natural" | "empire", clothId: string, zoom: number) => {
+      const cloth = f(clothId);
+      let worn = wear([], cutFrom(dress, cloth.id));
+      worn = setNeckline(worn, dress.id, `female-${cut}-neckline`);
+      worn = setSleeve(worn, dress.id, sleeve);
+      worn = worn.map((w) => {
+        const skirt = skirtOf(w);
+        return skirt ? { ...w, skirt: { ...skirt, waist } } : w;
+      });
+      const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+      for (const r of dress.fabricRegions) regions[r] = cloth;
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      /* close up: the left arm beside the skirt, from the seam to the hand */
+      const focus: [number, number] = zoom > 1 ? [228, 380] : [300, 500];
+      return <MannequinStage outfit={outfit} fabrics={{ [dress.id]: regions }} zoom={zoom} focus={focus} />;
+    };
+    const rows = SLEEVES.map(([cut, sleeve]) => {
+      const name = `${cut === "round" ? "" : `${cut}, `}${sleeve.type} ${sleeve.length}`;
+      return (
+        <div key={name} className="row">
+          {([["fb-midnight-floral", 1, "print"], ["fb-apricot-linen", 2.4, "plain, 2.4×"]] as const).flatMap(([cloth, zoom, kind]) =>
+            (["natural", "empire"] as const).map((waist) => (
+              <figure key={`${cloth}-${waist}`}>
+                {stage(cut, sleeve, waist, cloth, zoom)}
+                <figcaption>{`${name}, ${waist} waist, ${kind}`}</figcaption>
+              </figure>
+            ))
+          )}
+        </div>
+      );
+    });
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles5-sleeves-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
+    );
+  });
+});
+
+/**
  * Round 4's details, on a light page and a dark one, in a plain cloth and a
  * print: both jackets over the top each is worn over — whole, and the end of
  * a sleeve close up, where its buttons are and the cuff under it shows — and

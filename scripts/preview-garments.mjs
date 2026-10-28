@@ -64,7 +64,7 @@ const FIT_KIT = await import(src("src/lib/garments/fit.ts"));
 */
 const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
-const { HEM_AT, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
+const { HEM_AT, WAIST_DROP, hangs, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES } = await import(
@@ -853,6 +853,39 @@ const MAX_STANDOFF_OUTER = 12;
 /** How much further off one side may be than the other. */
 const MAX_SIDE_SKEW = 2;
 
+/**
+ * The line a skirt hung from a seam above her waist falls on, down one side
+ * of her: the string pulled taut from the seam to the hip round the outside
+ * of the body — on her at the seam and at the hip, clear of her waist between.
+ * `edge(y)` is her edge on that side, `out` the way out from it: -1 on the
+ * left. Re-derived here from the photograph; `hang` in `garments/fit.ts`
+ * drafts the skirt to the same line.
+ */
+function hungLine(edge, from, to, out) {
+  const hull = [];
+  for (let y = Math.ceil(from); y <= to; y++) {
+    const x = edge(y);
+    if (x === null) continue;
+    const p = [y, -out * x];
+    while (hull.length >= 2) {
+      const [o, a] = [hull[hull.length - 2], hull[hull.length - 1]];
+      if ((a[0] - o[0]) * (p[1] - o[1]) - (a[1] - o[1]) * (p[0] - o[0]) > 0) break;
+      hull.pop();
+    }
+    hull.push(p);
+  }
+  return (y) => {
+    if (y <= hull[0][0]) return -out * hull[0][1];
+    for (let i = 1; i < hull.length; i++) {
+      if (hull[i][0] < y) continue;
+      const [y0, v0] = hull[i - 1];
+      const [y1, v1] = hull[i];
+      return -out * (v0 + ((v1 - v0) * (y - y0)) / (y1 - y0));
+    }
+    return -out * hull[hull.length - 1][1];
+  };
+}
+
 /** A run along one row, grown out from `x`. */
 function runAt(grid, y, x, on) {
   if (!on(grid[y * W + x])) return null;
@@ -863,9 +896,24 @@ function runAt(grid, y, x, on) {
   return [lo, hi];
 }
 
-function checkStandOff(bodyKey, label, garment, cloth, cover, profile) {
+function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = null) {
   const solid = (v) => v >= 0.5;
   const reads = [];
+
+  /*
+    A skirt hung from a seam above her waist — an empire's, under the bust —
+    falls past her waist from the seam to the hip. Below the seam it is all
+    the cloth on her trunk, so it is read alone: a sleeve hanging over it is
+    not the skirt standing off. And it is read from the line it falls on
+    rather than from her — see `hungLine`: on that line is hanging, further
+    off is not.
+  */
+  const trunkEdge = (k) => (y) => runAt(cover, y, W / 2, solid)?.[k] ?? null;
+  const lines = hung && {
+    left: hungLine(trunkEdge(0), hung.from, profile.hipY, -1),
+    right: hungLine(trunkEdge(1), hung.from, profile.hipY, 1),
+  };
+  const worn = hung ? hung.cloth : cloth;
 
   /*
     The trunk: the body's run across the centre line, and on each side the
@@ -875,18 +923,23 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile) {
   */
   for (const [name, y] of [["waist", profile.waistY], ["hip", profile.hipY]]) {
     const b = runAt(cover, y, W / 2, solid);
-    const l = b && runAt(cloth, y, b[0], solid);
-    const r = b && runAt(cloth, y, b[1], solid);
-    if (l && r) reads.push([name, y, b[0] - l[0], r[1] - b[1]]);
+    const l = b && runAt(worn, y, b[0], solid);
+    const r = b && runAt(worn, y, b[1], solid);
+    /* how far the line it hangs on passes clear of her, each side */
+    const [al, ar] =
+      lines && b && y >= hung.from
+        ? [Math.round(Math.max(0, b[0] - lines.left(y))), Math.round(Math.max(0, lines.right(y) - b[1]))]
+        : [0, 0];
+    if (l && r) reads.push([name, y, b[0] - l[0] - al, r[1] - b[1] - ar]);
   }
 
   /* A thigh, below where the hands end: each leg's own run. */
   const thighY = Math.max(profile.crotchY + 40, profile.armEndY + 12);
-  if (!solid(cloth[thighY * W + W / 2])) {
+  if (!solid(worn[thighY * W + W / 2])) {
     let l = null;
     let r = null;
-    for (let x = W / 2; x > 0 && !l; x--) l = runAt(cloth, thighY, x, solid);
-    for (let x = W / 2; x < W - 1 && !r; x++) r = runAt(cloth, thighY, x, solid);
+    for (let x = W / 2; x > 0 && !l; x--) l = runAt(worn, thighY, x, solid);
+    for (let x = W / 2; x < W - 1 && !r; x++) r = runAt(worn, thighY, x, solid);
     const bl = l && runAt(cover, thighY, Math.round((l[0] + l[1]) / 2), solid);
     const br = r && runAt(cover, thighY, Math.round((r[0] + r[1]) / 2), solid);
     if (bl && br) reads.push(["thigh", thighY, bl[0] - l[0], r[1] - br[1]]);
@@ -897,12 +950,13 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile) {
   const problems = [];
   let far = 0;
   let skew = 0;
+  const from = hung ? "the line it hangs on at " : "";
   for (const [name, y, gl, gr] of reads) {
     far = Math.max(far, gl, gr);
     skew = Math.max(skew, Math.abs(gl - gr));
     if (Math.max(gl, gr) > limit) {
       problems.push(
-        `stands ${Math.max(gl, gr)} units off the ${name} at y ${y} (limit ${limit}) — ` +
+        `stands ${Math.max(gl, gr)} units off ${from}the ${name} at y ${y} (limit ${limit}) — ` +
           `cloth placed around the body rather than hanging on it`
       );
     }
@@ -916,7 +970,7 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile) {
   const ok = problems.length === 0;
   console.log(
     `${ok ? "ok  " : "HOLE"} ${bodyKey.padEnd(6)} ${label.padEnd(21)} ` +
-      `stands ${far} off the body at most, sides within ${skew}`
+      `stands ${far} off ${hung ? "the line it hangs on" : "the body"} at most, sides within ${skew}`
   );
   for (const problem of problems) {
     console.log(`     ${bodyKey.padEnd(6)} fit       ${label} ${problem}`);
@@ -1079,7 +1133,7 @@ const GAP_FROM = 60;
 /** ...and how far down. Below the hip a skirt is in the way, legitimately. */
 const GAP_TO = 150;
 
-function checkArmGap(bodyKey, id, paint, profile, coverage) {
+function checkArmGap(bodyKey, id, paint, profile, coverage, hung = null) {
   // Only garments that actually sleeve the arm can be asked about this.
   if (!coverage.includes("upperArm")) return 0;
 
@@ -1087,6 +1141,15 @@ function checkArmGap(bodyKey, id, paint, profile, coverage) {
   let rows = 0;
   let tightest = Infinity;
   const to = Math.min(profile.armpitY + GAP_TO, edgeEnd(profile.armInner));
+  /*
+    Below a seam its skirt hangs from — an empire's, under the bust — the arm
+    hangs beside the skirt, not the ribs, and the daylight asked for is a share
+    of what the skirt leaves: between the arm and the line the skirt falls on
+    (see `hungLine`). A sleeve cut to swing free — a puff, a bishop, a bell —
+    hangs over the skirt there, drawn in front of it as a bare forearm is, and
+    is asked nothing.
+  */
+  const line = hung && hungLine((y) => edgeAt(profile.torso, y), hung.from, profile.hipY, -1);
 
   for (let y = profile.armpitY + GAP_FROM; y <= to; y += 6) {
     const inner = edgeAt(profile.armInner, y);
@@ -1102,9 +1165,11 @@ function checkArmGap(bodyKey, id, paint, profile, coverage) {
       asking the wrong question of the wrong piece of cloth.
     */
     if (paint[y * W + Math.round(outer)] < 0.5) continue;
+    const beside = line && y >= hung.from;
+    if (beside && hung.swings) continue;
 
     // The body's own daylight on this row. Too narrow to matter, skip it.
-    const daylight = trunk - inner;
+    const daylight = (beside ? Math.min(trunk, line(y)) : trunk) - inner;
     if (daylight < MIN_DAYLIGHT) continue;
     const want = Math.max(2, daylight * MIN_SHARE);
     rows++;
@@ -1382,7 +1447,7 @@ const SIDE_ROOM = 7;
  * leaves bare — see `NECKLINE_BARE_SHOULDERS` — whether any cloth lies
  * outside the trunk from above the shoulder down to the waist.
  */
-function checkBareShoulders(bodyKey, label, paint, profile, cutId) {
+function checkBareShoulders(bodyKey, label, paint, profile, cutId, seamY = profile.waistY) {
   const sides = cutId ? (NECKLINE_BARE_SHOULDERS[cutId] ?? []) : [];
   if (sides.length === 0) return 0;
   const trunkAt = (y) => edgeAt(profile.torso, Math.max(y, profile.armpitY)) ?? edgeAt(profile.torso, profile.armpitY);
@@ -1390,7 +1455,8 @@ function checkBareShoulders(bodyKey, label, paint, profile, cutId) {
   for (const side of sides) {
     let count = 0;
     let first = null;
-    for (let y = profile.shoulderPointY - 12; y <= profile.waistY - 4; y++) {
+    /* down to her waist — or to a seam above it, below which a skirt hung from it falls clear of her by design */
+    for (let y = profile.shoulderPointY - 12; y <= Math.min(profile.waistY, seamY) - 4; y++) {
       const edge = trunkAt(y) - SIDE_ROOM;
       for (let x = 0; x < W / 2; x++) {
         const cx = side === "left" ? x : W - 1 - x;
@@ -1539,7 +1605,8 @@ function sleeveGrowth(paths, bodyKey, sleeve) {
       if (spans.length >= 3) {
         let [l0, l1] = spans[0];
         for (const [a, b] of spans.slice(1)) {
-          if (a > l1 + 0.5) break;
+          /* never across the centre line: cloth there is the body's — a skirt the sleeve hangs against — not the sleeve's */
+          if (a > l1 + 0.5 || b > W / 2) break;
           l1 = Math.max(l1, b);
         }
         width = l1 - l0;
@@ -3207,13 +3274,27 @@ for (const bodyKey of Object.keys(bodies)) {
         and a flutter falls open over the arm: neither has the daylight under
         the arm a set-in sleeve keeps, by construction rather than by fault.
       */
-      if (!loose) failed += checkArmGap(bodyKey, label, cloth, profile, coverage);
-      failed += checkStandOff(bodyKey, label, garment, cloth, cover, profile);
+      /*
+        A skirt hung from a seam above her waist — an empire's: the seam, the
+        skirt alone, and whether the sleeve swings free over it. See the
+        rules it changes, in `checkArmGap`, `checkStandOff` and
+        `checkBareShoulders`.
+      */
+      const hung =
+        skirt && hangs(skirt)
+          ? {
+              from: profile.waistY + WAIST_DROP[skirt.waist],
+              cloth: rasterize([CUT_MODULES[garment.asset.front].skirtFor(undefined, skirt).path]),
+              swings: LOOSE_SLEEVES.includes((sleeve ?? garment.sleeves?.default)?.type),
+            }
+          : null;
+      if (!loose) failed += checkArmGap(bodyKey, label, cloth, profile, coverage, hung);
+      failed += checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung);
       failed += checkLegGap(bodyKey, label, cloth, profile, coverage);
-      failed += checkBareShoulders(bodyKey, label, cloth, profile, cutId);
+      failed += checkBareShoulders(bodyKey, label, cloth, profile, cutId, hung?.from);
       /* said aloud for a cut whose own band is on the arm — the off-shoulder's */
       failed += checkUnderarm(bodyKey, label, cloth, cover, profile, cutId !== null && NECKLINE_SLEEVES[cutId] === "band");
-      return { cloth, failed };
+      return { cloth, failed, hung };
     };
 
     /*
@@ -3285,7 +3366,7 @@ for (const bodyKey of Object.keys(bodies)) {
                   her sleeves keep on every other cut. The cut bares the upper arm
                   for its own band, so the arm gap is asked of the sleeve directly.
                 */
-                if (type !== "flutter" && length !== "short") failed += checkArmGap(bodyKey, label, res.cloth, profile, ["upperArm"]);
+                if (type !== "flutter" && length !== "short") failed += checkArmGap(bodyKey, label, res.cloth, profile, ["upperArm"], res.hung);
                 /* every sleeve but the band alone carries on from the band */
                 failed += checkBandArm(bodyKey, label, CUT_MODULES[garment.asset.front]?.bandArm?.(cutId, sleeve, waist ?? undefined) ?? null, profile);
                 if (fitted && length !== "short") {

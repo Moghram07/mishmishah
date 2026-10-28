@@ -311,7 +311,7 @@ export type SkirtShapeId = "flared";
 export type SkirtLengthId = "knee" | "midi" | "maxi";
 
 /** Where a dress's bodice ends and its skirt is sewn on. */
-export type WaistId = "natural" | "dropped";
+export type WaistId = "empire" | "natural" | "dropped";
 
 /** A skirt as worn: a shape, a length, and on a dress the waist it hangs from. */
 export interface SkirtChoice {
