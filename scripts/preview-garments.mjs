@@ -194,15 +194,42 @@ function fillPolys(polys, buf, w, h, ss) {
     if (fy !== ly) edges.push([lx, ly, fx, fy]);
   }
 
+  // An edge only matters on the rows its span crosses, so it waits for the
+  // first row it could reach and leaves after its last. The bounds are a row
+  // generous each way; the exact test below still decides, in the edges' own
+  // order, so every row gets the same hits — and the same pixels — as testing
+  // every edge on every row, which made this the checker's slowest step.
+  const rows = h * ss;
+  const startsAt = Array.from({ length: rows }, () => []);
+  const lastRow = new Array(edges.length);
+  let active = [];
+  edges.forEach(([, y0, , y1], e) => {
+    if (!Number.isFinite(y0) || !Number.isFinite(y1)) {
+      active.push(e); // can't be placed, so it's tested on every row, as before
+      return;
+    }
+    const first = Math.max(0, Math.floor(Math.min(y0, y1) * ss - 0.5) - 1);
+    const last = Math.min(rows - 1, Math.ceil(Math.max(y0, y1) * ss - 0.5) + 1);
+    if (first > last) return;
+    startsAt[first].push(e);
+    lastRow[e] = last;
+  });
+
   const hits = [];
-  for (let sy = 0; sy < h * ss; sy++) {
+  for (let sy = 0; sy < rows; sy++) {
     const y = (sy + 0.5) / ss;
+    if (startsAt[sy].length > 0) {
+      active.push(...startsAt[sy]);
+      active.sort((a, b) => a - b);
+    }
     hits.length = 0;
-    for (const [x0, y0, x1, y1] of edges) {
+    for (const e of active) {
+      const [x0, y0, x1, y1] = edges[e];
       if (y < Math.min(y0, y1) || y >= Math.max(y0, y1)) continue;
       const t = (y - y0) / (y1 - y0);
       hits.push([x0 + t * (x1 - x0), y1 > y0 ? 1 : -1]);
     }
+    active = active.filter((e) => !(lastRow[e] <= sy));
     if (hits.length === 0) continue;
     hits.sort((a, b) => a[0] - b[0]);
 
