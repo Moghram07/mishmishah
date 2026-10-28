@@ -51,9 +51,7 @@ const FINISH: SkirtFinish = {
   /* Starts under the bodice, so the seam is cloth over cloth. */
   rise: -8,
   ease: EASE,
-  flare: 80,
   dip: 22,
-  hemAt: { midi: 760 },
 };
 
 /** The skirt the dress arrives with. Kept in step with its record by a test. */

@@ -127,4 +127,34 @@ describe("every print at its true size", () => {
     }
     /* about fourteen hundred stages: give them the time */
   }, 120_000);
+
+  /*
+    Every skirt style, in every size of repeat, at one zoom: a style changes
+    the outline the print fills, never the print's own tile, so one zoom is
+    enough to prove a style draws it at true size.
+  */
+  it("on every skirt style, in every size of repeat", () => {
+    for (const garment of garments.filter((g) => g.skirt)) {
+      const { default: own, lengths } = garment.skirt!;
+      for (const length of lengths) {
+        for (const fabric of byRepeat) {
+          const repeat = fabricRepeatCm(fabric) / BODY_CANVAS.cmPerUnit;
+          const regions = Object.fromEntries(
+            [...garment.fabricRegions, "collar"].map((r) => [r, fabric])
+          ) as Partial<Record<FabricRegionId, Fabric>>;
+          const outfit: Outfit = {
+            bodyType: garment.gender,
+            skinTone: DEFAULT_SKIN_TONE,
+            direction: 0,
+            worn: [{ ...cutFrom(garment, fabric.id), skirt: { ...own, length } }],
+          };
+          const html = renderToStaticMarkup(
+            <MannequinStage outfit={outfit} fabrics={{ [garment.id]: regions }} zoom={2} focus={[300, 640]} />
+          );
+          const frameW = Number(html.match(/<svg[^>]*viewBox="[^ ]+ [^ ]+ ([^ ]+) [^"]+"/)?.[1]);
+          expectTrueTiles(html, repeat, RENDER_PX / frameW, `${garment.id}, ${length}, in ${fabric.id}`);
+        }
+      }
+    }
+  }, 60_000);
 });

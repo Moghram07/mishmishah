@@ -1851,6 +1851,12 @@ export function column(
     toY: number;
     ease: number;
     flare?: number;
+    /**
+     * The row by which it has flared `flare` out: its hem, unless given. A
+     * shape cut at several lengths gives one row for all of them, so a short
+     * one is the long one cut shorter rather than a steeper skirt.
+     */
+    flareTo?: number;
     dip?: number;
     /** A waistband this deep, cut from the column's own edge. */
     band?: number;
@@ -1887,7 +1893,7 @@ export function column(
   */
   const hipY = Math.max(fromY, Math.min(d.hipY, toY));
   const easeAt = (y: number) =>
-    y <= hipY ? ease : ease + (flare * (y - hipY)) / Math.max(1, toY - hipY);
+    y <= hipY ? ease : ease + (flare * (y - hipY)) / Math.max(1, (spec.flareTo ?? toY) - hipY);
 
   const trunkTo = Math.min(d.crotchY, toY);
   const upper =

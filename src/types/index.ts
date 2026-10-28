@@ -308,7 +308,7 @@ export interface SleeveChoice {
 export type SkirtShapeId = "flared";
 
 /** Where a skirt's hem falls, measured on the leg. */
-export type SkirtLengthId = "knee" | "midi";
+export type SkirtLengthId = "knee" | "midi" | "maxi";
 
 /** Where a dress's bodice ends and its skirt is sewn on. */
 export type WaistId = "natural";

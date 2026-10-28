@@ -115,12 +115,12 @@ export const garments: Garment[] = [
     category: "bottom",
     gender: "female",
     layer: "bottom",
-    // Above the knee: it may not claim the thigh it does not reach.
+    // The hip; its length adds what it hides below — see `skirtCoverage`.
     coverage: ["hip"],
     fabricRegions: ["body"],
     incompatibleWith: ["female-trousers"],
     acceptsCollar: false,
-    skirt: { shapes: ["flared"], lengths: ["knee"], default: { shape: "flared", length: "knee" } },
+    skirt: { shapes: ["flared"], lengths: ["knee", "midi", "maxi"], default: { shape: "flared", length: "midi" } },
     asset: { front: "female-skirt-front" },
   },
   {
@@ -129,7 +129,8 @@ export const garments: Garment[] = [
     category: "dress",
     gender: "female",
     layer: "top",
-    coverage: ["shoulderCap", "torso", "upperArm", "hip", "thigh"],
+    // Its skirt's length adds what it hides below the hip — see `skirtCoverage`.
+    coverage: ["shoulderCap", "torso", "upperArm", "hip"],
     fabricRegions: ["top", "bottom"],
     incompatibleWith: ["female-trousers", "female-skirt"],
     acceptsCollar: true,
@@ -143,7 +144,7 @@ export const garments: Garment[] = [
     sleeves: { types: FEMALE_SLEEVES, default: { type: "set-in", length: "short" }, cuffs: WOVEN_CUFFS },
     skirt: {
       shapes: ["flared"],
-      lengths: ["midi"],
+      lengths: ["knee", "midi", "maxi"],
       waists: ["natural"],
       default: { shape: "flared", length: "midi", waist: "natural" },
     },

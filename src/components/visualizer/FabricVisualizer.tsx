@@ -23,6 +23,7 @@ import { productTemplates } from "@/lib/data/products";
 import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
 import { collarsForGarment } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
+import { skirtLengthsFor } from "@/lib/data/skirts";
 import {
   sleeveCuffById,
   sleeveCuffsFor,
@@ -51,7 +52,9 @@ import {
   regionsOf,
   setCollar,
   setNeckline,
+  setSkirt,
   setSleeve,
+  skirtOf,
   sleeveOf,
   stack,
   switchBody,
@@ -76,6 +79,7 @@ import type {
   GarmentPartId,
   Outfit,
   ProductKind,
+  SkirtChoice,
   SleeveChoice,
   StitchId,
 } from "@/types";
@@ -373,6 +377,14 @@ export function FabricVisualizer() {
     }));
   };
 
+  /** Recut the skirt of the garment being cut — resolved when read, see `skirtOf`. */
+  const chooseSkirt = (next: Partial<SkirtChoice>) => {
+    if (!cuttingGarment || !cuttingEntry) return;
+    const current = skirtOf(cuttingEntry.worn);
+    if (!current) return;
+    setOutfit((o) => ({ ...o, worn: setSkirt(o.worn, cuttingGarment.id, { ...current, ...next }) }));
+  };
+
   /** Put a garment on or take it off. Layer and compatibility rules apply. */
   const toggleGarment = (id: string) => {
     const garment = garmentById(id);
@@ -630,6 +642,18 @@ export function FabricVisualizer() {
       ? collarsFitting(cuttingGarment, cuttingEntry.worn)
       : [];
   const wornCollarId = cuttingEntry && collarOf(cuttingEntry.worn)?.id;
+  /*
+    A garment cut in two parts — the dress's top and its skirt — shows the
+    part being cut and that part's options: the bodice's neckline, sleeves and
+    collar, or the skirt's. A garment that is one part shows its own.
+  */
+  const onBottom = subject === "wardrobe" && cutting.region === "bottom";
+  const skirtLengthChoices = cuttingGarment ? skirtLengthsFor(cuttingGarment) : [];
+  const wornSkirt = cuttingEntry ? skirtOf(cuttingEntry.worn) : undefined;
+  const showSkirt =
+    subject === "wardrobe" &&
+    skirtLengthChoices.length > 1 &&
+    (onBottom || !cuttingGarment?.fabricRegions.includes("bottom"));
 
   const regions =
     subject === "wardrobe"
@@ -1047,12 +1071,80 @@ export function FabricVisualizer() {
               </div>
             )}
 
+            {/* per-region fabric — the heart of a multi-part piece, and which part's options show */}
+            {regions.length > 1 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("viz.parts")}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {regions.map((region) => (
+                    <button
+                      key={region.key}
+                      onClick={region.onClick}
+                      className={cn(
+                        "btn-focus flex items-center gap-2 rounded-full border py-1.5 pe-3.5 ps-1.5 text-sm font-medium transition-all",
+                        region.active
+                          ? "border-apricot-500 bg-apricot-500/10 text-foreground"
+                          : "border-border bg-card text-muted-foreground hover:border-apricot-400"
+                      )}
+                    >
+                      <span
+                        className="h-6 w-6 rounded-full border border-border"
+                        style={
+                          region.fabric
+                            ? fabricBackground(region.fabric, {
+                                viewCm: 4,
+                                elementPx: 24,
+                                fitRepeat: true,
+                              })
+                            : undefined
+                        }
+                      />
+                      {pick(region.label)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* the skirt's length: three choices, one row */}
+            {showSkirt && wornSkirt && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("viz.length")}
+                </p>
+                <div
+                  role="group"
+                  aria-label={t("viz.length")}
+                  className="grid gap-1 rounded-full bg-muted/60 p-1"
+                  style={{ gridTemplateColumns: `repeat(${skirtLengthChoices.length}, minmax(0, 1fr))` }}
+                >
+                  {skirtLengthChoices.map((l) => (
+                    <button
+                      key={l.id}
+                      onClick={() => chooseSkirt({ length: l.id })}
+                      aria-pressed={wornSkirt.length === l.id}
+                      className={cn(
+                        "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
+                        wornSkirt.length === l.id
+                          ? "bg-card text-foreground shadow-soft"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {pick(l.name)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/*
               The collar, as a part rather than a style. It is offered only
               where a garment has a neckline to sew one to, and only the ones
               cut to fit that neckline are listed.
             */}
-            {subject === "wardrobe" && necklineChoices.length > 0 && (
+            {subject === "wardrobe" && !onBottom && necklineChoices.length > 0 && (
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {t("viz.neckline")}
@@ -1079,7 +1171,7 @@ export function FabricVisualizer() {
               lengths it is made in, and changing type keeps the length when
               it can.
             */}
-            {subject === "wardrobe" && sleeveChoices.length > 0 && wornSleeve && (
+            {subject === "wardrobe" && !onBottom && sleeveChoices.length > 0 && wornSleeve && (
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {t("viz.sleeve")}
@@ -1131,7 +1223,7 @@ export function FabricVisualizer() {
               </div>
             )}
 
-            {subject === "wardrobe" && collarChoices.length > 0 && (
+            {subject === "wardrobe" && !onBottom && collarChoices.length > 0 && (
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {t("viz.collar")}
@@ -1154,43 +1246,6 @@ export function FabricVisualizer() {
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   {t("viz.collarHint")}
                 </p>
-              </div>
-            )}
-
-            {/* per-region fabric — the heart of a multi-part piece */}
-            {regions.length > 1 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.parts")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {regions.map((region) => (
-                    <button
-                      key={region.key}
-                      onClick={region.onClick}
-                      className={cn(
-                        "btn-focus flex items-center gap-2 rounded-full border py-1.5 pe-3.5 ps-1.5 text-sm font-medium transition-all",
-                        region.active
-                          ? "border-apricot-500 bg-apricot-500/10 text-foreground"
-                          : "border-border bg-card text-muted-foreground hover:border-apricot-400"
-                      )}
-                    >
-                      <span
-                        className="h-6 w-6 rounded-full border border-border"
-                        style={
-                          region.fabric
-                            ? fabricBackground(region.fabric, {
-                                viewCm: 4,
-                                elementPx: 24,
-                                fitRepeat: true,
-                              })
-                            : undefined
-                        }
-                      />
-                      {pick(region.label)}
-                    </button>
-                  ))}
-                </div>
               </div>
             )}
 

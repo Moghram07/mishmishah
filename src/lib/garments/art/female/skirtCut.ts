@@ -26,15 +26,12 @@ export const FINISH: SkirtFinish = {
   rise: 10,
   band: 18,
   ease: 4,
-  flare: 78,
   dip: 18,
   wave: { at: FOLD_AT, depth: 2.2 },
-  /* about 5 cm above the knee — the nearest of the lengths */
-  hemAt: { knee: 660 },
 };
 
 /** The skirt it arrives as. Kept in step with its record by a test. */
-export const DEFAULT_SKIRT: SkirtChoice = { shape: "flared", length: "knee" };
+export const DEFAULT_SKIRT: SkirtChoice = { shape: "flared", length: "midi" };
 
 export const HIP_Y = draft("female").hipY;
 

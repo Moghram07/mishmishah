@@ -39,6 +39,7 @@ import {
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
 import { sleeveCoverage } from "@/lib/garments/sleeves";
+import { skirtCoverage } from "@/lib/garments/skirts";
 
 /**
  * What can be worn with what, what sits over what, what a collar adds, and what
@@ -196,6 +197,15 @@ export function skirtOf(worn: WornGarment): SkirtChoice | undefined {
   };
 }
 
+/** Recut a worn garment's skirt. The choice is resolved when it is read. */
+export function setSkirt(
+  worn: WornGarment[],
+  garmentId: string,
+  skirt: SkirtChoice
+): WornGarment[] {
+  return worn.map((w) => (w.garmentId === garmentId ? { ...w, skirt } : w));
+}
+
 /** Recut a worn garment's sleeves. The choice is resolved when it is read. */
 export function setSleeve(
   worn: WornGarment[],
@@ -225,11 +235,14 @@ export function effectiveCoverage(
   garment: Garment,
   worn: WornGarment
 ): BodyZone[] {
+  /* a skirt's length hides what is below the hip — see `skirtCoverage` */
+  const skirt = skirtOf(worn);
+  const own = skirt ? [...new Set([...garment.coverage, ...skirtCoverage(skirt)])] : garment.coverage;
   const collar = collarOf(worn);
   const withCollar =
     !collar || collar.coverage.length === 0
-      ? garment.coverage
-      : [...new Set([...garment.coverage, ...collar.coverage])];
+      ? own
+      : [...new Set([...own, ...collar.coverage])];
 
   const bares = necklineOf(worn)?.bares;
   const cut =

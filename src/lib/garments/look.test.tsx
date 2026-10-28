@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
-import { collarOf, cutFrom, setCollar, setNeckline, setSleeve, wear } from "@/lib/garments/outfit";
+import { collarOf, cutFrom, setCollar, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
 import { SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
 import { collars, collarsForGarment } from "@/lib/data/collars";
@@ -1372,6 +1372,68 @@ describe("trousers, light and dark", () => {
       );
     }
   );
+});
+
+/**
+ * Skirt lengths, on a light page and a dark one, in a plain cloth and a print:
+ * the dress in long sleeves, and the skirt under a long-sleeved blouse, at
+ * every length each one offers — so the same sheet shows whatever lengths the
+ * code has, before and after they change.
+ */
+describe("skirt lengths, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  const CLOTHS = [["fb-apricot-linen", "plain"], ["fb-indigo-plaid", "plaid"]] as const;
+  const LOOKS = [
+    ["dress", "female-dress", ["female-dress"]],
+    ["skirt", "female-skirt", ["female-blouse", "female-skirt"]],
+  ] as const;
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles3-lengths-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const stage = (skirtId: string, ids: readonly string[], clothId: string, length: string) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of ids) {
+        const g = garmentById(gid)!;
+        /* the skirted garment in the cloth being shown, a top over it in another */
+        const cloth = gid === skirtId ? f(clothId) : f("fb-rose-silk");
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      worn = setSleeve(worn, ids[0], { type: "set-in", length: "long" });
+      worn = worn.map((w) => {
+        const skirt = w.garmentId === skirtId ? skirtOf(w) : undefined;
+        return skirt ? { ...w, skirt: { ...skirt, length } as typeof skirt } : w;
+      });
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={1} focus={[300, 500]} />;
+    };
+    const rows = LOOKS.flatMap(([name, skirtId, ids]) =>
+      CLOTHS.map(([cloth, kind]) => (
+        <div key={`${name}-${cloth}`} className="row">
+          {garmentById(skirtId)!.skirt!.lengths.map((length) => (
+            <figure key={length}>
+              {stage(skirtId, ids, cloth, length)}
+              <figcaption>{`${name}, ${length}, long sleeves, ${kind}`}</figcaption>
+            </figure>
+          ))}
+        </div>
+      ))
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:12px;margin-bottom:12px}figure{margin:0}` +
+      `svg{width:300px;height:500px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles3-lengths-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
+    );
+  });
 });
 
 /**

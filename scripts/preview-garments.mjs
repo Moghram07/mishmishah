@@ -64,6 +64,7 @@ const FIT_KIT = await import(src("src/lib/garments/fit.ts"));
 */
 const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
+const { HEM_AT, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES } = await import(
@@ -482,6 +483,13 @@ const { COLLAR_CLOTH } = await import(src("src/lib/garments/art/female/collarCut
 
 /** Every neckline cut a drawing offers, or `[]` for one with none to choose. */
 const cutsOf = (assetId) => Object.keys(CUT_MODULES[assetId]?.NECKLINE_PATHS ?? {});
+
+/**
+ * A garment's own zones in a skirt style: its record's, and those its skirt's
+ * length hides — `skirtCoverage`, the rule `effectiveCoverage` applies.
+ */
+const ownCoverage = (garment, skirt = garment.skirt?.default) =>
+  skirt ? [...new Set([...garment.coverage, ...skirtCoverage(skirt)])] : garment.coverage;
 
 /** The sleeve a drawing arrives in, from its garment's record. */
 const defaultSleeveOf = (assetId) =>
@@ -2259,7 +2267,7 @@ function checkCollars(bodyKey, cover, body, painted, rows) {
         garment.sleeves && (!cut || NECKLINE_SLEEVES[cut] === "both");
       /* less what the cut bares — a scoop opens the upper chest, a boat the shoulders — as every other check has it */
       const bares = cut ? (NECKLINE_BARES[cut] ?? []) : [];
-      const bared = garment.coverage.filter((z) => !bares.includes(z));
+      const bared = ownCoverage(garment).filter((z) => !bares.includes(z));
       const own = sleeved
         ? sleeveCoverage(bodyKey, bared, garment.sleeves.default)
         : bared;
@@ -2452,6 +2460,30 @@ function checkDrawingsRead(bodyKey, body, wardrobe) {
  * - and the fly's J stopping short of the crotch, as a fly does.
  */
 const DETAIL_SLACK = 1;
+/** How far a skirt's hem may sit from its length's row, in units. */
+const HEM_SLACK = 1;
+
+/**
+ * A skirt's hem falls where its length says. A skirt flares, so the outermost
+ * points of its outline near the bottom are the corners where its sides meet
+ * the hem; both must sit on the length's row — see `HEM_AT` in `skirts.ts`.
+ */
+function checkHem(bodyKey, label, paths, skirt) {
+  const want = HEM_AT[skirt.length];
+  const pts = paths.flatMap((d) => flatten(d).flat()).filter(([, y]) => y >= want - 30);
+  const corner = (pick) =>
+    pts.reduce((best, p) => (!best || pick(p[0], best[0]) || (p[0] === best[0] && p[1] > best[1]) ? p : best), null);
+  const left = corner((a, b) => a < b);
+  const right = corner((a, b) => a > b);
+  const off = Math.max(Math.abs(left[1] - want), Math.abs(right[1] - want));
+  const ok = off <= HEM_SLACK;
+  console.log(
+    `${ok ? "ok  " : "HOLE"} ${bodyKey.padEnd(6)} ${label.padEnd(28)} hem at y ${left[1].toFixed(1)} and ${right[1].toFixed(1)}, ` +
+      `its length's row ${want}`
+  );
+  return ok ? 0 : 1;
+}
+
 /** The least a fly's J may stop above the crotch, in centimetres: "a little above" it. */
 const FLY_ABOVE_CROTCH = 1;
 
@@ -2620,8 +2652,12 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
       if (inner.layer === "outer" || conflicts(inner, outer)) continue;
       const cuts = cutsOf(inner.asset.front);
       const variants = [
-        ...sleeveChoicesOf(inner, bodyKey).map((sleeve) => ({ cut: cuts[0] ?? null, sleeve })),
-        ...cuts.slice(1).map((cut) => ({ cut, sleeve: null })),
+        ...sleeveChoicesOf(inner, bodyKey).map((sleeve) => ({ cut: cuts[0] ?? null, sleeve, skirt: null })),
+        ...cuts.slice(1).map((cut) => ({ cut, sleeve: null, skirt: null })),
+        /* each other length of its skirt, in the cut and sleeve it arrives in */
+        ...(inner.skirt?.lengths ?? [])
+          .filter((length) => length !== inner.skirt.default.length)
+          .map((length) => ({ cut: cuts[0] ?? null, sleeve: null, skirt: { ...inner.skirt.default, length } })),
       ];
       let leak = 0;
       let shoulder = 0;
@@ -2633,8 +2669,8 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
       let worst = "";
       const reveals = [];
       const looseReveals = [];
-      for (const { cut, sleeve } of variants) {
-        const cloth = rasterize(artPaths(inner.asset.front, body, { cut, sleeve, inside: enc.hem }));
+      for (const { cut, sleeve, skirt } of variants) {
+        const cloth = rasterize(artPaths(inner.asset.front, body, { cut, sleeve, skirt, inside: enc.hem }));
         const empty = drawn(bodyKey, `${inner.id} under ${outer.id}`, cloth);
         failed += empty;
         if (empty) continue;
@@ -2675,7 +2711,7 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
         }
         /* and what the outfit erases, painted by the jacket or by what still shows of the inner layer */
         const bares = cut ? (NECKLINE_BARES[cut] ?? []) : [];
-        const own = inner.coverage.filter((z) => !bares.includes(z));
+        const own = ownCoverage(inner, skirt ?? undefined).filter((z) => !bares.includes(z));
         const sleeved = inner.sleeves && (cut === null || NECKLINE_SLEEVES[cut] === "both");
         const coverage = [
           ...new Set([...(sleeved ? sleeveCoverage(bodyKey, own, sleeve ?? inner.sleeves.default) : own), ...outer.coverage]),
@@ -2802,7 +2838,7 @@ function checkBaseLayer(bodyKey, body, cover, wardrobe) {
     const covered = new Set();
     for (const { garment, cut } of outfit) {
       const bares = cut ? (NECKLINE_BARES[cut] ?? []) : [];
-      const own = garment.coverage.filter((z) => !bares.includes(z));
+      const own = ownCoverage(garment).filter((z) => !bares.includes(z));
       const sleeved = garment.sleeves && (cut === null || NECKLINE_SLEEVES[cut] === "both");
       for (const z of sleeved ? sleeveCoverage(bodyKey, own, garment.sleeves.default) : own) covered.add(z);
     }
@@ -2870,7 +2906,7 @@ function checkBaseLayer(bodyKey, body, cover, wardrobe) {
     for (let k = outfit.length - 1; k >= 0; k--) {
       const { garment, cut } = outfit[k];
       const bares = cut ? (NECKLINE_BARES[cut] ?? []) : [];
-      const coverage = garment.coverage.filter((z) => !bares.includes(z));
+      const coverage = ownCoverage(garment).filter((z) => !bares.includes(z));
       if (!(coverage.length > 0 && coverage.every((z) => above.has(z)))) out.unshift(outfit[k]);
       for (const z of coverage) above.add(z);
     }
@@ -3046,9 +3082,9 @@ for (const bodyKey of Object.keys(bodies)) {
      * once per sleeve in the cut it arrives in — so every neckline and every
      * sleeve is measured, without drawing every one of their products.
      */
-    const checkCut = (cutId, sleeve, label, loose) => {
+    const checkCut = (cutId, sleeve, label, loose, skirt = null) => {
       const cloth = rasterize(
-        artPaths(garment.asset.front, body, { cut: cutId, sleeve })
+        artPaths(garment.asset.front, body, { cut: cutId, sleeve, skirt })
       );
       let failed = drawn(bodyKey, label, cloth);
 
@@ -3059,7 +3095,7 @@ for (const bodyKey of Object.keys(bodies)) {
         make this easier: what is not erased cannot be a hole.
       */
       const bares = cutId ? (NECKLINE_BARES[cutId] ?? []) : [];
-      const cutCoverage = garment.coverage.filter((z) => !bares.includes(z));
+      const cutCoverage = ownCoverage(garment, skirt ?? undefined).filter((z) => !bares.includes(z));
       /*
         And the sleeve decides the arm: a zone is claimed only if the sleeve
         spans all of it — the same rule `effectiveCoverage` applies, so the
@@ -3113,6 +3149,21 @@ for (const bodyKey of Object.keys(bodies)) {
       failures += failed;
       // the collar pass reuses whichever cut the garment arrives in
       if (paint === null) paint = cloth;
+    }
+
+    /*
+      Every length its skirt is cut at, in the cut and sleeve it arrives in.
+      A length moves the hem and what the skirt hides, and nothing above the
+      hip, so each is measured once — and its hem must fall on its row.
+    */
+    if (garment.skirt) {
+      const own = garment.skirt.default;
+      for (const length of garment.skirt.lengths) {
+        const skirt = { ...own, length };
+        const label = `${garment.id} · ${length}`;
+        if (length !== own.length) failures += checkCut(wornCuts[0], null, label, false, skirt).failed;
+        failures += checkHem(bodyKey, label, artPaths(garment.asset.front, body, { cut: wornCuts[0], skirt }), skirt);
+      }
     }
 
     /*
