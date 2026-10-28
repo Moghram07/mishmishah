@@ -616,6 +616,32 @@ export function FabricVisualizer() {
     pick,
   ]);
 
+  /*
+    A garment cut in two parts — the dress's top and its skirt — shows the
+    part being cut and that part's options: the bodice's neckline, sleeves and
+    collar, or the skirt's. A garment that is one part shows its own.
+  */
+  const onBottom = subject === "wardrobe" && cutting.region === "bottom";
+  const skirtLengthChoices = cuttingGarment ? skirtLengthsFor(cuttingGarment) : [];
+  const waistChoices = cuttingGarment ? waistsFor(cuttingGarment) : [];
+  const wornSkirt = cuttingEntry ? skirtOf(cuttingEntry.worn) : undefined;
+  const showSkirt =
+    subject === "wardrobe" &&
+    (skirtLengthChoices.length > 1 || waistChoices.length > 1) &&
+    (onBottom || !cuttingGarment?.fabricRegions.includes("bottom"));
+
+  /*
+    On a phone the controls under the stage show a few rows at a time, and the
+    skirt's switches sat below them. Picking the skirt's part — the dress's
+    Bottom, or the skirt — brings them into view, so its length is never a
+    scroll away; where they already show, nothing moves.
+  */
+  const skirtOptions = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isOpen || !showSkirt) return;
+    skirtOptions.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [isOpen, showSkirt, cutting.garmentId, cutting.region]);
+
   if (!isOpen) return null;
 
   /**
@@ -642,19 +668,6 @@ export function FabricVisualizer() {
       ? collarsFitting(cuttingGarment, cuttingEntry.worn)
       : [];
   const wornCollarId = cuttingEntry && collarOf(cuttingEntry.worn)?.id;
-  /*
-    A garment cut in two parts — the dress's top and its skirt — shows the
-    part being cut and that part's options: the bodice's neckline, sleeves and
-    collar, or the skirt's. A garment that is one part shows its own.
-  */
-  const onBottom = subject === "wardrobe" && cutting.region === "bottom";
-  const skirtLengthChoices = cuttingGarment ? skirtLengthsFor(cuttingGarment) : [];
-  const waistChoices = cuttingGarment ? waistsFor(cuttingGarment) : [];
-  const wornSkirt = cuttingEntry ? skirtOf(cuttingEntry.worn) : undefined;
-  const showSkirt =
-    subject === "wardrobe" &&
-    (skirtLengthChoices.length > 1 || waistChoices.length > 1) &&
-    (onBottom || !cuttingGarment?.fabricRegions.includes("bottom"));
 
   const regions =
     subject === "wardrobe"
@@ -1109,65 +1122,70 @@ export function FabricVisualizer() {
               </div>
             )}
 
-            {/* the skirt's length: three choices, one row */}
-            {showSkirt && wornSkirt && skirtLengthChoices.length > 1 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.length")}
-                </p>
-                <div
-                  role="group"
-                  aria-label={t("viz.length")}
-                  className="grid gap-1 rounded-full bg-muted/60 p-1"
-                  style={{ gridTemplateColumns: `repeat(${skirtLengthChoices.length}, minmax(0, 1fr))` }}
-                >
-                  {skirtLengthChoices.map((l) => (
-                    <button
-                      key={l.id}
-                      onClick={() => chooseSkirt({ length: l.id })}
-                      aria-pressed={wornSkirt.length === l.id}
-                      className={cn(
-                        "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
-                        wornSkirt.length === l.id
-                          ? "bg-card text-foreground shadow-soft"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
+            {/* the skirt's switches, together */}
+            {showSkirt && wornSkirt && (
+              <div ref={skirtOptions} className="flex scroll-my-4 flex-col gap-6">
+                {/* the skirt's length: three choices, one row */}
+                {skirtLengthChoices.length > 1 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("viz.length")}
+                    </p>
+                    <div
+                      role="group"
+                      aria-label={t("viz.length")}
+                      className="grid gap-1 rounded-full bg-muted/60 p-1"
+                      style={{ gridTemplateColumns: `repeat(${skirtLengthChoices.length}, minmax(0, 1fr))` }}
                     >
-                      {pick(l.name)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+                      {skirtLengthChoices.map((l) => (
+                        <button
+                          key={l.id}
+                          onClick={() => chooseSkirt({ length: l.id })}
+                          aria-pressed={wornSkirt.length === l.id}
+                          className={cn(
+                            "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
+                            wornSkirt.length === l.id
+                              ? "bg-card text-foreground shadow-soft"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {pick(l.name)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {/* the waist its skirt hangs from, a dress's: one row */}
-            {showSkirt && wornSkirt && waistChoices.length > 1 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.waist")}
-                </p>
-                <div
-                  role="group"
-                  aria-label={t("viz.waist")}
-                  className="grid gap-1 rounded-full bg-muted/60 p-1"
-                  style={{ gridTemplateColumns: `repeat(${waistChoices.length}, minmax(0, 1fr))` }}
-                >
-                  {waistChoices.map((w) => (
-                    <button
-                      key={w.id}
-                      onClick={() => chooseSkirt({ waist: w.id })}
-                      aria-pressed={wornSkirt.waist === w.id}
-                      className={cn(
-                        "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
-                        wornSkirt.waist === w.id
-                          ? "bg-card text-foreground shadow-soft"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
+                {/* the waist its skirt hangs from, a dress's: one row */}
+                {waistChoices.length > 1 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("viz.waist")}
+                    </p>
+                    <div
+                      role="group"
+                      aria-label={t("viz.waist")}
+                      className="grid gap-1 rounded-full bg-muted/60 p-1"
+                      style={{ gridTemplateColumns: `repeat(${waistChoices.length}, minmax(0, 1fr))` }}
                     >
-                      {pick(w.name)}
-                    </button>
-                  ))}
-                </div>
+                      {waistChoices.map((w) => (
+                        <button
+                          key={w.id}
+                          onClick={() => chooseSkirt({ waist: w.id })}
+                          aria-pressed={wornSkirt.waist === w.id}
+                          className={cn(
+                            "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
+                            wornSkirt.waist === w.id
+                              ? "bg-card text-foreground shadow-soft"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {pick(w.name)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
