@@ -1857,6 +1857,22 @@ export function column(
      * one is the long one cut shorter rather than a steeper skirt.
      */
     flareTo?: number;
+    /**
+     * Where the flare starts, if below the hip — a mermaid's, above the knee:
+     * close to her down to there, following her thighs in.
+     */
+    flareFrom?: number;
+    /**
+     * How the flare opens: in a straight line, as a flared skirt does, or as a
+     * bell — slowly from where it starts, then fast — the further above 1.
+     */
+    curve?: number;
+    /**
+     * A pencil's taper: how far in its side leans below the hip, per unit
+     * down. It hangs from the hip on that line rather than flaring, and never
+     * comes closer to her than its ease.
+     */
+    taper?: number;
     dip?: number;
     /** A waistband this deep, cut from the column's own edge. */
     band?: number;
@@ -1900,8 +1916,13 @@ export function column(
     is shared out over what hangs below it, in proportion to the drop.
   */
   const hipY = Math.max(fromY, Math.min(d.hipY, toY));
+  /* a bell: flaring from lower down, or not in a straight line — see `flareFrom` and `curve` */
+  const bell = spec.flareFrom !== undefined || spec.curve !== undefined;
+  const opens = Math.max(hipY, spec.flareFrom ?? hipY);
   const easeAt = (y: number) =>
-    y <= hipY ? ease : ease + (flare * (y - hipY)) / Math.max(1, (spec.flareTo ?? toY) - hipY);
+    !bell
+      ? y <= hipY ? ease : ease + (flare * (y - hipY)) / Math.max(1, (spec.flareTo ?? toY) - hipY)
+      : y <= opens ? ease : ease + flare * ((y - opens) / Math.max(1, (spec.flareTo ?? toY) - opens)) ** (spec.curve ?? 1);
 
   /*
     Hung from above the waist, it is close only from its top edge to the seam
@@ -1929,11 +1950,25 @@ export function column(
             : []),
         ];
   const lowerFrom = Math.max(fromY, d.crotchY);
+  /* a bell's ease is not a straight run between its ends, so it is taken row by row */
   const lower =
     toY <= lowerFrom
       ? []
-      : d.legOutHang({ from: lowerFrom, to: toY, ease: easeAt(lowerFrom), toEase: easeAt(toY) });
-  const side = tucked([...upper, ...lower], spec.inside);
+      : bell
+        ? d.legOutHang({ from: lowerFrom, to: toY, ease: 0 }).map(([x, y]) => [x - easeAt(y), y] as Pt)
+        : d.legOutHang({ from: lowerFrom, to: toY, ease: easeAt(lowerFrom), toEase: easeAt(toY) });
+  /*
+    A pencil's side below the hip: the line it hangs on from there, leaning
+    in, or her own edge at its ease wherever she is wider than that line —
+    at the top of her thighs, before the line takes over.
+  */
+  const { taper } = spec;
+  const hipX = d.sideAt(hipY, ease);
+  const shaped =
+    taper === undefined
+      ? [...upper, ...lower]
+      : [...upper, ...lower].map(([x, y]) => (y <= hipY ? [x, y] : [Math.min(x, hipX + taper * (y - hipY)), y]) as Pt);
+  const side = tucked(shaped, spec.inside);
   const hemLeft = side[side.length - 1];
   const waistLeft = side[0];
   const hemRight = mirror([hemLeft])[0];

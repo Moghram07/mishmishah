@@ -1,10 +1,10 @@
 import { DRAPE, vertical } from "@/lib/garments/shading";
 import { line, type Tuck } from "@/lib/garments/fit";
-import { foldDefs, foldLights, foldShadows, rowSpan, skirtFolds } from "@/lib/garments/folds";
-import { sameSkirt, skirtKey } from "@/lib/garments/skirts";
+import { foldDefs, foldLights, foldOpen, foldShadows, rowSpan, skirtFolds } from "@/lib/garments/folds";
+import { fallOf, sameSkirt, skirtKey } from "@/lib/garments/skirts";
 import type { SkirtChoice } from "@/types";
 import type { GarmentArt, RegionArt } from "../index";
-import { DEFAULT_SKIRT, FINISH, FOLD_AT, HIP_Y, skirtFor } from "./skirtCut";
+import { DEFAULT_SKIRT, FINISH, FOLD_AT, HIP_Y, cloth, skirtFor } from "./skirtCut";
 
 /**
  * Skirt, front. As it arrives it stops above the knee, which is why it
@@ -29,18 +29,26 @@ import { DEFAULT_SKIRT, FINISH, FOLD_AT, HIP_Y, skirtFor } from "./skirtCut";
  */
 const skirtRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): RegionArt => {
   const sk = skirtFor(inside, skirt);
-  const from = inside ? inside.y : HIP_Y;
+  /*
+    A fitted shape's folds are released where it starts to flare — a
+    mermaid's above the knee — and open as far as it flares; one that does
+    not flare, a pencil, hangs smooth below its darts. See `fallOf`.
+  */
+  const fall = fallOf(skirt.shape);
+  const from = Math.max(inside ? inside.y : HIP_Y, fall.from ?? 0);
   const across = rowSpan(sk.path, from) ?? [200, 400];
+  const flare = across[0] - sk.hemLeft[0];
   const folds = skirtFolds({
     hip: [
       [across[0] + (inside ? 6 : 4), from],
       [across[1] - (inside ? 6 : 4), from],
     ],
     hem: [sk.hemLeft, [600 - sk.hemLeft[0], sk.hemLeft[1]]],
-    hemDip: FINISH.dip,
+    hemDip: FINISH.dip * fall.dip,
     bandY: sk.waistY + (FINISH.band ?? 0),
-    at: FOLD_AT,
+    at: fall.fitted && flare <= 0 ? [] : FOLD_AT,
     seed: 31,
+    ...(fall.fitted ? { width: [1.4, 15 * foldOpen(flare)] as const } : {}),
   });
   return {
     focus: [300, 520],
@@ -68,7 +76,8 @@ const skirtRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): RegionA
       sk.bandStitch,
       line([
         [sk.hemLeft[0] + 8, sk.hemLeft[1] - 10],
-        [300, sk.hemLeft[1] + 12],
+        /* six above the hem at the front, however far it sags there */
+        [300, sk.hemLeft[1] + FINISH.dip * fall.dip - 6],
         [592 - sk.hemLeft[0], sk.hemLeft[1] - 10],
       ]),
     ].join(" "),
@@ -87,4 +96,6 @@ export const skirtFront: GarmentArt = {
     if (!styledRegions.has(key)) styledRegions.set(key, skirtRegion(inside, skirt));
     return { body: styledRegions.get(key)! };
   },
+  /** The skirt and its band as cut, for the shape picker. */
+  silhouette: (choice) => cloth(choice),
 };

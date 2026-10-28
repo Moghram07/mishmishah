@@ -10,7 +10,7 @@ import { SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
 import { collars, collarsForGarment } from "@/lib/data/collars";
 import { sleeveLengthsFor, sleeveTypesFor } from "@/lib/data/sleeves";
-import type { BodyType, Fabric, FabricRegionId, Outfit, SleeveChoice, WornGarment } from "@/types";
+import type { BodyType, Fabric, FabricRegionId, Outfit, SkirtLengthId, SkirtShapeId, SleeveChoice, WaistId, WornGarment } from "@/types";
 import { DEFAULT_SKIN_TONE, skinTones } from "@/lib/data/skinTones";
 import { chroma, ciede2000, hexToRgb, hue, ita, itaClass } from "@/lib/color/cielab";
 import { frameFor } from "@/lib/mannequin/frame";
@@ -18,6 +18,7 @@ import { bodyById } from "@/lib/mannequin/bodies";
 import { garments } from "@/lib/data/garments";
 import { focusOf } from "@/lib/garments/closeUp";
 import { draft } from "@/lib/garments/fit";
+import { shapeLengths } from "@/lib/garments/skirts";
 
 /**
  * The wardrobe, dressed and photographed.
@@ -1555,6 +1556,76 @@ describe("sleeves at an empire waist, light and dark", () => {
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
     writeFileSync(
       `.preview/wardrobe/styles5-sleeves-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
+    );
+  });
+});
+
+/**
+ * Skirt shapes, on a light page and a dark one: every shape at every length,
+ * on the dress at every waist and on the skirt under a blouse — in a plain
+ * cloth in the sleeve each arrives in, and in a print in long sleeves — so the
+ * same sheet shows whatever shapes the code has.
+ */
+describe("skirt shapes, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  const CLOTHS = [
+    ["fb-apricot-linen", "plain", null],
+    ["fb-midnight-floral", "print, long sleeves", { type: "set-in", length: "long" }],
+  ] as const;
+  type Look = { name: string; skirtId: string; ids: string[]; waist?: WaistId };
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles6-shapes-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const dress = garmentById("female-dress")!;
+    const looks: Look[] = [
+      ...(dress.skirt!.waists ?? []).map((waist) => ({ name: `dress, ${waist} waist`, skirtId: dress.id, ids: [dress.id], waist })),
+      { name: "skirt", skirtId: "female-skirt", ids: ["female-blouse", "female-skirt"] },
+    ];
+    const stage = (look: Look, clothId: string, sleeve: SleeveChoice | null, shape: SkirtShapeId, length: SkirtLengthId) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of look.ids) {
+        const g = garmentById(gid)!;
+        /* the skirted garment in the cloth being shown, a top over it in another */
+        const cloth = gid === look.skirtId ? f(clothId) : f("fb-rose-silk");
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      if (sleeve) worn = setSleeve(worn, look.ids[0], sleeve);
+      worn = worn.map((w) => {
+        const skirt = w.garmentId === look.skirtId ? skirtOf(w) : undefined;
+        return skirt ? { ...w, skirt: { ...skirt, shape, length, ...(look.waist ? { waist: look.waist } : {}) } } : w;
+      });
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={1} focus={[300, 500]} />;
+    };
+    const rows = looks.flatMap((look) => {
+      const offer = garmentById(look.skirtId)!.skirt!;
+      return CLOTHS.map(([cloth, kind, sleeve]) => (
+        <div key={`${look.name}-${cloth}`} className="row">
+          {offer.shapes.flatMap((shape) =>
+            shapeLengths(shape, offer.lengths).map((length) => (
+              <figure key={`${shape}-${length}`}>
+                {stage(look, cloth, sleeve, shape, length)}
+                <figcaption>{`${look.name}, ${shape}, ${length}, ${kind}`}</figcaption>
+              </figure>
+            ))
+          )}
+        </div>
+      ));
+    });
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles6-shapes-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
     );
   });

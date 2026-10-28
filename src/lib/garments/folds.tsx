@@ -576,12 +576,28 @@ export interface SkirtBodySpec {
   /** The waistband's lower edge, which the darts run down from. */
   bandY: number;
   seed: number;
+  /**
+   * How wide a fold opens, where it is released and at the hem: a flared
+   * skirt's open wide; a pencil's barely, hanging nearly straight.
+   */
+  width?: readonly [number, number];
 }
 
 /**
+ * How wide a fitted skirt's folds open at its hem, as a share of a flared
+ * skirt's: in step with how far its side comes out between where they are
+ * released and the hem — as wide as a flared skirt's for the flared skirt's
+ * own 54 units — and never quite shut: a pencil's, which leans in, barely
+ * open.
+ */
+export const foldOpen = (flare: number): number => Math.max(0.18, Math.min(1.2, flare / FLARED_FLARE));
+const FLARED_FLARE = 54;
+
+/**
  * A darted A-line skirt: no gathers, so nothing at the waist but two small
- * darts on each side under the band; below the hip, soft folds falling to the
- * hem and opening as they go.
+ * darts on each side under the band; below the hip — or wherever the skirt
+ * starts to flare, a mermaid's above the knee — soft folds falling to the hem
+ * and opening as they go.
  */
 export function skirtFolds(s: SkirtBodySpec): Fold[] {
   const folds = hangingFolds({
@@ -590,7 +606,7 @@ export function skirtFolds(s: SkirtBodySpec): Fold[] {
     hemDip: s.hemDip,
     count: s.at.length,
     at: s.at,
-    width: [1.4, 15],
+    width: s.width ?? [1.4, 15],
     shadow: 0.4,
     light: 0.24,
     seed: s.seed,

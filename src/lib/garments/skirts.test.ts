@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { garmentById } from "@/lib/data/garments";
 import { effectiveCoverage, skirtOf } from "./outfit";
-import { HEM_AT, SKIRT_LENGTHS } from "./skirts";
+import { HEM_AT, SKIRT_LENGTHS, SKIRT_SHAPES, shapeLengths } from "./skirts";
+import { skirtLengthsFor, skirtShapes, skirtShapesFor } from "@/lib/data/skirts";
 import { DEFAULT_SKIRT as DRESS_DEFAULT, WAIST_Y, details, seamAt, skirtFor as dressSkirt } from "./art/female/dressCut";
 import { DEFAULT_SKIRT as SKIRT_DEFAULT, cloth, skirtFor } from "./art/female/skirtCut";
 import { BUST } from "./art/female/yoke";
@@ -36,28 +37,80 @@ describe("skirts", () => {
     expect(skirtOf({ garmentId: "female-blouse", fabrics: {}, stitch: {} })).toBeUndefined();
   });
 
-  it("ends every length on its row, the same on both garments", () => {
-    for (const length of SKIRT_LENGTHS) {
-      expect(dressSkirt(undefined, { ...DRESS_DEFAULT, length }).hemLeft[1], length).toBe(HEM_AT[length]);
-      expect(skirtFor(undefined, { ...SKIRT_DEFAULT, length }).hemLeft[1], length).toBe(HEM_AT[length]);
+  it("ends every shape at every length it is cut at on its row, the same on both garments", () => {
+    for (const shape of SKIRT_SHAPES) {
+      for (const length of shapeLengths(shape, SKIRT_LENGTHS)) {
+        expect(dressSkirt(undefined, { ...DRESS_DEFAULT, shape, length }).hemLeft[1], `${shape} ${length}`).toBe(HEM_AT[length]);
+        expect(skirtFor(undefined, { ...SKIRT_DEFAULT, shape, length }).hemLeft[1], `${shape} ${length}`).toBe(HEM_AT[length]);
+      }
     }
   });
 
-  it("cuts one shape at every length: a shorter skirt is the longer one cut short", () => {
+  it("cuts each shape the same at every length: a shorter skirt is the longer one cut short", () => {
     /*
-      Where the knee length ends, the maxi is as wide, to a few millimetres:
-      the side hangs taut from the hip to wherever its hem is, so a longer
-      skirt's side runs a hair inside a shorter one's corner.
+      Where the shortest length ends, the maxi is as wide, to a few
+      millimetres: the side hangs taut from the hip to wherever its hem is, so
+      a longer skirt's side runs a hair inside a shorter one's corner.
     */
-    const knee = dressSkirt(undefined, { ...DRESS_DEFAULT, length: "knee" }).hemLeft;
-    const maxi = dressSkirt(undefined, { ...DRESS_DEFAULT, length: "maxi" }).path;
-    const xs = (maxi.match(/-?[0-9]*[.]?[0-9]+/g) ?? []).map(Number);
-    let at = Infinity;
-    for (let i = 0; i + 3 < xs.length; i += 2) {
-      const [ax, ay, bx, by] = [xs[i], xs[i + 1], xs[i + 2], xs[i + 3]];
-      if (ay <= knee[1] && by > knee[1]) at = Math.min(at, ax + ((knee[1] - ay) * (bx - ax)) / (by - ay));
+    for (const shape of SKIRT_SHAPES) {
+      const [shortest] = shapeLengths(shape, SKIRT_LENGTHS);
+      const short = dressSkirt(undefined, { ...DRESS_DEFAULT, shape, length: shortest }).hemLeft;
+      const maxi = dressSkirt(undefined, { ...DRESS_DEFAULT, shape, length: "maxi" }).path;
+      expect(Math.abs(leftAt(maxi, short[1] - 0.01) - short[0]), shape).toBeLessThan(2);
     }
-    expect(Math.abs(at - knee[0])).toBeLessThan(2);
+  });
+
+  it("offers a mermaid at midi and maxi only, and cuts one asked for at the knee at midi", () => {
+    const dress = garmentById("female-dress")!;
+    expect(skirtLengthsFor(dress, "mermaid").map((l) => l.id)).toEqual(["midi", "maxi"]);
+    expect(skirtLengthsFor(dress, "pencil").map((l) => l.id)).toEqual(["knee", "midi", "maxi"]);
+    expect(skirtLengthsFor(dress).map((l) => l.id)).toEqual(["knee", "midi", "maxi"]);
+    expect(
+      skirtOf({ garmentId: "female-dress", skirt: { shape: "mermaid", length: "knee", waist: "empire" }, fabrics: {}, stitch: {} })
+    ).toEqual({ shape: "mermaid", length: "midi", waist: "empire" });
+    expect(skirtOf({ garmentId: "female-skirt", skirt: { shape: "mermaid", length: "knee" }, fabrics: {}, stitch: {} })).toEqual({
+      shape: "mermaid",
+      length: "midi",
+    });
+    /* and back to a shape cut at the knee, the knee it was asked for */
+    expect(skirtOf({ garmentId: "female-skirt", skirt: { shape: "pencil", length: "knee" }, fabrics: {}, stitch: {} })!.length).toBe("knee");
+  });
+
+  it("hangs a pencil from the hip, leaning in, and never closer to her than its ease", () => {
+    const d = draft("female");
+    const pencil = (length: "knee" | "midi" | "maxi") => dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "pencil", length }).path;
+    const her = (y: number) => (y < d.crotchY ? d.sideAt(y, 0) : d.legOutAt(y, 0));
+    for (const length of ["knee", "midi", "maxi"] as const) {
+      const hem = HEM_AT[length];
+      /* narrower at the hem than at the hip: it leans in, never out */
+      expect(leftAt(pencil(length), hem - 1), length).toBeGreaterThan(leftAt(pencil(length), d.hipY) + 8);
+      for (let y = d.hipY; y < hem; y += 10) {
+        expect(her(y) - leftAt(pencil(length), y), `${length} y ${y}`).toBeGreaterThan(3.5);
+      }
+    }
+    /* and far narrower than a flared skirt at its hem */
+    expect(leftAt(pencil("midi"), 750)).toBeGreaterThan(leftAt(dressSkirt(undefined, DRESS_DEFAULT).path, 750) + 50);
+  });
+
+  it("fits a mermaid to her down to the knee, and flares it below", () => {
+    const d = draft("female");
+    const mermaid = dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "mermaid", length: "maxi" }).path;
+    /* close to her thighs: within its ease and the cloth's bridge of her outer leg */
+    for (let y = d.crotchY + 10; y <= 650; y += 20) {
+      expect(d.legOutAt(y, 0) - leftAt(mermaid, y), `y ${y}`).toBeLessThan(8);
+    }
+    /* narrowest by her knee, and widest at the hem — wider each step down */
+    const at = (y: number) => 300 - leftAt(mermaid, y);
+    expect(at(650)).toBeLessThan(at(d.hipY));
+    for (let y = 660; y + 30 < 890; y += 30) expect(at(y + 30), `y ${y + 30}`).toBeGreaterThan(at(y));
+    expect(at(885) - at(650)).toBeGreaterThan(50);
+  });
+
+  it("offers the shapes by name, fullest first, on the dress and the skirt alike", () => {
+    for (const id of ["female-dress", "female-skirt"]) {
+      expect(skirtShapesFor(garmentById(id)!).map((s) => s.id), id).toEqual(["flared", "pencil", "mermaid"]);
+    }
+    expect(skirtShapes.map((s) => s.name.ar)).toEqual(["كلوش", "قلم", "سمكة"]);
   });
 
   it("hides more of the leg the longer it is", () => {

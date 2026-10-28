@@ -205,6 +205,12 @@ export interface GarmentArt {
    * reached it: a hem cut off square at the zone's edge.
    */
   armCover?: (choice: GarmentChoice) => string[];
+  /**
+   * The garment's cloth as cut for a choice, for a picker's icon: the same
+   * outline the stage fills, so the icon for a shape is exactly what picking
+   * it gives.
+   */
+  silhouette?: (choice: GarmentChoice) => string[];
   /** Hardware over the cloth — buttons, a zip. Never takes a fabric. */
   trim?: ReactNode;
   /** The cuffs' hardware, for the sleeve as worn: a cuff's button or cufflink. */

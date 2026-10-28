@@ -27,12 +27,73 @@ export interface SkirtFinish {
 }
 
 /**
- * How each shape is cut — see `column`. Flared is fitted to the hip and flares
- * from there, 80 units out by y 760: the dress's own flare, at every length,
- * so a knee skirt is the maxi cut shorter.
+ * How each shape is cut — see `column`. Each is one line down her, however
+ * long: a knee skirt is the maxi cut shorter, never a steeper skirt.
+ *
+ * - **Flared** is fitted to the hip and flares from there, 80 units out by
+ *   y 760: the dress's own flare.
+ * - **Pencil** is fitted to the hip and hangs from it on a line leaning in by
+ *   4 units in every 100 — 10 by her knee, about 1.9 cm a side — never
+ *   closer to her than its ease.
+ * - **Mermaid** follows her hips and thighs in to just above her knee, y 650,
+ *   and opens there as a bell, slowly and then fast: 75 units out by her
+ *   ankle, y 890.
+ *
+ * And how each falls: `dip` is its share of its garment's hem's sag — a
+ * narrow hem sags less at the front. A `fitted` shape is darted to her
+ * rather than gathered: a dress's skirt in it is not gathered into the seam.
+ *
+ * `lengths` are the lengths a shape is cut at, where not every one: a
+ * mermaid's flare opens above the knee, so it is cut at midi and maxi only.
  */
-const SHAPES: Record<SkirtShapeId, { flare: number; flareTo: number }> = {
+interface ShapeCut {
+  flare: number;
+  flareTo: number;
+  flareFrom?: number;
+  curve?: number;
+  taper?: number;
+  dip?: number;
+  fitted?: boolean;
+  lengths?: readonly SkirtLengthId[];
+}
+const SHAPES: Record<SkirtShapeId, ShapeCut> = {
   flared: { flare: 80, flareTo: 760 },
+  pencil: { flare: 0, flareTo: 760, taper: 0.04, dip: 0.5, fitted: true },
+  mermaid: { flare: 75, flareFrom: 650, flareTo: 890, curve: 1.3, dip: 0.75, fitted: true, lengths: ["midi", "maxi"] },
+};
+
+/** The shapes, fullest first — the order the picker offers them in. */
+export const SKIRT_SHAPES: readonly SkirtShapeId[] = ["flared", "pencil", "mermaid"];
+
+/** Of the lengths a garment offers, those a shape is cut at — see `ShapeCut`. */
+export const shapeLengths = (shape: SkirtShapeId, offered: readonly SkirtLengthId[]): SkirtLengthId[] =>
+  offered.filter((length) => SHAPES[shape].lengths?.includes(length) ?? true);
+
+/**
+ * A skirt as it can be cut, of the lengths its garment offers: at its own
+ * length, or at the nearest its shape is cut at — a mermaid asked for at the
+ * knee is cut at midi.
+ */
+export function cutAs(skirt: SkirtChoice, offered: readonly SkirtLengthId[]): SkirtChoice {
+  const lengths = shapeLengths(skirt.shape, offered);
+  if (lengths.length === 0 || lengths.includes(skirt.length)) return skirt;
+  const off = (length: SkirtLengthId) => Math.abs(HEM_AT[length] - HEM_AT[skirt.length]);
+  return { ...skirt, length: lengths.reduce((best, length) => (off(length) < off(best) ? length : best)) };
+}
+
+/**
+ * How a shape's cloth falls, for its folds: the row they are released at, if
+ * lower than the hip — where it starts to flare, a mermaid's above the knee —
+ * its share of its garment's hem sag, and whether it is fitted rather than
+ * gathered. See `ShapeCut`.
+ */
+export const fallOf = (shape: SkirtShapeId): { from?: number; dip: number; fitted: boolean } => {
+  const s = SHAPES[shape];
+  return {
+    ...(s.flareFrom !== undefined ? { from: s.flareFrom } : {}),
+    dip: s.dip ?? 1,
+    fitted: s.fitted ?? false,
+  };
 };
 
 /**
@@ -102,7 +163,7 @@ export const sameSkirt = (a: SkirtChoice, b: SkirtChoice): boolean => skirtKey(a
  * from a seam above her waist it hangs — see `column`'s `hang`.
  */
 export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck): CutSkirt {
-  const { flare, flareTo } = SHAPES[skirt.shape];
+  const { flare, flareTo, flareFrom, curve, taper, dip = 1 } = SHAPES[skirt.shape];
   const drop = WAIST_DROP[skirt.waist ?? "natural"];
   return column("female", {
     rise: finish.rise + drop,
@@ -111,9 +172,13 @@ export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck)
     ease: finish.ease,
     flare,
     flareTo,
-    dip: finish.dip,
+    ...(flareFrom !== undefined ? { flareFrom } : {}),
+    ...(curve !== undefined ? { curve } : {}),
+    ...(taper !== undefined ? { taper } : {}),
+    dip: finish.dip * dip,
     ...(finish.band ? { band: finish.band } : {}),
-    ...(finish.wave ? { wave: finish.wave } : {}),
+    /* a hem waves where folds reach it, and one that does not flare has none */
+    ...(finish.wave && flare > 0 ? { wave: finish.wave } : {}),
     ...(inside ? { inside } : {}),
   });
 }

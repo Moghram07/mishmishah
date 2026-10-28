@@ -1,12 +1,29 @@
-import type { Garment, SkirtLengthId, WaistId } from "@/types";
-import { SKIRT_LENGTHS, WAISTS } from "@/lib/garments/skirts";
+import type { Garment, SkirtLengthId, SkirtShapeId, WaistId } from "@/types";
+import { SKIRT_LENGTHS, SKIRT_SHAPES, WAISTS, shapeLengths } from "@/lib/garments/skirts";
 
 /**
- * The skirt catalogue: the lengths a skirt is cut at and the waists a dress's
- * hangs from, by name. The geometry lives in `lib/garments/skirts.ts`, and the
- * ids are read from there, so the catalogue and the drafting cannot disagree
- * about what a length or a waist is.
+ * The skirt catalogue: the shapes a skirt is cut to, the lengths it is cut at
+ * and the waists a dress's hangs from, by name. The geometry lives in
+ * `lib/garments/skirts.ts`, and the ids are read from there, so the catalogue
+ * and the drafting cannot disagree about what a shape, a length or a waist is.
  */
+
+export interface SkirtShape {
+  id: SkirtShapeId;
+  name: { en: string; ar: string };
+}
+
+const SHAPE_NAMES: Record<SkirtShapeId, { en: string; ar: string }> = {
+  flared: { en: "Flared", ar: "كلوش" },
+  pencil: { en: "Pencil", ar: "قلم" },
+  mermaid: { en: "Mermaid", ar: "سمكة" },
+};
+
+export const skirtShapes: SkirtShape[] = SKIRT_SHAPES.map((id) => ({ id, name: SHAPE_NAMES[id] }));
+
+/** The shapes a garment's skirt is cut to, fullest first. */
+export const skirtShapesFor = (garment: Garment): SkirtShape[] =>
+  skirtShapes.filter((s) => garment.skirt?.shapes.includes(s.id));
 
 export interface SkirtLength {
   id: SkirtLengthId;
@@ -24,9 +41,15 @@ export const skirtLengths: SkirtLength[] = SKIRT_LENGTHS.map((id) => ({
   name: LENGTH_NAMES[id],
 }));
 
-/** The lengths a garment's skirt is cut at, shortest first. */
-export const skirtLengthsFor = (garment: Garment): SkirtLength[] =>
-  skirtLengths.filter((l) => garment.skirt?.lengths.includes(l.id));
+/**
+ * The lengths a garment's skirt is cut at, shortest first — in a shape, those
+ * of them that shape is cut at: a mermaid's, midi and maxi.
+ */
+export const skirtLengthsFor = (garment: Garment, shape?: SkirtShapeId): SkirtLength[] => {
+  const offered = garment.skirt?.lengths ?? [];
+  const cut = shape ? shapeLengths(shape, offered) : offered;
+  return skirtLengths.filter((l) => cut.includes(l.id));
+};
 
 export interface Waist {
   id: WaistId;

@@ -64,7 +64,7 @@ const FIT_KIT = await import(src("src/lib/garments/fit.ts"));
 */
 const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
-const { HEM_AT, WAIST_DROP, hangs, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
+const { HEM_AT, WAIST_DROP, hangs, shapeLengths, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES } = await import(
@@ -2599,17 +2599,35 @@ function checkBodiceDetails(bodyKey, wardrobe) {
 const HEM_SLACK = 1;
 
 /**
- * A skirt's hem falls where its length says. A skirt flares, so the outermost
- * points of its outline near the bottom are the corners where its sides meet
- * the hem; both must sit on the length's row — see `HEM_AT` in `skirts.ts`.
+ * A skirt's hem falls where its length says: the corners where its sides meet
+ * the hem both sit on the length's row — see `HEM_AT` in `skirts.ts`.
+ *
+ * A corner is a point of the outline's edge where, going down, the edge stops
+ * running down and turns along the hem: steep on the row above it, shallow on
+ * the row below. Each side's is the outermost such point near the bottom. On a
+ * skirt that flares that is simply its outermost point there; a pencil's sides
+ * lean in, so its outermost point is higher up its side, and not a corner.
  */
 function checkHem(bodyKey, label, paths, skirt) {
   const want = HEM_AT[skirt.length];
-  const pts = paths.flatMap((d) => flatten(d).flat()).filter(([, y]) => y >= want - 30);
-  const corner = (pick) =>
-    pts.reduce((best, p) => (!best || pick(p[0], best[0]) || (p[0] === best[0] && p[1] > best[1]) ? p : best), null);
-  const left = corner((a, b) => a < b);
-  const right = corner((a, b) => a > b);
+  const polys = paths.flatMap((d) => flatten(d));
+  const pts = polys.flat().filter(([, y]) => y >= want - 30);
+  /* the outline's edge on a row, on one side: its outermost crossing there */
+  const edge = (y, side) => {
+    const xs = crossingsAt(polys, y).flat();
+    return xs.length ? (side < 0 ? Math.min(...xs) : Math.max(...xs)) : null;
+  };
+  const isCorner = ([x, y], side) => {
+    const [up, at, down] = [edge(y - 1, side), edge(y, side), edge(y + 1, side)];
+    if (up === null || at === null || down === null || Math.abs(x - at) > 0.5) return false;
+    return Math.abs(at - up) <= 1 && Math.abs(down - at) > 1;
+  };
+  const corner = (side, pick) =>
+    pts
+      .filter((q) => isCorner(q, side))
+      .reduce((best, q) => (!best || pick(q[0], best[0]) || (q[0] === best[0] && q[1] > best[1]) ? q : best), null) ?? [NaN, NaN];
+  const left = corner(-1, (a, b) => a < b);
+  const right = corner(1, (a, b) => a > b);
   const off = Math.max(Math.abs(left[1] - want), Math.abs(right[1] - want));
   const ok = off <= HEM_SLACK;
   console.log(
@@ -2796,6 +2814,12 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
           ...(inner.skirt?.lengths ?? [])
             .filter((length) => length !== inner.skirt.default.length)
             .map((length) => ({ cut: cuts[0] ?? null, sleeve: null, skirt: { ...(base ?? inner.skirt.default), length } })),
+          /* every other shape, at every length */
+          ...(inner.skirt?.shapes ?? [])
+            .filter((shape) => shape !== inner.skirt.default.shape)
+            .flatMap((shape) =>
+              shapeLengths(shape, inner.skirt.lengths).map((length) => ({ cut: cuts[0] ?? null, sleeve: null, skirt: { ...(base ?? inner.skirt.default), shape, length } }))
+            ),
         ];
       });
       let leak = 0;
@@ -3328,6 +3352,21 @@ for (const bodyKey of Object.keys(bodies)) {
           const label = `${name} · ${length}`;
           if (length !== own.length) failures += checkCut(wornCuts[0], null, label, false, style).failed;
           failures += checkHem(bodyKey, label, artPaths(garment.asset.front, body, { cut: wornCuts[0], skirt: style }), style);
+        }
+
+        /*
+          And every other shape it is cut to, at every length. A shape changes
+          the skirt below the hip and nothing above it — not the bodice, its
+          cuts or its sleeves — so each is measured once a length, in the cut
+          and sleeve the garment arrives in, and its hem must fall on its row.
+        */
+        for (const shape of garment.skirt.shapes.filter((sh) => sh !== own.shape)) {
+          for (const length of shapeLengths(shape, garment.skirt.lengths)) {
+            const style = { ...own, shape, length };
+            const label = `${name} · ${shape} ${length}`;
+            failures += checkCut(wornCuts[0], null, label, false, style).failed;
+            failures += checkHem(bodyKey, label, artPaths(garment.asset.front, body, { cut: wornCuts[0], skirt: style }), style);
+          }
         }
       }
 

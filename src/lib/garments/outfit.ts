@@ -39,7 +39,7 @@ import {
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
 import { sleeveCoverage } from "@/lib/garments/sleeves";
-import { skirtCoverage } from "@/lib/garments/skirts";
+import { cutAs, skirtCoverage } from "@/lib/garments/skirts";
 
 /**
  * What can be worn with what, what sits over what, what a collar adds, and what
@@ -181,7 +181,8 @@ export function sleeveOf(worn: WornGarment): SleeveChoice | undefined {
 /**
  * The skirt a worn garment is cut with — its shape, length and, for a dress,
  * waist — resolved against what it offers. `undefined` when it has no skirt
- * to choose. Anything it does not offer falls back to its own default, so
+ * to choose. Anything it does not offer falls back to its own default, and a
+ * length its shape is not cut at to the nearest one it is — see `cutAs` — so
  * stale state is resolved here, once, rather than drawn.
  */
 export function skirtOf(worn: WornGarment): SkirtChoice | undefined {
@@ -190,11 +191,14 @@ export function skirtOf(worn: WornGarment): SkirtChoice | undefined {
   const { shapes, lengths, waists, default: own } = garment.skirt;
   const wanted = worn.skirt ?? own;
   const waist = waists ? (wanted.waist && waists.includes(wanted.waist) ? wanted.waist : own.waist) : undefined;
-  return {
-    shape: shapes.includes(wanted.shape) ? wanted.shape : own.shape,
-    length: lengths.includes(wanted.length) ? wanted.length : own.length,
-    ...(waist ? { waist } : {}),
-  };
+  return cutAs(
+    {
+      shape: shapes.includes(wanted.shape) ? wanted.shape : own.shape,
+      length: lengths.includes(wanted.length) ? wanted.length : own.length,
+      ...(waist ? { waist } : {}),
+    },
+    lengths
+  );
 }
 
 /** Recut a worn garment's skirt. The choice is resolved when it is read. */

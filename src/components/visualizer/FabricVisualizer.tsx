@@ -23,7 +23,7 @@ import { productTemplates } from "@/lib/data/products";
 import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
 import { collarsForGarment } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
-import { skirtLengthsFor, waistsFor } from "@/lib/data/skirts";
+import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import {
   sleeveCuffById,
   sleeveCuffsFor,
@@ -68,6 +68,9 @@ import { fabricBackground, fabricRepeatCm } from "@/lib/fabrics/artwork";
 import { exportShareCard, type ShareEntry } from "@/lib/share/shareCard";
 import { ProductTemplate, productPanBy } from "./ProductTemplate";
 import { MannequinStage } from "./MannequinStage";
+import { Silhouette, boxAround } from "./Silhouette";
+import { garmentArt } from "@/lib/garments/art";
+import { cutAs } from "@/lib/garments/skirts";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 import { FEATURES } from "@/lib/features";
@@ -622,12 +625,14 @@ export function FabricVisualizer() {
     collar, or the skirt's. A garment that is one part shows its own.
   */
   const onBottom = subject === "wardrobe" && cutting.region === "bottom";
-  const skirtLengthChoices = cuttingGarment ? skirtLengthsFor(cuttingGarment) : [];
-  const waistChoices = cuttingGarment ? waistsFor(cuttingGarment) : [];
   const wornSkirt = cuttingEntry ? skirtOf(cuttingEntry.worn) : undefined;
+  const skirtShapeChoices = cuttingGarment ? skirtShapesFor(cuttingGarment) : [];
+  /* the lengths the shape being worn is cut at: a mermaid's, midi and maxi */
+  const skirtLengthChoices = cuttingGarment ? skirtLengthsFor(cuttingGarment, wornSkirt?.shape) : [];
+  const waistChoices = cuttingGarment ? waistsFor(cuttingGarment) : [];
   const showSkirt =
     subject === "wardrobe" &&
-    (skirtLengthChoices.length > 1 || waistChoices.length > 1) &&
+    (skirtShapeChoices.length > 1 || skirtLengthChoices.length > 1 || waistChoices.length > 1) &&
     (onBottom || !cuttingGarment?.fabricRegions.includes("bottom"));
 
   /*
@@ -643,6 +648,24 @@ export function FabricVisualizer() {
   }, [isOpen, showSkirt, cutting.garmentId, cutting.region]);
 
   if (!isOpen) return null;
+
+  /*
+    Each shape's icon is the garment as worn — its cut, its sleeve, its waist
+    and its length — cut to that shape instead, so an icon is what picking it
+    gives; and all are framed alike, so a narrower or a fuller one looks it.
+  */
+  const shapeIcons = (() => {
+    if (!showSkirt || !wornSkirt || !cuttingGarment || !cuttingEntry || skirtShapeChoices.length < 2) return null;
+    const art = garmentArt(cuttingGarment.asset.front);
+    const w = cuttingEntry.worn;
+    /* at the length each would be cut at: a mermaid picked at the knee is a midi */
+    const lengths = cuttingGarment.skirt?.lengths ?? [];
+    const pieces = skirtShapeChoices.map(
+      (shape) =>
+        art?.silhouette?.({ neckline: necklineOf(w)?.cut, sleeve: sleeveOf(w), skirt: cutAs({ ...wornSkirt, shape: shape.id }, lengths) }) ?? []
+    );
+    return { pieces, box: boxAround(pieces) };
+  })();
 
   /**
    * The cuts this garment can be given, and the collars that fit the one it is
@@ -1152,6 +1175,40 @@ export function FabricVisualizer() {
                           {pick(l.name)}
                         </button>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* the skirt's shape: a row of the garment cut to each */}
+                {shapeIcons && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("viz.shape")}
+                    </p>
+                    <div role="group" aria-label={t("viz.shape")} className="flex gap-2 overflow-x-auto pb-1">
+                      {skirtShapeChoices.map((shape, i) => {
+                        const on = wornSkirt.shape === shape.id;
+                        return (
+                          <button
+                            key={shape.id}
+                            onClick={() => chooseSkirt({ shape: shape.id })}
+                            aria-pressed={on}
+                            className={cn(
+                              "btn-focus flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-2 pb-2 pt-2.5 text-xs font-semibold transition-all",
+                              on
+                                ? "border-apricot-500 bg-apricot-500/10 text-foreground"
+                                : "border-border bg-card text-muted-foreground hover:border-apricot-400"
+                            )}
+                          >
+                            <Silhouette
+                              pieces={shapeIcons.pieces[i]}
+                              box={shapeIcons.box}
+                              className={cn("h-16 w-full", on && "text-apricot-500")}
+                            />
+                            {pick(shape.name)}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

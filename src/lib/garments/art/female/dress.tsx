@@ -1,20 +1,24 @@
 import { DRAPE, softShadow, vertical } from "@/lib/garments/shading";
 import {
   contour,
+  dart,
   foldDefs,
   foldLights,
+  foldOpen,
   foldShadows,
   gathers,
   hangingFolds,
+  mirrorFold,
   puffDrape,
+  rowSpan,
   sleeveDrape,
   type Fold,
 } from "@/lib/garments/folds";
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, seamAt, skirtFor } from "./dressCut";
-import { hangs, sameSkirt, skirtKey } from "@/lib/garments/skirts";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, cloth, seamAt, skirtFor } from "./dressCut";
+import { fallOf, hangs, sameSkirt, skirtKey } from "@/lib/garments/skirts";
 import type { FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { litButtons } from "../buttons";
@@ -67,6 +71,41 @@ const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] =
   const sk = skirtFor(inside, skirt);
   const seam = seamOf(skirt);
   const hem: readonly [Pt, Pt] = [sk.hemLeft, [600 - sk.hemLeft[0], sk.hemLeft[1]]];
+  /*
+    A fitted shape — a pencil, a mermaid — is darted to her, not gathered:
+    two small darts each side from a seam at her waist, and none from one
+    above or below it, where there is no waist to take in. Its folds are
+    released at the hip, or where it starts to flare — a mermaid's above the
+    knee — or under a jacket's hem, and open as far as it flares; one that
+    does not flare, a pencil, hangs smooth and has none.
+  */
+  const fall = fallOf(skirt.shape);
+  if (fall.fitted) {
+    const at = Math.max(fall.from ?? draft("female").hipY, inside?.y ?? 0);
+    const [l, r] = rowSpan(sk.path, at) ?? [sk.hemLeft[0], 600 - sk.hemLeft[0]];
+    const y = seamAt(skirt.waist);
+    const darts = (skirt.waist ?? "natural") === "natural" ? [256, 276].map((x) => dart([x, y], [x + 1, y + (x < 266 ? 46 : 38)], 2)) : [];
+    const flare = l - sk.hemLeft[0];
+    const open = foldOpen(flare);
+    if (flare <= 0) return [...darts, ...darts.map(mirrorFold)];
+    return [
+      ...darts,
+      ...darts.map(mirrorFold),
+      ...hangingFolds({
+        seam: [
+          [l + 6, at],
+          [r - 6, at],
+        ],
+        hem,
+        hemDip: 22 * fall.dip,
+        count: 8,
+        width: [1.5, 22 * open],
+        shadow: 0.55 * Math.min(1, 0.4 + open),
+        light: 0.32 * Math.min(1, 0.4 + open),
+        seed: 7,
+      }),
+    ];
+  }
   const from: readonly [Pt, Pt] = inside
     ? [
         [inside.x + 6, inside.y],
@@ -824,6 +863,8 @@ export const dressFront: GarmentArt = {
       choice.sleeve ?? DEFAULT_SLEEVE,
       choice.skirt?.waist
     ).armCover,
+  /** The whole dress as cut — bodice and skirt — for the shape picker. */
+  silhouette: (choice) => cloth(choice),
 };
 
 /** The seam a collar is sewn to, for the cut the dress defaults to. */
