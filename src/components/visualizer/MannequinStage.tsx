@@ -13,6 +13,7 @@ import {
   collarOf,
   coveredZones,
   necklineOf,
+  skirtOf,
   sleeveOf,
   stack,
   visibleStack,
@@ -134,15 +135,17 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
     const insideOf = (index: number) =>
       holders.filter((h) => visible.findIndex((v) => v.garment.id === h.id) > index);
 
-    /** Everything a worn garment is cut to — its neckline, collar opening and sleeves. */
+    /** Everything a worn garment is cut to — its neckline, collar opening, sleeves and skirt. */
     const choiceOf = (w: (typeof worn)[number]): GarmentChoice => {
       /* under a jacket, it comes out from under the jacket's hem no wider */
       const index = visible.findIndex((v) => v.worn === w);
       const inside = index >= 0 ? insideOf(index)[0]?.encloses.hem : undefined;
+      const skirt = skirtOf(w);
       return {
         neckline: necklineOf(w)?.cut,
         opening: collarOf(w)?.opening,
         sleeve: sleeveOf(w),
+        ...(skirt ? { skirt } : {}),
         ...(inside ? { inside } : {}),
       };
     };

@@ -301,6 +301,27 @@ export interface SleeveChoice {
 }
 
 /**
+ * The shape a skirt is cut to — see `lib/garments/skirts.ts`. One set of
+ * shapes for the skirt and for a dress's skirt alike: the two cut theirs from
+ * the same parts.
+ */
+export type SkirtShapeId = "flared";
+
+/** Where a skirt's hem falls, measured on the leg. */
+export type SkirtLengthId = "knee" | "midi";
+
+/** Where a dress's bodice ends and its skirt is sewn on. */
+export type WaistId = "natural";
+
+/** A skirt as worn: a shape, a length, and on a dress the waist it hangs from. */
+export interface SkirtChoice {
+  shape: SkirtShapeId;
+  length: SkirtLengthId;
+  /** A dress's only: a skirt garment sits on its own waistband. */
+  waist?: WaistId;
+}
+
+/**
  * The drawing a body or a garment is rendered from.
  *
  * Front-on, and only front-on. This carried optional `back` and `side` slots
@@ -479,6 +500,17 @@ export interface Garment {
      * it ends in a plain hem, as every shorter sleeve does.
      */
     cuffs?: CuffId[];
+  };
+  /**
+   * The skirts this garment can be cut with — shapes, lengths and, for a
+   * dress, waists — and the one it arrives in. Absent, it has no skirt to
+   * choose.
+   */
+  skirt?: {
+    shapes: SkirtShapeId[];
+    lengths: SkirtLengthId[];
+    waists?: WaistId[];
+    default: SkirtChoice;
   };
   /** Which drawing to use, per view. Ids resolved by `lib/garments/art`. */
   asset: ViewAssets;
@@ -661,6 +693,8 @@ export interface WornGarment {
   necklineId?: string;
   /** Its sleeves, if it takes a choice of them and one was made. */
   sleeve?: SleeveChoice;
+  /** Its skirt, if it takes a choice of one and one was made. */
+  skirt?: SkirtChoice;
   /**
    * The collar sewn to it, if it accepts one and one was chosen. It belongs to
    * the garment rather than to the outfit, because that is where a collar is:

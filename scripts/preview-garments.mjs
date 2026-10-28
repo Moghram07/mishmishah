@@ -459,10 +459,16 @@ function artTable(assetId, body) {
  *
  * So a garment whose cuts are generated keeps them in a plain `.ts` module with
  * no JSX, and that module is imported here for real. One geometry, two readers.
+ * Each answers `cloth(choice)` for the same choice the stage draws: a cut, a
+ * sleeve, a skirt's style, a jacket's hem.
  */
 const CUT_MODULES = {
   "female-dress-front": await import(
     src("src/lib/garments/art/female/dressCut.ts")
+  ),
+  /* the skirt is cut to a style from the parts it shares with the dress's skirt */
+  "female-skirt-front": await import(
+    src("src/lib/garments/art/female/skirtCut.ts")
   ),
 };
 
@@ -474,19 +480,23 @@ const CUT_MODULES = {
  */
 const { COLLAR_CLOTH } = await import(src("src/lib/garments/art/female/collarCuts.ts"));
 
-/** Every cut a generated drawing offers, or `[]` for a typed-out one. */
-const cutsOf = (assetId) =>
-  CUT_MODULES[assetId] ? Object.keys(CUT_MODULES[assetId].NECKLINE_PATHS) : [];
+/** Every neckline cut a drawing offers, or `[]` for one with none to choose. */
+const cutsOf = (assetId) => Object.keys(CUT_MODULES[assetId]?.NECKLINE_PATHS ?? {});
 
 /** The sleeve a drawing arrives in, from its garment's record. */
 const defaultSleeveOf = (assetId) =>
   garments.find((g) => g.asset.front === assetId)?.sleeves?.default;
 
-function artPaths(assetId, body, { behind = false, opening = null, cut = null, sleeve = null, inside = null } = {}) {
+function artPaths(assetId, body, { behind = false, opening = null, cut = null, sleeve = null, skirt = null, inside = null } = {}) {
   if (COLLAR_CLOTH[assetId] && !behind) return COLLAR_CLOTH[assetId](cut ?? undefined);
   const generated = CUT_MODULES[assetId];
   if (generated && !behind) {
-    return generated.cloth(cut ?? undefined, sleeve ?? defaultSleeveOf(assetId), inside ?? undefined);
+    return generated.cloth({
+      neckline: cut ?? undefined,
+      sleeve: sleeve ?? defaultSleeveOf(assetId),
+      skirt: skirt ?? undefined,
+      inside: inside ?? undefined,
+    });
   }
 
   const table = artTable(assetId, body);

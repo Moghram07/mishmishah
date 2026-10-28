@@ -8,6 +8,7 @@ import type {
   Neckline,
   OpeningShape,
   Outfit,
+  SkirtChoice,
   SleeveChoice,
   StitchId,
   WornGarment,
@@ -174,6 +175,25 @@ export function sleeveOf(worn: WornGarment): SleeveChoice | undefined {
         ? own
         : cuffs[0];
   return { type, length, cuff };
+}
+
+/**
+ * The skirt a worn garment is cut with — its shape, length and, for a dress,
+ * waist — resolved against what it offers. `undefined` when it has no skirt
+ * to choose. Anything it does not offer falls back to its own default, so
+ * stale state is resolved here, once, rather than drawn.
+ */
+export function skirtOf(worn: WornGarment): SkirtChoice | undefined {
+  const garment = garmentById(worn.garmentId);
+  if (!garment?.skirt) return undefined;
+  const { shapes, lengths, waists, default: own } = garment.skirt;
+  const wanted = worn.skirt ?? own;
+  const waist = waists ? (wanted.waist && waists.includes(wanted.waist) ? wanted.waist : own.waist) : undefined;
+  return {
+    shape: shapes.includes(wanted.shape) ? wanted.shape : own.shape,
+    length: lengths.includes(wanted.length) ? wanted.length : own.length,
+    ...(waist ? { waist } : {}),
+  };
 }
 
 /** Recut a worn garment's sleeves. The choice is resolved when it is read. */

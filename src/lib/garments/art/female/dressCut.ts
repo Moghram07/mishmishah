@@ -11,8 +11,11 @@
   of its rules apply to, and that is how the male collars once drifted into a
   trapezoid on a collarbone with every check passing.
 */
-import { column, draft, line, mirrorPts, outline, princess, reverse, run, setIn, span, type Pt, type Tuck } from "../../fit.ts";
+import { draft, line, mirrorPts, outline, princess, reverse, run, setIn, span, type Pt, type Tuck } from "../../fit.ts";
 import { hasArmhole, hemRow, top, type Frame, type PuffShape, type SleeveChoice, type SleeveCut } from "../../sleeves.ts";
+import { sameSkirt, skirtCut, skirtKey, type CutSkirt, type SkirtFinish } from "../../skirts.ts";
+import type { SkirtChoice } from "@/types";
+import type { GarmentChoice } from "../index.ts";
 import { mirror as mirrorPath } from "../../collar.ts";
 import {
   ONE_SIDED,
@@ -43,28 +46,32 @@ export const WAIST_Y = draft("female").waistY;
 const EASE = 4;
 const TIP: Pt = [TIP_LEFT[0], TIP_LEFT[1]];
 
-/** How the skirt is cut: the same numbers worn on its own and under a jacket. */
-const SKIRT_SPEC = {
+/** How the dress finishes its skirt — see `skirts.ts`: the same worn on its own and under a jacket. */
+const FINISH: SkirtFinish = {
   /* Starts under the bodice, so the seam is cloth over cloth. */
   rise: -8,
-  toY: 760,
   ease: EASE,
   flare: 80,
   dip: 22,
+  hemAt: { midi: 760 },
 };
 
-export const SKIRT = column("female", SKIRT_SPEC);
+/** The skirt the dress arrives with. Kept in step with its record by a test. */
+export const DEFAULT_SKIRT: SkirtChoice = { shape: "flared", length: "midi", waist: "natural" };
+
+export const SKIRT = skirtCut(FINISH, DEFAULT_SKIRT);
 
 /**
- * The skirt worn under a jacket: drawn in under the jacket's hem and flaring
- * from there to its own hem — see `tucked`. One per jacket, kept.
+ * The skirt in a style, on its own or under a jacket: drawn in under the
+ * jacket's hem and flaring from there to its own hem — see `tucked`. Each
+ * style and jacket cut once, kept.
  */
-const tuckedSkirts = new Map<string, ReturnType<typeof column>>();
-export function skirtFor(inside?: Tuck): ReturnType<typeof column> {
-  if (!inside) return SKIRT;
-  const key = `${inside.y}|${inside.x}`;
-  if (!tuckedSkirts.has(key)) tuckedSkirts.set(key, column("female", { ...SKIRT_SPEC, inside }));
-  return tuckedSkirts.get(key)!;
+const skirts = new Map<string, CutSkirt>();
+export function skirtFor(inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): CutSkirt {
+  if (!inside && sameSkirt(skirt, DEFAULT_SKIRT)) return SKIRT;
+  const key = `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}`;
+  if (!skirts.has(key)) skirts.set(key, skirtCut(FINISH, skirt, inside));
+  return skirts.get(key)!;
 }
 
 export interface Bodice {
@@ -548,14 +555,14 @@ export const NECKLINE_SEAMS: Record<string, string> = Object.fromEntries(
 export const DEFAULT_CUT: NecklineId = "round";
 
 /**
- * Every piece of cloth the dress is made of, for one cut and one sleeve —
- * bodice and skirt.
+ * Every piece of cloth the dress is made of, for one choice — bodice and
+ * skirt: its cut, its sleeve, its skirt, and the jacket it is worn under.
  *
  * What `check:garments` rasterises. It is a function rather than a table so
  * that the checker and the renderer ask the same question and cannot be given
  * two different answers.
  */
-export const cloth = (id: NecklineId = DEFAULT_CUT, sleeve?: SleeveChoice, inside?: Tuck): string[] => [
-  ...bodiceFor(NECKLINE_IDS.includes(id) ? id : DEFAULT_CUT, sleeve).pieces,
-  skirtFor(inside).path,
+export const cloth = ({ neckline, sleeve, inside, skirt }: GarmentChoice = {}): string[] => [
+  ...bodiceFor((NECKLINE_IDS as readonly string[]).includes(neckline ?? "") ? (neckline as NecklineId) : DEFAULT_CUT, sleeve).pieces,
+  skirtFor(inside, skirt).path,
 ];

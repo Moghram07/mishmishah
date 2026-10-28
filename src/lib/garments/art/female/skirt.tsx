@@ -1,57 +1,25 @@
 import { DRAPE, vertical } from "@/lib/garments/shading";
-import { column, draft, foldPlaces, line, type Tuck } from "@/lib/garments/fit";
+import { line, type Tuck } from "@/lib/garments/fit";
 import { foldDefs, foldLights, foldShadows, rowSpan, skirtFolds } from "@/lib/garments/folds";
+import { sameSkirt, skirtKey } from "@/lib/garments/skirts";
+import type { SkirtChoice } from "@/types";
 import type { GarmentArt, RegionArt } from "../index";
+import { DEFAULT_SKIRT, FINISH, FOLD_AT, HIP_Y, skirtFor } from "./skirtCut";
 
 /**
- * A-line skirt, front. It stops above the knee, which is why it declares only
- * the hip in its coverage: a garment may not hide a zone it does not reach, or
- * the renderer erases a thigh nothing fills back in.
+ * Skirt, front. As it arrives it stops above the knee, which is why it
+ * declares only the hip in its coverage: a garment may not hide a zone it does
+ * not reach, or the renderer erases a thigh nothing fills back in.
  *
  * A `column` — cloth hanging from the waist with no leg split in it, which is
  * what a skirt is. It follows her hip down to the crotch and the outside of her
- * legs below that, flaring as it goes; see `garments/fit.ts`.
+ * legs below that, flaring as it goes; see `garments/fit.ts`. It is cut to a
+ * style from the parts it shares with the dress's skirt — see `skirts.ts` —
+ * and its geometry lives in `skirtCut.ts`, where `check:garments` reads it.
  */
 
 /**
- * Where its folds fall across it — seven, from the hip — and so where its hem
- * waves: a little lower wherever a fold reaches it, never higher.
- */
-const FOLD_AT = foldPlaces(7, 31);
-
-/** How the skirt is cut: the same numbers worn on its own and under a jacket. */
-const SPEC = {
-  /*
-    Ten units below her measured waist, with a band cut from its own edge:
-    18 units, about 3.4 cm, a standard skirt band. It was 34 — six and a half
-    centimetres, a corset belt rather than a waistband.
-  */
-  rise: 10,
-  band: 18,
-  toY: 660,
-  ease: 4,
-  flare: 78,
-  dip: 18,
-  wave: { at: FOLD_AT, depth: 2.2 },
-};
-
-const SKIRT = column("female", SPEC);
-
-const BODY_PATH = SKIRT.path;
-
-/** The waistband: the same cloth, cut from the top of the skirt's own edge. */
-const WAISTBAND_PATH = SKIRT.band;
-
-/**
- * The skirt worn under a jacket: drawn in under the jacket's hem and flaring
- * from there to its own hem — see `tucked` — for the checker as for the stage.
- */
-export const TUCKED = (inside: Tuck) => [column("female", { ...SPEC, inside }).path];
-
-const HIP_Y = draft("female").hipY;
-
-/**
- * The skirt's region, on its own or under a jacket.
+ * The skirt's region, in a style, on its own or under a jacket.
  *
  * Darted, not gathered: nothing at the waist but two small darts each side
  * under the band, and soft folds falling to the hem, opening as they go — see
@@ -59,8 +27,8 @@ const HIP_Y = draft("female").hipY;
  * they fall from the hip; under a jacket, from the jacket's hem, where the
  * skirt comes out — so they follow the outline it has there.
  */
-const skirtRegion = (inside?: Tuck): RegionArt => {
-  const sk = inside ? column("female", { ...SPEC, inside }) : SKIRT;
+const skirtRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): RegionArt => {
+  const sk = skirtFor(inside, skirt);
   const from = inside ? inside.y : HIP_Y;
   const across = rowSpan(sk.path, from) ?? [200, 400];
   const folds = skirtFolds({
@@ -69,8 +37,8 @@ const skirtRegion = (inside?: Tuck): RegionArt => {
       [across[1] - (inside ? 6 : 4), from],
     ],
     hem: [sk.hemLeft, [600 - sk.hemLeft[0], sk.hemLeft[1]]],
-    hemDip: SPEC.dip,
-    bandY: sk.waistY + SPEC.band,
+    hemDip: FINISH.dip,
+    bandY: sk.waistY + (FINISH.band ?? 0),
     at: FOLD_AT,
     seed: 31,
   });
@@ -107,16 +75,16 @@ const skirtRegion = (inside?: Tuck): RegionArt => {
   };
 };
 
-const tuckedRegions = new Map<string, RegionArt>();
+const styledRegions = new Map<string, RegionArt>();
 
 export const skirtFront: GarmentArt = {
   regions: { body: skirtRegion() },
-  /** Under a jacket, the skirt comes out from under its hem. */
+  /** Cut to a style, or worn under a jacket, where it comes out from under its hem. */
   cut: (choice) => {
-    const inside = choice.inside;
-    if (!inside) return {};
-    const key = `${inside.y}|${inside.x}`;
-    if (!tuckedRegions.has(key)) tuckedRegions.set(key, skirtRegion(inside));
-    return { body: tuckedRegions.get(key)! };
+    const { inside, skirt = DEFAULT_SKIRT } = choice;
+    if (!inside && sameSkirt(skirt, DEFAULT_SKIRT)) return {};
+    const key = `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}`;
+    if (!styledRegions.has(key)) styledRegions.set(key, skirtRegion(inside, skirt));
+    return { body: styledRegions.get(key)! };
   },
 };

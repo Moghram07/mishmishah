@@ -13,8 +13,9 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, skirtFor } from "./dressCut";
-import type { FabricRegionId, SleeveChoice } from "@/types";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, skirtFor } from "./dressCut";
+import { sameSkirt, skirtKey } from "@/lib/garments/skirts";
+import type { FabricRegionId, SkirtChoice, SleeveChoice } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { litButtons } from "../buttons";
 import { puffLightDefs, puffShade, seamShadows, sleeveFoldDefs, sleeveFolds } from "../sleeveFolds";
@@ -52,8 +53,8 @@ const SEAM: readonly [Pt, Pt] = [
  * The skirt's folds, from the waist — or, under a jacket, from the jacket's
  * hem, where the skirt comes out, so they follow the outline it has there.
  */
-const skirtFolds = (inside?: Tuck): Fold[] => {
-  const sk = skirtFor(inside);
+const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] => {
+  const sk = skirtFor(inside, skirt);
   const hem: readonly [Pt, Pt] = [sk.hemLeft, [600 - sk.hemLeft[0], sk.hemLeft[1]]];
   const from: readonly [Pt, Pt] = inside
     ? [
@@ -727,10 +728,10 @@ const topFor = (choice: GarmentChoice): RegionArt => {
   return region;
 };
 
-/** The skirt's region, on its own or under a jacket, where it comes out from under the hem. */
-const bottomRegion = (inside?: Tuck): RegionArt => {
-  const sk = skirtFor(inside);
-  const folds = inside ? skirtFolds(inside) : SKIRT_FOLDS;
+/** The skirt's region in a style, on its own or under a jacket, where it comes out from under the hem. */
+const bottomRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): RegionArt => {
+  const sk = skirtFor(inside, skirt);
+  const folds = inside || !sameSkirt(skirt, DEFAULT_SKIRT) ? skirtFolds(inside, skirt) : SKIRT_FOLDS;
   return {
     focus: [300, 580],
     surface: { blur: 16, relief: 5, warp: 5 },
@@ -760,14 +761,15 @@ export const dressFront: GarmentArt = {
     bottom: bottomRegion(),
   },
   /**
-   * Recut to a neckline and a sleeve. Only the bodice changes — the skirt is
-   * the same cloth hanging from the same waist whatever the top is doing.
+   * Recut to a neckline, a sleeve and a skirt. The skirt changes only with its
+   * own style, or a jacket over it — it hangs from the same waist whatever the
+   * top is doing.
    */
   cut: (choice): Partial<Record<FabricRegionId, RegionArt>> => {
-    const inside = choice.inside;
-    if (!inside) return { top: topFor(choice) };
-    const key = `${inside.y}|${inside.x}`;
-    if (!bottoms.has(key)) bottoms.set(key, bottomRegion(inside));
+    const { inside, skirt = DEFAULT_SKIRT } = choice;
+    if (!inside && sameSkirt(skirt, DEFAULT_SKIRT)) return { top: topFor(choice) };
+    const key = `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}`;
+    if (!bottoms.has(key)) bottoms.set(key, bottomRegion(inside, skirt));
     return { top: topFor(choice), bottom: bottoms.get(key)! };
   },
   /** The cuffs' hardware — the near side's only, on a cut with one sleeve. */

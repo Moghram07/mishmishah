@@ -57,7 +57,7 @@ describe("every cut draws something, against the real body", () => {
 
   it.each(NECKLINE_IDS)("gives %s a bodice with cloth in it", (id) => {
     expect(BODICES[id].pieces.length, id).toBeGreaterThan(0);
-    expect(cloth(id).length, id).toBeGreaterThan(1);
+    expect(cloth({ neckline: id }).length, id).toBeGreaterThan(1);
   });
 });
 
