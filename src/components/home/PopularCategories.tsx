@@ -3,8 +3,15 @@
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { categories } from "@/lib/data/categories";
+import { cn } from "@/lib/utils/cn";
 import { Section } from "@/components/ui/Section";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+
+/** An even grid for however many categories are offered: three sit in one row, even on a phone. */
+const GRID: Record<number, string> = {
+  3: "grid-cols-3",
+  5: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
+};
 
 export function PopularCategories() {
   const { t, pick } = useI18n();
@@ -16,7 +23,7 @@ export function PopularCategories() {
         subtitle={t("section.categories.subtitle")}
         href="/discover"
       />
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className={cn("grid gap-4", GRID[categories.length] ?? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4")}>
         {categories.map((c) => (
           <Link
             key={c.key}

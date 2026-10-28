@@ -1,6 +1,6 @@
 "use client";
 
-import { Wand2, Ruler, Shirt, Sofa } from "lucide-react";
+import { Wand2, Ruler, Shirt, Scissors } from "lucide-react";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { Section } from "@/components/ui/Section";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -21,7 +21,7 @@ export function WhyMishmishah() {
     { icon: Wand2, title: t("why.visualize.title"), body: t("why.visualize.body") },
     { icon: Ruler, title: t("why.trueSize.title"), body: t("why.trueSize.body") },
     { icon: Shirt, title: range, body: t("why.range.body") },
-    { icon: Sofa, title: t("why.home.title"), body: t("why.home.body") },
+    { icon: Scissors, title: t("why.clothes.title"), body: t("why.clothes.body") },
   ];
 
   return (

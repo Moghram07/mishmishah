@@ -25,8 +25,8 @@ const arabic = Cairo({
 /** Arabic first, English second: the tab and link previews come before the page picks a language. */
 const TITLE = "مشمشة — شاهد القماش بمقاسه الحقيقي قبل أن تقرّر | Mishmishah";
 const DESCRIPTION =
-  "اختر القماش وشاهده على فستان أو ثوب أو كنبة بمقاسه الحقيقي، قبل أن تقرّر. " +
-  "Pick a fabric and see it on a dress, a thobe or a sofa, at its true size, before you decide.";
+  "اختر القماش وشاهده على فستان أو ثوب بمقاسه الحقيقي، قبل أن تقرّر. " +
+  "Pick a fabric and see it on a dress or a thobe, at its true size, before you decide.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://mishmishah.app"),
@@ -43,15 +43,11 @@ export const metadata: Metadata = {
     "تفصيل",
     "ثوب",
     "فستان",
-    "كنبة",
-    "ستائر",
     "fabric",
     "fabric visualizer",
     "true size",
     "thobe",
     "dress",
-    "sofa",
-    "curtains",
   ],
   authors: [{ name: "Mishmishah" }],
   openGraph: {

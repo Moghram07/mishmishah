@@ -16,10 +16,10 @@ export const dictionaries = {
     "nav.theme": "Toggle theme",
     "nav.language": "العربية",
 
-    "hero.eyebrow": "Fabrics · Clothing · Home",
+    "hero.eyebrow": "Fabrics · Clothing",
     "hero.title": "See the fabric become the piece.",
     "hero.subtitle":
-      "Pick a fabric and see it on a dress, a thobe or a sofa, at its true size, before you decide.",
+      "Pick a fabric and see it on a dress or a thobe, at its true size, before you decide.",
     "hero.cta.primary": "Try the Visualizer",
     "hero.cta.secondary": "Explore fabrics",
     "hero.stat.skinTones": "Skin tones",
@@ -52,14 +52,15 @@ export const dictionaries = {
 
     "why.visualize.title": "See it before you decide",
     "why.visualize.body":
-      "Try any fabric on a dress, a thobe or a sofa, and see it instantly.",
+      "Try any fabric on a dress or a thobe, and see it instantly.",
     "why.trueSize.title": "Every print at true size",
     "why.trueSize.body": "At any zoom, exactly as it is on the cloth.",
     "why.range.title":
       "{tones} skin tones, {garments} garments, {necklines} necklines",
     "why.range.body": "For women and men, from the dress to the thobe.",
-    "why.home.title": "Clothes and home",
-    "why.home.body": "Dresses, thobes, sofas, curtains.",
+    "why.clothes.title": "Dresses, thobes and more",
+    "why.clothes.body":
+      "Shirts, blouses, skirts, trousers, T‑shirts, polos and jackets.",
     "why.ai": "Coming soon: an AI assistant that suggests fabrics for you.",
 
     "seller.eyebrow": "For fabric shops",
@@ -144,7 +145,7 @@ export const dictionaries = {
     "product.curtain": "Curtain",
     "product.chair": "Dining chair",
 
-    "footer.tagline": "See fabric at its true size on clothes and furniture.",
+    "footer.tagline": "See fabric at its true size on clothes.",
     "footer.explore": "Explore",
     "footer.sell": "For makers",
     "footer.company": "Company",
@@ -169,10 +170,10 @@ export const dictionaries = {
     "nav.theme": "تبديل المظهر",
     "nav.language": "English",
 
-    "hero.eyebrow": "أقمشة · ملابس · ديكور",
+    "hero.eyebrow": "أقمشة · ملابس",
     "hero.title": "جرّب القماش قبل التفصيل.",
     "hero.subtitle":
-      "اختر القماش وشاهده على فستان أو ثوب أو كنبة بمقاسه الحقيقي، قبل أن تقرّر.",
+      "اختر القماش وشاهده على فستان أو ثوب بمقاسه الحقيقي، قبل أن تقرّر.",
     "hero.cta.primary": "ابدأ المعاينة",
     "hero.cta.secondary": "تصفّح الأقمشة",
     "hero.stat.skinTones": "درجات للبشرة",
@@ -203,15 +204,14 @@ export const dictionaries = {
     "section.viewAll": "عرض الكل",
 
     "why.visualize.title": "شاهد قبل أن تقرّر",
-    "why.visualize.body":
-      "جرّب أي قماش على فستان أو ثوب أو كنبة، وشاهده فورًا.",
+    "why.visualize.body": "جرّب أي قماش على فستان أو ثوب، وشاهده فورًا.",
     "why.trueSize.title": "كل نقشة بمقاسها الحقيقي",
     "why.trueSize.body": "بأي تكبير، كما هو على القماش.",
     "why.range.title":
       "{tones} درجات للبشرة، و{garments} قطعة، و{necklines} قصة رقبة",
     "why.range.body": "للنساء والرجال، من الفستان إلى الثوب.",
-    "why.home.title": "ملابس وديكور",
-    "why.home.body": "فستان وثوب وكنبة وستارة.",
+    "why.clothes.title": "فستان وثوب والمزيد",
+    "why.clothes.body": "قميص وبلوزة وتنورة وبنطلون وتي شيرت وبولو وجاكيت.",
     "why.ai": "قريبًا: مساعد ذكي يقترح عليك الأقمشة",
 
     "seller.eyebrow": "لمحلات الأقمشة",
@@ -295,7 +295,7 @@ export const dictionaries = {
     "product.curtain": "ستارة",
     "product.chair": "كرسي طعام",
 
-    "footer.tagline": "شاهد القماش بمقاسه الحقيقي على الملابس والأثاث.",
+    "footer.tagline": "شاهد القماش بمقاسه الحقيقي على الملابس.",
     "footer.explore": "استكشف",
     "footer.sell": "لأصحاب المتاجر",
     "footer.company": "الشركة",

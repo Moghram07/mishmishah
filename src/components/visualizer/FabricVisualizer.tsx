@@ -67,6 +67,7 @@ import { ProductTemplate, productPanBy } from "./ProductTemplate";
 import { MannequinStage } from "./MannequinStage";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
+import { FEATURES } from "@/lib/features";
 import type {
   BodyType,
   Design,
@@ -926,33 +927,35 @@ export function FabricVisualizer() {
               </div>
             </div>
 
-            {/* what we are dressing */}
-            <div className="grid grid-cols-2 gap-2 rounded-full bg-muted/60 p-1">
-              {(
-                [
-                  ["wardrobe", t("viz.wardrobe"), <Shirt key="s" className="h-4 w-4" />],
-                  ["home", t("viz.home"), <Sofa key="h" className="h-4 w-4" />],
-                ] as const
-              ).map(([key, label, icon]) => (
-                <button
-                  key={key}
-                  onClick={() => {
-                    setSubject(key);
-                    setZoom(1);
-                  }}
-                  aria-pressed={subject === key}
-                  className={cn(
-                    "btn-focus inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold transition-all",
-                    subject === key
-                      ? "bg-card text-foreground shadow-soft"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {icon}
-                  {label}
-                </button>
-              ))}
-            </div>
+            {/* what we are dressing: clothes, or a home product while those are switched on */}
+            {FEATURES.home && (
+              <div className="grid grid-cols-2 gap-2 rounded-full bg-muted/60 p-1">
+                {(
+                  [
+                    ["wardrobe", t("viz.wardrobe"), <Shirt key="s" className="h-4 w-4" />],
+                    ["home", t("viz.home"), <Sofa key="h" className="h-4 w-4" />],
+                  ] as const
+                ).map(([key, label, icon]) => (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setSubject(key);
+                      setZoom(1);
+                    }}
+                    aria-pressed={subject === key}
+                    className={cn(
+                      "btn-focus inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold transition-all",
+                      subject === key
+                        ? "bg-card text-foreground shadow-soft"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {icon}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {subject === "wardrobe" ? (
               <div>
