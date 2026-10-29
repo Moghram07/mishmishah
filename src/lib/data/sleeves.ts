@@ -55,7 +55,7 @@ const TYPE_NAMES: Record<SleeveTypeId, { en: string; ar: string }> = {
   puff: { en: "Puff", ar: "منفوش" },
   bishop: { en: "Bishop", ar: "واسع بأسورة" },
   bell: { en: "Bell", ar: "جرسي" },
-  flutter: { en: "Flutter", ar: "فراشة" },
+  flutter: { en: "Flutter", ar: "كشكش" },
   cap: { en: "Cap", ar: "كاب" },
   /* an off-shoulder's own sleeve: the band alone when short, a fitted sleeve below it when longer */
   "off-shoulder": { en: "Fitted", ar: "ضيّق" },
