@@ -1337,6 +1337,95 @@ function checkLegGap(bodyKey, id, paint, profile, coverage) {
   return 1;
 }
 
+/* ------------------------------------------------------- the arms in front */
+
+/**
+ * The narrowest gap that is daylight between an arm and the body: never under
+ * 12 units on either figure. A gap in the hand itself, between her thumb and
+ * her fingers, is 6 at most.
+ */
+const DAYLIGHT_MIN = 8;
+/** The narrowest run of figure past the arm that is the body: her trunk or thigh, never under 50. A piece of hand is 6 at most. */
+const BODY_RUN = 12;
+/** How far an arm's outer edge may step in from one row to the next before it is the thigh, past the fingertips. */
+const ARM_STEP = 10;
+
+/**
+ * Do the zones drawn back over the clothes hold all of the arm, and only arm?
+ *
+ * A forearm and a hand hang in front of whatever is worn, so the stage paints
+ * the photograph back over the clothes inside `overlay` — and only there. A row
+ * of arm those zones leave out is drawn over by whatever hangs behind it: they
+ * used to stop at the wrist and start again at the hand, eight rows apart, and
+ * a robe or a wide skirt behind her wrist cut a step into it. And a zone that
+ * reaches past the daylight beside the arm paints her body over the clothes.
+ *
+ * Read from the photograph, each side on its own, from where the overlay
+ * begins down to the fingertips: the arm is the first run of figure in from
+ * the edge of the row, up to the daylight between it and the body.
+ */
+function checkArmsInFront(bodyKey, body, cover) {
+  const solid = (v) => v >= 0.5;
+  const overlay = new Float32Array(W * H);
+  for (const zone of body.overlay) {
+    const m = zoneMask(body, zone);
+    for (let i = 0; i < overlay.length; i++) overlay[i] = Math.max(overlay[i], m[i]);
+  }
+  let top = 0;
+  while (top < H && !overlay.slice(top * W, (top + 1) * W).some((v) => v > 0)) top++;
+  let out = 0;
+  let over = 0;
+  const outRows = [];
+  const overRows = [];
+  let last = 0;
+  for (const side of [-1, 1]) {
+    const at = (k) => (side < 0 ? k : W - 1 - k);
+    let edge = null;
+    for (let y = top; y < H; y++) {
+      const row = (k) => cover[y * W + at(k)];
+      let k = 0;
+      while (k < W / 2 && !solid(row(k))) k++;
+      if (k >= W / 2) break;
+      /* past the fingertips the first figure in from the edge is the thigh */
+      if (edge !== null && k - edge > ARM_STEP) break;
+      edge = k;
+      last = Math.max(last, y);
+      /* the row's runs of figure, in from the edge */
+      const runs = [];
+      for (let j = k; j < W / 2; j++) {
+        if (!solid(row(j))) continue;
+        let e = j;
+        while (e + 1 < W / 2 && solid(row(e + 1))) e++;
+        runs.push([j, e]);
+        j = e;
+      }
+      /* the arm: the first, and every one after it closer than daylight or too narrow to be the body — her thumb */
+      let n = 1;
+      while (n < runs.length && (runs[n][0] - runs[n - 1][1] <= DAYLIGHT_MIN || runs[n][1] - runs[n][0] + 1 < BODY_RUN)) n++;
+      const count = (from, to, inside) => {
+        let c = 0;
+        for (const [a, e] of runs.slice(from, to)) for (let j = a; j <= e; j++) if ((overlay[y * W + at(j)] >= 0.5) === inside) c++;
+        return c;
+      };
+      const o = count(0, n, false);
+      /* and nothing of the body past the daylight */
+      const b = count(n, runs.length, true);
+      out += o;
+      over += b;
+      if (o) outRows.push(y);
+      if (b) overRows.push(y);
+    }
+  }
+  const ok = out === 0 && over === 0;
+  const span = (ys) => (ys.length ? ` (y ${Math.min(...ys)}–${Math.max(...ys)})` : "");
+  console.log(
+    `${ok ? "ok  " : "HOLE"} ${bodyKey.padEnd(6)} arms in front, y ${top}–${last}: ` +
+      `${out} px of arm left out of the zones drawn over the clothes${span(outRows)}, ` +
+      `${over} px of the body taken into them${span(overRows)}`
+  );
+  return ok ? 0 : 1;
+}
+
 /* ------------------------------------------------------------- the arms */
 
 /** How far an edge of an arm's cloth may move between rows two units apart before it is a step. */
@@ -3273,6 +3362,7 @@ for (const bodyKey of Object.keys(bodies)) {
   const rows = edgeRows(cover);
   const profile = profileFor(bodyKey);
   failures += checkProfile(bodyKey, body, profile);
+  failures += checkArmsInFront(bodyKey, body, cover);
   failures += checkAnchors(bodyKey, cover, rows, body.anchors);
   failures += checkSeams(bodyKey, rows, body);
   failures += checkWardrobe(bodyKey);

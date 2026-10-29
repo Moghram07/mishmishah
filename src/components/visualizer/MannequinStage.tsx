@@ -358,6 +358,23 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
               ))}
             </mask>
           )}
+          {/*
+            The arm itself, from the photograph: the zones it hangs in front
+            through hold all of it, and so reach a little past it, where a
+            sleeve's shadow on it has nothing to fall on.
+          */}
+          {inFront.length > 0 && armCovers.length > 0 && (
+            <mask
+              id={uid("arm")}
+              maskUnits="userSpaceOnUse"
+              x="0"
+              y="0"
+              width={CANVAS[0]}
+              height={CANVAS[1]}
+            >
+              <image href={body.view.front} x="0" y="0" width={CANVAS[0]} height={CANVAS[1]} filter={`url(#${uid("opaque")})`} />
+            </mask>
+          )}
 
           {/* inside a jacket: hidden from its shoulders to its hem, but within it */}
           {holders.map(({ id, encloses }) => (
@@ -523,17 +540,19 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
         */}
         {inFront.length > 0 && armCovers.length > 0 && (
           <g mask={`url(#${uid("front")})`} style={{ mixBlendMode: "multiply" }}>
-            <g
-              filter={`url(#${uid("contact")})`}
-              fill="none"
-              stroke="#5c4a3e"
-              strokeOpacity={0.5}
-              strokeWidth={3.2}
-              strokeLinejoin="round"
-            >
-              {armCovers.map((d, i) => (
-                <path key={i} d={d} />
-              ))}
+            <g mask={`url(#${uid("arm")})`}>
+              <g
+                filter={`url(#${uid("contact")})`}
+                fill="none"
+                stroke="#5c4a3e"
+                strokeOpacity={0.5}
+                strokeWidth={3.2}
+                strokeLinejoin="round"
+              >
+                {armCovers.map((d, i) => (
+                  <path key={i} d={d} />
+                ))}
+              </g>
             </g>
           </g>
         )}

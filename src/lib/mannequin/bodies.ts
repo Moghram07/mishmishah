@@ -206,8 +206,17 @@ const FEMALE_ZONES: Record<BodyZone, string> = {
   // The inner edge follows where the arm actually stops being visible — the
   // torso takes over in front of it — because these two are also drawn back
   // over the garments, and must bring only arm with them.
-  forearm: limb(332, [182, 224], 486, [174, 208]),
-  hand: limb(494, [168, 206], 578, [176, 202]),
+  //
+  // And all of the arm. Between them they hold every pixel of it from the
+  // elbow to the fingertips, read from the alpha: the forearm runs on past the
+  // wrist into the top of the hand, and each edge stands clear of the arm on
+  // both sides. A row they leave out is drawn over by whatever hangs behind the
+  // arm — they used to stop at 486 and start again at 494, and a robe or a
+  // wide skirt behind her wrist cut a step into it. Her right arm hangs a
+  // little further out than her left, and the zones are mirrored, so they are
+  // cut to the wider of the two.
+  forearm: limb(332, [176, 226], 496, [168, 207]),
+  hand: limb(490, [162, 207], 578, [170, 203]),
   thigh: box(196, 508, 404, 692),
   knee: box(216, 668, 384, 726),
   calf: box(206, 718, 394, 890),
@@ -264,10 +273,14 @@ const MALE_ZONES: Record<BodyZone, string> = {
   upperArm: limb(230, [166, 244], 318, [170, 222]),
   // Narrower than hers, even though his arm is thicker. The inner edge tracks
   // where the *torso* takes over in front of the arm, not where the arm ends,
-  // and his torso is wider. Widen these and the overlay repaints a stripe of
-  // bare chest over the shirt.
-  forearm: limb(332, [166, 220], 486, [162, 196]),
-  hand: limb(494, [158, 194], 578, [174, 196]),
+  // and his torso is wider. Widen these past the daylight between them and
+  // the overlay repaints a stripe of bare chest over the shirt.
+  //
+  // Within it, every pixel of his arm from the elbow to the fingertips, as
+  // hers: his right forearm hangs a unit or two nearer his body than his
+  // left, and his hands further out than the old zones reached.
+  forearm: limb(332, [162, 223], 496, [158, 199]),
+  hand: limb(490, [154, 197], 578, [166, 198]),
   thigh: box(194, 508, 406, 692),
   knee: box(212, 668, 388, 726),
   calf: box(202, 718, 398, 890),

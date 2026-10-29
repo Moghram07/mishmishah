@@ -221,7 +221,7 @@ export function hemRow(body: BodyType, c: SleeveChoice): number | null {
 /** The lowest row of each arm zone — see the limbs in `mannequin/bodies.ts`. */
 export const ARM_ZONE_FLOOR: Partial<Record<BodyZone, number>> = {
   upperArm: 318,
-  forearm: 486,
+  forearm: 496,
 };
 
 /**
