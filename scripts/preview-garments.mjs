@@ -2939,7 +2939,61 @@ function jacketOf(outer, body) {
     const y = Math.floor(i / W);
     return y < top || y >= bottom || inside[i] >= 0.5 || windows[i] >= 0.5;
   };
-  return { enc, cloth, inside, windows, top, bottom, inOpening, shows };
+  return { enc, cloth, inside, windows, top, bottom, inOpening, shows, gap };
+}
+
+/**
+ * The neck where it is narrowest, and its middle: the throat. Not the canvas's
+ * centre line — the photographs are registered on the trunk, and her head sits
+ * three units left of it. Below, the neck flares into the shoulders; this is
+ * the column it rises in, and what lies outside it is beside the neck.
+ */
+function neckColumn(profile) {
+  let best = null;
+  for (let y = 0; y < H; y++) {
+    const l = edgeAt(profile.neckLeft, y);
+    const r = edgeAt(profile.neckRight, y);
+    if (l === null || r === null) continue;
+    if (!best || r - l < best.right - best.left) best = { left: l, right: r };
+  }
+  return { ...best, throat: (best.left + best.right) / 2, foot: edgeEnd(profile.neckLeft) };
+}
+
+/**
+ * Does what is worn under a jacket or an abaya show beside the neck as much
+ * on one side as on the other?
+ *
+ * Its neckline is cut to the throat, and whatever is worn under it shows in
+ * that opening: so the opening, beside the neck, has to reach as far on the
+ * left as on the right, measured from the throat. It is the opening that is
+ * measured, not what fills it: a one-shoulder or a wrap under it fills its
+ * two sides differently, and may. A front cut by mirroring the other about the
+ * canvas's centre line instead stood six units off her neck on one side, and
+ * the dress under it showed there.
+ *
+ * Read in each row from its neck points to the foot of the neck: the run of it
+ * that would show what is under it through the throat, and how far that
+ * reaches past the neck's column on each side.
+ */
+function besideNeck(jacket, profile) {
+  const neck = neckColumn(profile);
+  const x = Math.round(neck.throat);
+  let left = 0;
+  let right = 0;
+  let skew = 0;
+  let at = null;
+  for (let y = jacket.top; y <= Math.min(neck.foot, jacket.bottom - 1); y++) {
+    const r = runAt(jacket.gap, y, x, (v) => v > 0.5);
+    if (r === null) continue;
+    const [l, h] = [Math.max(0, neck.left - r[0]), Math.max(0, r[1] + 1 - neck.right)];
+    left = Math.max(left, l);
+    right = Math.max(right, h);
+    if (Math.abs(l - h) > skew) {
+      skew = Math.abs(l - h);
+      at = y;
+    }
+  }
+  return { left, right, skew, at, rows: [jacket.top, Math.min(neck.foot, jacket.bottom - 1)] };
 }
 
 function checkLayering(bodyKey, body, cover, wardrobe) {
@@ -2952,6 +3006,17 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
     if (!jacket) continue;
     const { enc, cloth: outerCloth, inside, windows, top, bottom, inOpening } = jacket;
     const shoulderTo = top + 40;
+
+    /* beside the neck, where what is worn under it shows: as far on one side as on the other, from the throat */
+    const neck = besideNeck(jacket, profile);
+    const lopsided = neck.skew > MAX_LOPSIDED;
+    if (lopsided) failed++;
+    console.log(
+      `${lopsided ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${outer.id} beside the neck`.padEnd(38)} ` +
+        `y ${neck.rows[0]}–${neck.rows[1]}: its opening reaches ${neck.left.toFixed(1)} units past the neck on the left ` +
+        `and ${neck.right.toFixed(1)} on the right, from the throat; sides within ${neck.skew.toFixed(1)}` +
+        (lopsided ? ` — at y ${neck.at}, its neckline is not cut to the throat` : "")
+    );
 
     for (const inner of wardrobe) {
       if (inner.layer === "outer" || conflicts(inner, outer)) continue;
