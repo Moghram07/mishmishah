@@ -18,7 +18,7 @@ import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
 import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, cloth, seamAt, skirtFor } from "./dressCut";
-import { fallOf, hangs, sameSkirt, skirtKey } from "@/lib/garments/skirts";
+import { besideArms, fallOf, sameSkirt, skirtKey } from "@/lib/garments/skirts";
 import type { FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { litButtons } from "../buttons";
@@ -81,7 +81,7 @@ const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] =
   */
   const fall = fallOf(skirt.shape);
   if (fall.fitted) {
-    const at = Math.max(fall.from ?? draft("female").hipY, inside?.y ?? 0);
+    const at = Math.max(sk.leaves ?? fall.from ?? draft("female").hipY, inside?.y ?? 0);
     const [l, r] = rowSpan(sk.path, at) ?? [sk.hemLeft[0], 600 - sk.hemLeft[0]];
     const y = seamAt(skirt.waist);
     const darts = (skirt.waist ?? "natural") === "natural" ? [256, 276].map((x) => dart([x, y], [x + 1, y + (x < 266 ? 46 : 38)], 2)) : [];
@@ -829,7 +829,7 @@ export const dressFront: GarmentArt = {
       ? (choice.neckline as NecklineId)
       : DEFAULT_CUT;
     const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
-    const under = hangs(skirt) ? bodiceFor(id, sleeve, skirt.waist).armCover : [];
+    const under = besideArms(skirt) ? bodiceFor(id, sleeve, skirt.waist).armCover : [];
     const key =
       `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}` +
       (under.length ? `|${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}` : "");

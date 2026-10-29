@@ -1873,6 +1873,13 @@ export function column(
      * comes closer to her than its ease.
      */
     taper?: number;
+    /**
+     * An A-line's: straight from where it leaves her, out by `slope` per unit
+     * down. It leaves her at `from` — how far below her own waist, a dress's
+     * seam — or lower, where she widens faster than the line would below it:
+     * her high hip. Above there it is close to her.
+     */
+    straight?: { slope: number; from: number };
     dip?: number;
     /** A waistband this deep, cut from the column's own edge. */
     band?: number;
@@ -1900,6 +1907,8 @@ export function column(
   waistY: number;
   band: string;
   bandStitch: string;
+  /** Where a straight shape leaves her — see `straight` — for its folds to be released at. */
+  leaves?: number;
 } {
   const d = draft(body);
   const { toY, ease, flare = 0, dip = 14 } = spec;
@@ -1968,7 +1977,28 @@ export function column(
     taper === undefined
       ? [...upper, ...lower]
       : [...upper, ...lower].map(([x, y]) => (y <= hipY ? [x, y] : [Math.min(x, hipX + taper * (y - hipY)), y]) as Pt);
-  const side = tucked(shaped, spec.inside);
+  /*
+    An A-line's side: close to her down to where it leaves her, then
+    straight. Where it leaves her is the point the line of its slope touches
+    from outside, below its start — the one where her side, plus its ease,
+    is furthest out for its height — so the line clears every row below.
+  */
+  const { straight } = spec;
+  let leaves: number | undefined;
+  let lined = shaped;
+  if (straight) {
+    const start = d.waistY + straight.from;
+    let k = -1;
+    shaped.forEach(([x, y], i) => {
+      if (y >= start - 0.01 && (k < 0 || x + straight.slope * y < shaped[k][0] + straight.slope * shaped[k][1])) k = i;
+    });
+    if (k >= 0) {
+      const [kx, ky] = shaped[k];
+      leaves = ky;
+      lined = shaped.map(([x, y], i) => (i <= k ? [x, y] : [kx - straight.slope * (y - ky), y]) as Pt);
+    }
+  }
+  const side = tucked(lined, spec.inside);
   const hemLeft = side[side.length - 1];
   const waistLeft = side[0];
   const hemRight = mirror([hemLeft])[0];
@@ -1991,7 +2021,7 @@ export function column(
   const { band, bandStitch } = spec.band
     ? waistband(side, fromY + spec.band)
     : { band: "", bandStitch: "" };
-  return { path, hemLeft, waistLeft, waistY: fromY, band, bandStitch };
+  return { path, hemLeft, waistLeft, waistY: fromY, band, bandStitch, ...(leaves !== undefined ? { leaves } : {}) };
 }
 
 /* --------------------------------------------------------- the neck opening */

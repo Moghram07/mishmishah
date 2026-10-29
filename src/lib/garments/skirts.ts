@@ -30,6 +30,10 @@ export interface SkirtFinish {
  * How each shape is cut — see `column`. Each is one line down her, however
  * long: a knee skirt is the maxi cut shorter, never a steeper skirt.
  *
+ * - **A-line** is straight from where it leaves her, 22 units out in every
+ *   100 down: from its seam, or, where she widens faster than that below it,
+ *   from her high hip — at her own waist, about y 410. It reaches her arms,
+ *   so a sleeve is drawn in front of it (`wide`).
  * - **Flared** is fitted to the hip and flares from there, 80 units out by
  *   y 760: the dress's own flare.
  * - **Pencil** is fitted to the hip and hangs from it on a line leaning in by
@@ -52,18 +56,24 @@ interface ShapeCut {
   flareFrom?: number;
   curve?: number;
   taper?: number;
+  straight?: number;
   dip?: number;
   fitted?: boolean;
+  wide?: boolean;
   lengths?: readonly SkirtLengthId[];
 }
 const SHAPES: Record<SkirtShapeId, ShapeCut> = {
+  aline: { flare: 0, flareTo: 760, straight: 0.22, fitted: true, wide: true },
   flared: { flare: 80, flareTo: 760 },
   pencil: { flare: 0, flareTo: 760, taper: 0.04, dip: 0.5, fitted: true },
   mermaid: { flare: 75, flareFrom: 650, flareTo: 890, curve: 1.3, dip: 0.75, fitted: true, lengths: ["midi", "maxi"] },
 };
 
-/** The shapes, fullest first — the order the picker offers them in. */
-export const SKIRT_SHAPES: readonly SkirtShapeId[] = ["flared", "pencil", "mermaid"];
+/** The shapes, in the order the picker offers them. */
+export const SKIRT_SHAPES: readonly SkirtShapeId[] = ["aline", "flared", "pencil", "mermaid"];
+
+/** A straight shape's slope — an A-line's — or nothing: see `ShapeCut`. */
+export const straightOf = (shape: SkirtShapeId): number | undefined => SHAPES[shape].straight;
 
 /** Of the lengths a garment offers, those a shape is cut at — see `ShapeCut`. */
 export const shapeLengths = (shape: SkirtShapeId, offered: readonly SkirtLengthId[]): SkirtLengthId[] =>
@@ -117,6 +127,13 @@ export const WAISTS: readonly WaistId[] = ["empire", "natural", "dropped"];
  */
 export const hangs = (skirt: SkirtChoice): boolean => WAIST_DROP[skirt.waist ?? "natural"] < 0;
 
+/**
+ * Whether a skirt falls beside her arms — hung from above her waist, or cut
+ * wide enough to reach them, an A-line — so that a sleeve hangs in front of
+ * it rather than under it.
+ */
+export const besideArms = (skirt: SkirtChoice): boolean => hangs(skirt) || Boolean(SHAPES[skirt.shape].wide);
+
 /** The lengths, shortest first — the order the picker offers them in. */
 export const SKIRT_LENGTHS: readonly SkirtLengthId[] = ["knee", "midi", "maxi"];
 
@@ -163,7 +180,7 @@ export const sameSkirt = (a: SkirtChoice, b: SkirtChoice): boolean => skirtKey(a
  * from a seam above her waist it hangs — see `column`'s `hang`.
  */
 export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck): CutSkirt {
-  const { flare, flareTo, flareFrom, curve, taper, dip = 1 } = SHAPES[skirt.shape];
+  const { flare, flareTo, flareFrom, curve, taper, straight, dip = 1 } = SHAPES[skirt.shape];
   const drop = WAIST_DROP[skirt.waist ?? "natural"];
   return column("female", {
     rise: finish.rise + drop,
@@ -175,10 +192,12 @@ export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck)
     ...(flareFrom !== undefined ? { flareFrom } : {}),
     ...(curve !== undefined ? { curve } : {}),
     ...(taper !== undefined ? { taper } : {}),
+    /* straight from its seam, a dress's — never from under its bodice — or from a skirt's own top edge */
+    ...(straight !== undefined ? { straight: { slope: straight, from: drop + Math.max(0, finish.rise) } } : {}),
     dip: finish.dip * dip,
     ...(finish.band ? { band: finish.band } : {}),
     /* a hem waves where folds reach it, and one that does not flare has none */
-    ...(finish.wave && flare > 0 ? { wave: finish.wave } : {}),
+    ...(finish.wave && (flare > 0 || straight !== undefined) ? { wave: finish.wave } : {}),
     ...(inside ? { inside } : {}),
   });
 }

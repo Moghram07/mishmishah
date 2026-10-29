@@ -120,7 +120,7 @@ export const garments: Garment[] = [
     fabricRegions: ["body"],
     incompatibleWith: ["female-trousers"],
     acceptsCollar: false,
-    skirt: { shapes: ["flared", "pencil", "mermaid"], lengths: ["knee", "midi", "maxi"], default: { shape: "flared", length: "midi" } },
+    skirt: { shapes: ["aline", "flared", "pencil", "mermaid"], lengths: ["knee", "midi", "maxi"], default: { shape: "flared", length: "midi" } },
     asset: { front: "female-skirt-front" },
   },
   {
@@ -143,7 +143,7 @@ export const garments: Garment[] = [
     defaultNeckline: "female-round-neckline",
     sleeves: { types: FEMALE_SLEEVES, default: { type: "set-in", length: "short" }, cuffs: WOVEN_CUFFS },
     skirt: {
-      shapes: ["flared", "pencil", "mermaid"],
+      shapes: ["aline", "flared", "pencil", "mermaid"],
       lengths: ["knee", "midi", "maxi"],
       waists: ["empire", "natural", "dropped"],
       default: { shape: "flared", length: "midi", waist: "natural" },

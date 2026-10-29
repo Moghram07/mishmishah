@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { garmentById } from "@/lib/data/garments";
 import { effectiveCoverage, skirtOf } from "./outfit";
-import { HEM_AT, SKIRT_LENGTHS, SKIRT_SHAPES, shapeLengths } from "./skirts";
+import { HEM_AT, SKIRT_LENGTHS, SKIRT_SHAPES, besideArms, shapeLengths } from "./skirts";
 import { skirtLengthsFor, skirtShapes, skirtShapesFor } from "@/lib/data/skirts";
 import { DEFAULT_SKIRT as DRESS_DEFAULT, WAIST_Y, details, seamAt, skirtFor as dressSkirt } from "./art/female/dressCut";
 import { DEFAULT_SKIRT as SKIRT_DEFAULT, cloth, skirtFor } from "./art/female/skirtCut";
@@ -106,11 +106,33 @@ describe("skirts", () => {
     expect(at(885) - at(650)).toBeGreaterThan(50);
   });
 
-  it("offers the shapes by name, fullest first, on the dress and the skirt alike", () => {
-    for (const id of ["female-dress", "female-skirt"]) {
-      expect(skirtShapesFor(garmentById(id)!).map((s) => s.id), id).toEqual(["flared", "pencil", "mermaid"]);
+  it("cuts an A-line straight from where it leaves her, never closer than its ease", () => {
+    const d = draft("female");
+    const her = (y: number) => (y < d.crotchY ? d.sideAt(y, 0) : d.legOutAt(y, 0));
+    for (const waist of ["empire", "natural", "dropped"] as const) {
+      const sk = dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "aline", length: "maxi", waist });
+      const from = sk.leaves!;
+      /* from its seam where she narrows below it; at her own waist, from her high hip, where she widens faster than the line */
+      if (waist === "natural") expect(from, waist).toBeGreaterThan(seamAt(waist) + 30);
+      else expect(Math.abs(from - seamAt(waist)), waist).toBeLessThan(13);
+      /* one straight line from there to the hem, 22 out in every 100 down */
+      for (let y = from + 20; y < 880; y += 40) {
+        const slope = (leftAt(sk.path, from + 10) - leftAt(sk.path, y)) / (y - from - 10);
+        expect(slope, `${waist} y ${y}`).toBeCloseTo(0.22, 2);
+      }
+      for (let y = from; y < 885; y += 10) expect(her(y) - leftAt(sk.path, y), `${waist} y ${y}`).toBeGreaterThan(3.5);
     }
-    expect(skirtShapes.map((s) => s.name.ar)).toEqual(["كلوش", "قلم", "سمكة"]);
+    /* fuller than flared at the hem, and beside her arms: a sleeve hangs in front of it */
+    expect(leftAt(dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "aline" }).path, 755)).toBeLessThan(leftAt(dressSkirt(undefined, DRESS_DEFAULT).path, 755) - 10);
+    expect(besideArms({ shape: "aline", length: "midi" })).toBe(true);
+    expect(besideArms({ shape: "flared", length: "midi" })).toBe(false);
+  });
+
+  it("offers the shapes by name, in the picker's order, on the dress and the skirt alike", () => {
+    for (const id of ["female-dress", "female-skirt"]) {
+      expect(skirtShapesFor(garmentById(id)!).map((s) => s.id), id).toEqual(["aline", "flared", "pencil", "mermaid"]);
+    }
+    expect(skirtShapes.map((s) => s.name.ar)).toEqual(["A لاين", "كلوش", "قلم", "سمكة"]);
   });
 
   it("hides more of the leg the longer it is", () => {

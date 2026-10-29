@@ -1632,6 +1632,99 @@ describe("skirt shapes, light and dark", () => {
 });
 
 /**
+ * The A-line, on a light page and a dark one, where it meets her arms: at
+ * every waist in long sleeves of three kinds — whole in a print, and the
+ * wrist close up in a plain cloth, where the sleeve hangs in front of the
+ * skirt — and under her jacket, the dress at every waist and the skirt at
+ * every length, with the jacket's cuff close up, where a skirt this wide
+ * shows beside it.
+ */
+describe("the A-line, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  const SLEEVES: SleeveChoice[] = [
+    { type: "set-in", length: "long" },
+    { type: "bell", length: "long" },
+    { type: "dolman", length: "long" },
+  ];
+  type Tile = { caption: string; ids: string[]; skirted: string; skirt: Partial<SkirtChoiceLike>; sleeve: SleeveChoice; cloth: string; zoom: number; focus: [number, number] };
+  type SkirtChoiceLike = { shape: SkirtShapeId; length: SkirtLengthId; waist: WaistId };
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles7-aline-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const d = draft("female");
+    /* the left wrist, and a little in from it, where the sleeve's end meets the skirt */
+    const wrist: [number, number] = [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2 + 10, d.wristY];
+    const stage = (tile: Tile) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of tile.ids) {
+        const g = garmentById(gid)!;
+        /* the skirted garment in the cloth being shown, anything over or under it in others */
+        const cloth = gid === tile.skirted ? f(tile.cloth) : gid.endsWith("jacket") ? f("fb-indigo-plaid") : f("fb-rose-silk");
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      worn = setSleeve(worn, tile.ids[0], tile.sleeve);
+      worn = worn.map((w) => {
+        const skirt = w.garmentId === tile.skirted ? skirtOf(w) : undefined;
+        return skirt ? { ...w, skirt: { ...skirt, ...tile.skirt } } : w;
+      });
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={tile.zoom} focus={tile.focus} />;
+    };
+    const dress = "female-dress";
+    const rows: Tile[][] = [
+      /* every waist, in three long sleeves: whole in a print, the wrist close up in a plain cloth */
+      ...(["empire", "natural", "dropped"] as const).map((waist) =>
+        SLEEVES.flatMap((sleeve): Tile[] => [
+          { caption: `${waist} waist, ${sleeve.type} long, print`, ids: [dress], skirted: dress, skirt: { shape: "aline", waist }, sleeve, cloth: "fb-midnight-floral", zoom: 1, focus: [300, 500] },
+          { caption: `${waist} waist, ${sleeve.type} long, plain, the wrist 2.4×`, ids: [dress], skirted: dress, skirt: { shape: "aline", waist }, sleeve, cloth: "fb-apricot-linen", zoom: 2.4, focus: wrist },
+        ])
+      ),
+      /* under her jacket: the dress at every waist, whole and the cuff close up */
+      (["empire", "natural", "dropped"] as const).flatMap((waist): Tile[] => [
+        { caption: `under the jacket, ${waist} waist, plain`, ids: [dress, "female-jacket"], skirted: dress, skirt: { shape: "aline", waist }, sleeve: { type: "set-in", length: "long" }, cloth: "fb-apricot-linen", zoom: 1, focus: [300, 500] },
+        { caption: `under the jacket, ${waist} waist, the cuff 2.4×`, ids: [dress, "female-jacket"], skirted: dress, skirt: { shape: "aline", waist }, sleeve: { type: "set-in", length: "long" }, cloth: "fb-apricot-linen", zoom: 2.4, focus: wrist },
+      ]),
+      /* and the skirt, under a blouse and the jacket, at every length, with the cuff close up */
+      [
+        ...(["knee", "midi", "maxi"] as const).map((length): Tile => ({
+          caption: `skirt under the jacket, ${length}, print`, ids: ["female-blouse", "female-skirt", "female-jacket"], skirted: "female-skirt", skirt: { shape: "aline", length }, sleeve: { type: "set-in", length: "long" }, cloth: "fb-midnight-floral", zoom: 1, focus: [300, 500],
+        })),
+        { caption: "skirt under the jacket, midi, the cuff 2.4×", ids: ["female-blouse", "female-skirt", "female-jacket"], skirted: "female-skirt", skirt: { shape: "aline", length: "midi" }, sleeve: { type: "set-in", length: "long" }, cloth: "fb-apricot-linen", zoom: 2.4, focus: wrist },
+      ],
+    ];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles7-aline-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});
+
+/**
  * Round 4's details, on a light page and a dark one, in a plain cloth and a
  * print: both jackets over the top each is worn over — whole, and the end of
  * a sleeve close up, where its buttons are and the cuff under it shows — and

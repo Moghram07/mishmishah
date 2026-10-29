@@ -64,7 +64,7 @@ const FIT_KIT = await import(src("src/lib/garments/fit.ts"));
 */
 const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
-const { HEM_AT, WAIST_DROP, hangs, shapeLengths, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
+const { HEM_AT, WAIST_DROP, besideArms, hangs, shapeLengths, skirtCoverage, straightOf } = await import(src("src/lib/garments/skirts.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES } = await import(
@@ -886,6 +886,44 @@ function hungLine(edge, from, to, out) {
   };
 }
 
+/**
+ * The line a straight skirt falls on, down one side of her — an A-line's: of
+ * its slope, touching her from outside at or below `from`, so it clears every
+ * row below. `edge(y)` is her edge on that side, `out` the way out from it:
+ * -1 on the left. The row it touches at, and the line; above that row the
+ * skirt is close to her. Re-derived here from the photograph; `straight` in
+ * `garments/fit.ts` cuts the skirt to the same line.
+ */
+function straightLine(edge, from, to, slope, out) {
+  let best = null;
+  for (let y = Math.ceil(from); y <= to; y++) {
+    const x = edge(y);
+    if (x === null) continue;
+    const c = -out * x + slope * y;
+    if (!best || c < best.c) best = { c, y };
+  }
+  return best && { at: best.y, line: (y) => -out * (best.c - slope * y) };
+}
+
+/**
+ * The line a skirt falls on rather than lying on her, down one side, at a
+ * row — or `null` where it is close to her: hung from a seam above her waist,
+ * the string from the seam to the hip (see `hungLine`); cut straight, an
+ * A-line's line from where it leaves her (see `straightLine`); both,
+ * whichever is further out.
+ */
+function fallLine(edge, falls, profile, out) {
+  const hung = falls.hung ? hungLine(edge, falls.from, profile.hipY, out) : null;
+  const straight = falls.slope !== undefined ? straightLine(edge, falls.from, profile.hipY + 60, falls.slope, out) : null;
+  return (y) => {
+    const xs = [];
+    if (hung && y >= falls.from) xs.push(hung(y));
+    if (straight && y >= straight.at) xs.push(straight.line(y));
+    if (xs.length === 0) return null;
+    return out < 0 ? Math.min(...xs) : Math.max(...xs);
+  };
+}
+
 /** A run along one row, grown out from `x`. */
 function runAt(grid, y, x, on) {
   if (!on(grid[y * W + x])) return null;
@@ -902,16 +940,17 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = nu
 
   /*
     A skirt hung from a seam above her waist — an empire's, under the bust —
-    falls past her waist from the seam to the hip. Below the seam it is all
-    the cloth on her trunk, so it is read alone: a sleeve hanging over it is
-    not the skirt standing off. And it is read from the line it falls on
-    rather than from her — see `hungLine`: on that line is hanging, further
-    off is not.
+    falls past her waist from the seam to the hip; an A-line falls straight
+    from where it leaves her. Below its seam it is all the cloth on her
+    trunk, so it is read alone: a sleeve hanging over it is not the skirt
+    standing off. And where it falls clear of her it is read from the line
+    it falls on rather than from her — see `fallLine`: on that line is
+    hanging, further off is not.
   */
   const trunkEdge = (k) => (y) => runAt(cover, y, W / 2, solid)?.[k] ?? null;
   const lines = hung && {
-    left: hungLine(trunkEdge(0), hung.from, profile.hipY, -1),
-    right: hungLine(trunkEdge(1), hung.from, profile.hipY, 1),
+    left: fallLine(trunkEdge(0), hung, profile, -1),
+    right: fallLine(trunkEdge(1), hung, profile, 1),
   };
   const worn = hung ? hung.cloth : cloth;
 
@@ -926,10 +965,8 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = nu
     const l = b && runAt(worn, y, b[0], solid);
     const r = b && runAt(worn, y, b[1], solid);
     /* how far the line it hangs on passes clear of her, each side */
-    const [al, ar] =
-      lines && b && y >= hung.from
-        ? [Math.round(Math.max(0, b[0] - lines.left(y))), Math.round(Math.max(0, lines.right(y) - b[1]))]
-        : [0, 0];
+    const [ll, lr] = lines && b ? [lines.left(y), lines.right(y)] : [null, null];
+    const [al, ar] = [ll === null ? 0 : Math.round(Math.max(0, b[0] - ll)), lr === null ? 0 : Math.round(Math.max(0, lr - b[1]))];
     if (l && r) reads.push([name, y, b[0] - l[0] - al, r[1] - b[1] - ar]);
   }
 
@@ -950,7 +987,8 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = nu
   const problems = [];
   let far = 0;
   let skew = 0;
-  const from = hung ? "the line it hangs on at " : "";
+  const onto = hung ? (hung.slope !== undefined ? "the line it falls on" : "the line it hangs on") : null;
+  const from = onto ? `${onto} at ` : "";
   for (const [name, y, gl, gr] of reads) {
     far = Math.max(far, gl, gr);
     skew = Math.max(skew, Math.abs(gl - gr));
@@ -970,7 +1008,7 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = nu
   const ok = problems.length === 0;
   console.log(
     `${ok ? "ok  " : "HOLE"} ${bodyKey.padEnd(6)} ${label.padEnd(21)} ` +
-      `stands ${far} off ${hung ? "the line it hangs on" : "the body"} at most, sides within ${skew}`
+      `stands ${far} off ${onto ?? "the body"} at most, sides within ${skew}`
   );
   for (const problem of problems) {
     console.log(`     ${bodyKey.padEnd(6)} fit       ${label} ${problem}`);
@@ -1149,7 +1187,7 @@ function checkArmGap(bodyKey, id, paint, profile, coverage, hung = null) {
     hangs over the skirt there, drawn in front of it as a bare forearm is, and
     is asked nothing.
   */
-  const line = hung && hungLine((y) => edgeAt(profile.torso, y), hung.from, profile.hipY, -1);
+  const line = hung && fallLine((y) => edgeAt(profile.torso, y), hung, profile, -1);
 
   for (let y = profile.armpitY + GAP_FROM; y <= to; y += 6) {
     const inner = edgeAt(profile.armInner, y);
@@ -1165,11 +1203,11 @@ function checkArmGap(bodyKey, id, paint, profile, coverage, hung = null) {
       asking the wrong question of the wrong piece of cloth.
     */
     if (paint[y * W + Math.round(outer)] < 0.5) continue;
-    const beside = line && y >= hung.from;
-    if (beside && hung.swings) continue;
+    const lx = line ? line(y) : null;
+    if (lx !== null && hung.swings) continue;
 
     // The body's own daylight on this row. Too narrow to matter, skip it.
-    const daylight = (beside ? Math.min(trunk, line(y)) : trunk) - inner;
+    const daylight = (lx !== null ? Math.min(trunk, lx) : trunk) - inner;
     if (daylight < MIN_DAYLIGHT) continue;
     const want = Math.max(2, daylight * MIN_SHARE);
     rows++;
@@ -2820,6 +2858,12 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
             .flatMap((shape) =>
               shapeLengths(shape, inner.skirt.lengths).map((length) => ({ cut: cuts[0] ?? null, sleeve: null, skirt: { ...(base ?? inner.skirt.default), shape, length } }))
             ),
+          /* and every sleeve on a shape wide enough to reach her arms, where a skirt may show beside a cuff */
+          ...(inner.skirt?.shapes ?? [])
+            .filter((shape) => besideArms({ shape, length: inner.skirt.default.length }))
+            .flatMap((shape) =>
+              sleeveChoicesOf(inner, bodyKey).map((sleeve) => ({ cut: cuts[0] ?? null, sleeve, skirt: { ...(base ?? inner.skirt.default), shape } }))
+            ),
         ];
       });
       let leak = 0;
@@ -2834,6 +2878,9 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
       const looseReveals = [];
       for (const { cut, sleeve, skirt } of variants) {
         const cloth = rasterize(artPaths(inner.asset.front, body, { cut, sleeve, skirt, inside: enc.hem }));
+        /* the skirt alone, as it comes out from under the hem: one wide enough shows beside the cuff, and is not the sleeve */
+        const style = CUT_MODULES[inner.asset.front]?.skirtFor && inner.skirt ? (skirt ?? inner.skirt.default) : null;
+        const skirtCloth = style ? rasterize([CUT_MODULES[inner.asset.front].skirtFor(enc.hem, style).path]) : null;
         const empty = drawn(bodyKey, `${inner.id} under ${outer.id}`, cloth);
         failed += empty;
         if (empty) continue;
@@ -2855,9 +2902,10 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
         }
         /*
           How far a long inner sleeve shows below the jacket's cuff, on the left
-          arm — read only over the arm, so a skirt beside the hand is not taken
-          for a sleeve. The loose sleeves are reported but not held to it: a
-          bell's hem dips by design.
+          arm — read only over the arm, and never off the skirt, so a skirt
+          beside the hand, or one wide enough to show in the cuff's window, is
+          not taken for a sleeve. The loose sleeves are reported but not held to
+          it: a bell's hem dips by design.
         */
         if (sleeve?.length === "long") {
           let rows = 0;
@@ -2866,7 +2914,7 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
             const reach = Math.min(W / 2 - 40, (edgeAt(profile.armInner, y) ?? W / 2) + 3);
             for (let x = 0; x < reach && !any; x++) {
               const i = y * W + x;
-              any = visible[i] > 0 && solid(windows[i]) && !solid(outerCloth[i]);
+              any = visible[i] > 0 && solid(windows[i]) && !solid(outerCloth[i]) && !(skirtCloth && solid(skirtCloth[i]));
             }
             if (any) rows++;
           }
@@ -3299,17 +3347,23 @@ for (const bodyKey of Object.keys(bodies)) {
         the arm a set-in sleeve keeps, by construction rather than by fault.
       */
       /*
-        A skirt hung from a seam above her waist — an empire's: the seam, the
-        skirt alone, and whether the sleeve swings free over it. See the
-        rules it changes, in `checkArmGap`, `checkStandOff` and
-        `checkBareShoulders`.
+        A skirt that falls clear of her — hung from a seam above her waist, an
+        empire's, or cut straight, an A-line: its seam, its slope, the skirt
+        alone, and whether the sleeve swings free over it. See the rules it
+        changes, in `checkArmGap`, `checkStandOff` and `checkBareShoulders`.
       */
+      const slope = skirt ? straightOf(skirt.shape) : undefined;
       const hung =
-        skirt && hangs(skirt)
+        skirt && (hangs(skirt) || slope !== undefined)
           ? {
-              from: profile.waistY + WAIST_DROP[skirt.waist],
+              from: profile.waistY + WAIST_DROP[skirt.waist ?? "natural"],
+              hung: hangs(skirt),
+              ...(slope !== undefined ? { slope } : {}),
               cloth: rasterize([CUT_MODULES[garment.asset.front].skirtFor(undefined, skirt).path]),
-              swings: LOOSE_SLEEVES.includes((sleeve ?? garment.sleeves?.default)?.type),
+              /* a sleeve cut to swing free, or any sleeve beside a skirt wide enough to reach it, hangs in front of the skirt */
+              swings:
+                LOOSE_SLEEVES.includes((sleeve ?? garment.sleeves?.default)?.type) ||
+                besideArms({ shape: skirt.shape, length: skirt.length }),
             }
           : null;
       if (!loose) failed += checkArmGap(bodyKey, label, cloth, profile, coverage, hung);
@@ -3371,50 +3425,119 @@ for (const bodyKey of Object.keys(bodies)) {
       }
 
       /*
-        A cut whose band is the top of its own sleeves — the off-shoulder — offers
-        those sleeves at every length, and a cuff on the long one. They hang from
-        that cut, not the one the garment arrives in, so the loop below never
-        reaches them: each is checked here, quietly unless it fails.
+        The sleeves, at this waist, on the skirt it arrives with — and again on
+        each shape wide enough to reach her arms, an A-line, where the arm
+        hangs in front of the skirt: every sleeve, and every one hung from the
+        off-shoulder's band.
       */
-      for (const cutId of wornCuts.filter((c) => c !== null && NECKLINE_SLEEVES[c] === "band")) {
-        let tried = 0;
-        let failedCombos = 0;
-        /* the cut's own fitted sleeve, and the loose ones the garment offers, each hung from the band */
-        const bandTypes = SLEEVE_KIT.BAND_CUT_TYPES.filter(
-          (t) =>
-            SLEEVE_KINDS[t].bodies.includes(bodyKey) &&
-            (SLEEVE_KINDS[t].construction === "band" || (garment.sleeves?.types ?? []).includes(t))
-        );
-        for (const type of bandTypes) {
-          const fitted = SLEEVE_KINDS[type].construction === "band";
-          for (const length of SLEEVE_KINDS[type].lengths) {
-            const cuffs = SLEEVE_KIT.cuffsOffered(garment.sleeves?.cuffs, { type, length });
-            for (const cuff of cuffs.length > 0 ? cuffs : [null]) {
+      const ownStyle = { ...(garment.skirt?.default ?? {}), ...(waist ? { waist } : {}) };
+      const sleeveStyles = [
+        [skirt, name],
+        ...(garment.skirt?.shapes ?? [])
+          .filter((shape) => besideArms({ shape, length: ownStyle.length }))
+          .map((shape) => [{ ...ownStyle, shape }, `${name} · ${shape}`]),
+      ];
+      for (const [skirt, name] of sleeveStyles) {
+        /*
+          A cut whose band is the top of its own sleeves — the off-shoulder — offers
+          those sleeves at every length, and a cuff on the long one. They hang from
+          that cut, not the one the garment arrives in, so the loop below never
+          reaches them: each is checked here, quietly unless it fails.
+        */
+        for (const cutId of wornCuts.filter((c) => c !== null && NECKLINE_SLEEVES[c] === "band")) {
+          let tried = 0;
+          let failedCombos = 0;
+          /* the cut's own fitted sleeve, and the loose ones the garment offers, each hung from the band */
+          const bandTypes = SLEEVE_KIT.BAND_CUT_TYPES.filter(
+            (t) =>
+              SLEEVE_KINDS[t].bodies.includes(bodyKey) &&
+              (SLEEVE_KINDS[t].construction === "band" || (garment.sleeves?.types ?? []).includes(t))
+          );
+          for (const type of bandTypes) {
+            const fitted = SLEEVE_KINDS[type].construction === "band";
+            for (const length of SLEEVE_KINDS[type].lengths) {
+              const cuffs = SLEEVE_KIT.cuffsOffered(garment.sleeves?.cuffs, { type, length });
+              for (const cuff of cuffs.length > 0 ? cuffs : [null]) {
+                const sleeve = cuff ? { type, length, cuff } : { type, length };
+                const label = `${name} · ${cutId} ${fitted ? "fitted" : type} ${length}${cuff ? ` ${cuff} cuff` : ""}`;
+                const lines = [];
+                const log = console.log;
+                console.log = (...a) => lines.push(a.join(" "));
+                let failed = 0;
+                try {
+                  /* a flutter falls open over the arm, here as on every cut: no daylight under it to keep */
+                  const res = checkCut(cutId, sleeve, label, type === "flutter", skirt);
+                  failed = res.failed;
+                  /*
+                    Below the underarm a sleeve parts from the body with the daylight
+                    her sleeves keep on every other cut. The cut bares the upper arm
+                    for its own band, so the arm gap is asked of the sleeve directly.
+                  */
+                  if (type !== "flutter" && length !== "short") failed += checkArmGap(bodyKey, label, res.cloth, profile, ["upperArm"], res.hung);
+                  /* every sleeve but the band alone carries on from the band */
+                  failed += checkBandArm(bodyKey, label, CUT_MODULES[garment.asset.front]?.bandArm?.(cutId, sleeve, waist ?? undefined) ?? null, profile);
+                  if (fitted && length !== "short") {
+                    const g = sleeveGrowth(artPaths(garment.asset.front, body, { cut: cutId, sleeve, skirt }), bodyKey, sleeve);
+                    if (g && g.grows > SLEEVE_GROWTH) {
+                      failed++;
+                      console.log(
+                        `HOLE ${bodyKey.padEnd(6)} ${label.padEnd(26)} sleeve widens ${g.grows.toFixed(1)} units ` +
+                          `below its band, to ${g.width.toFixed(1)} at y ${g.y} — a sleeve hangs as a tube`
+                      );
+                    }
+                  }
+                } finally {
+                  console.log = log;
+                }
+                tried++;
+                if (failed > 0) {
+                  failedCombos++;
+                  failures += failed;
+                  for (const line of lines) console.log(line);
+                }
+              }
+            }
+          }
+          console.log(
+            `${failedCombos ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${name} · ${cutId}`.padEnd(26)} ` +
+              `sleeves hung from the band: ${tried} combinations, ${failedCombos} failing`
+          );
+        }
+
+        /*
+          Every sleeve the garment offers, at every length it comes in, in the cut
+          the garment arrives in. Quiet when it passes — twenty-odd combinations a
+          garment would bury every other line — and loud, in full, when it does not.
+        */
+        if (garment.sleeves) {
+          const cutId = wornCuts[0];
+          let tried = 0;
+          let failedCombos = 0;
+          const cuffed = garment.sleeves.cuffs?.length ? garment.sleeves.cuffs : null;
+          for (const type of garment.sleeves.types) {
+            if (!SLEEVE_KINDS[type].bodies.includes(bodyKey)) continue;
+            for (const length of ["sleeveless", ...SLEEVE_KINDS[type].lengths]) {
+              /*
+                And a long sleeve once per cuff it is offered with: a cuff is its
+                own piece of cloth, and the sleeve above it ends differently.
+              */
+              const cuffs = SLEEVE_KIT.cuffsOffered(garment.sleeves.cuffs, { type, length });
+              for (const cuff of cuffs.length > 0 ? cuffs : [null]) {
               const sleeve = cuff ? { type, length, cuff } : { type, length };
-              const label = `${name} · ${cutId} ${fitted ? "fitted" : type} ${length}${cuff ? ` ${cuff} cuff` : ""}`;
+              const label = `${name} · ${type} ${length}${cuff ? ` ${cuff} cuff` : ""}`;
               const lines = [];
               const log = console.log;
               console.log = (...a) => lines.push(a.join(" "));
               let failed = 0;
               try {
-                /* a flutter falls open over the arm, here as on every cut: no daylight under it to keep */
-                const res = checkCut(cutId, sleeve, label, type === "flutter", skirt);
-                failed = res.failed;
-                /*
-                  Below the underarm a sleeve parts from the body with the daylight
-                  her sleeves keep on every other cut. The cut bares the upper arm
-                  for its own band, so the arm gap is asked of the sleeve directly.
-                */
-                if (type !== "flutter" && length !== "short") failed += checkArmGap(bodyKey, label, res.cloth, profile, ["upperArm"], res.hung);
-                /* every sleeve but the band alone carries on from the band */
-                failed += checkBandArm(bodyKey, label, CUT_MODULES[garment.asset.front]?.bandArm?.(cutId, sleeve, waist ?? undefined) ?? null, profile);
-                if (fitted && length !== "short") {
+                failed = checkCut(cutId, sleeve, label, SLEEVE_KINDS[type].construction === "cut-on" || type === "flutter", skirt).failed;
+                if (!LOOSE_SLEEVES.includes(type) && length !== "sleeveless") {
                   const g = sleeveGrowth(artPaths(garment.asset.front, body, { cut: cutId, sleeve, skirt }), bodyKey, sleeve);
                   if (g && g.grows > SLEEVE_GROWTH) {
                     failed++;
                     console.log(
                       `HOLE ${bodyKey.padEnd(6)} ${label.padEnd(26)} sleeve widens ${g.grows.toFixed(1)} units ` +
-                        `below its band, to ${g.width.toFixed(1)} at y ${g.y} — a sleeve hangs as a tube`
+                        `below its underarm, to ${g.width.toFixed(1)} at y ${g.y} — a sleeve hangs as a tube`
                     );
                   }
                 }
@@ -3427,69 +3550,15 @@ for (const bodyKey of Object.keys(bodies)) {
                 failures += failed;
                 for (const line of lines) console.log(line);
               }
-            }
-          }
-        }
-        console.log(
-          `${failedCombos ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${name} · ${cutId}`.padEnd(26)} ` +
-            `sleeves hung from the band: ${tried} combinations, ${failedCombos} failing`
-        );
-      }
-
-      /*
-        Every sleeve the garment offers, at every length it comes in, in the cut
-        the garment arrives in. Quiet when it passes — twenty-odd combinations a
-        garment would bury every other line — and loud, in full, when it does not.
-      */
-      if (garment.sleeves) {
-        const cutId = wornCuts[0];
-        let tried = 0;
-        let failedCombos = 0;
-        const cuffed = garment.sleeves.cuffs?.length ? garment.sleeves.cuffs : null;
-        for (const type of garment.sleeves.types) {
-          if (!SLEEVE_KINDS[type].bodies.includes(bodyKey)) continue;
-          for (const length of ["sleeveless", ...SLEEVE_KINDS[type].lengths]) {
-            /*
-              And a long sleeve once per cuff it is offered with: a cuff is its
-              own piece of cloth, and the sleeve above it ends differently.
-            */
-            const cuffs = SLEEVE_KIT.cuffsOffered(garment.sleeves.cuffs, { type, length });
-            for (const cuff of cuffs.length > 0 ? cuffs : [null]) {
-            const sleeve = cuff ? { type, length, cuff } : { type, length };
-            const label = `${name} · ${type} ${length}${cuff ? ` ${cuff} cuff` : ""}`;
-            const lines = [];
-            const log = console.log;
-            console.log = (...a) => lines.push(a.join(" "));
-            let failed = 0;
-            try {
-              failed = checkCut(cutId, sleeve, label, SLEEVE_KINDS[type].construction === "cut-on" || type === "flutter", skirt).failed;
-              if (!LOOSE_SLEEVES.includes(type) && length !== "sleeveless") {
-                const g = sleeveGrowth(artPaths(garment.asset.front, body, { cut: cutId, sleeve, skirt }), bodyKey, sleeve);
-                if (g && g.grows > SLEEVE_GROWTH) {
-                  failed++;
-                  console.log(
-                    `HOLE ${bodyKey.padEnd(6)} ${label.padEnd(26)} sleeve widens ${g.grows.toFixed(1)} units ` +
-                      `below its underarm, to ${g.width.toFixed(1)} at y ${g.y} — a sleeve hangs as a tube`
-                  );
-                }
               }
-            } finally {
-              console.log = log;
-            }
-            tried++;
-            if (failed > 0) {
-              failedCombos++;
-              failures += failed;
-              for (const line of lines) console.log(line);
-            }
             }
           }
+          console.log(
+            `${failedCombos ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${name.padEnd(26)} ` +
+              `sleeves: ${tried} combinations, ${failedCombos} failing` +
+              (cuffed ? `, cuffs ${cuffed.join(" / ")} on every long sleeve that takes one` : "")
+          );
         }
-        console.log(
-          `${failedCombos ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${name.padEnd(26)} ` +
-            `sleeves: ${tried} combinations, ${failedCombos} failing` +
-            (cuffed ? `, cuffs ${cuffed.join(" / ")} on every long sleeve that takes one` : "")
-        );
       }
     }
 

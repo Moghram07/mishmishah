@@ -14,6 +14,7 @@ export interface SkirtShape {
 }
 
 const SHAPE_NAMES: Record<SkirtShapeId, { en: string; ar: string }> = {
+  aline: { en: "A-line", ar: "A لاين" },
   flared: { en: "Flared", ar: "كلوش" },
   pencil: { en: "Pencil", ar: "قلم" },
   mermaid: { en: "Mermaid", ar: "سمكة" },
@@ -21,7 +22,7 @@ const SHAPE_NAMES: Record<SkirtShapeId, { en: string; ar: string }> = {
 
 export const skirtShapes: SkirtShape[] = SKIRT_SHAPES.map((id) => ({ id, name: SHAPE_NAMES[id] }));
 
-/** The shapes a garment's skirt is cut to, fullest first. */
+/** The shapes a garment's skirt is cut to, in the order the picker offers them. */
 export const skirtShapesFor = (garment: Garment): SkirtShape[] =>
   skirtShapes.filter((s) => garment.skirt?.shapes.includes(s.id));
 

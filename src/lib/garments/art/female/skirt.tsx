@@ -35,7 +35,7 @@ const skirtRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): RegionA
     not flare, a pencil, hangs smooth below its darts. See `fallOf`.
   */
   const fall = fallOf(skirt.shape);
-  const from = Math.max(inside ? inside.y : HIP_Y, fall.from ?? 0);
+  const from = Math.max(inside ? inside.y : sk.leaves ?? HIP_Y, fall.from ?? 0);
   const across = rowSpan(sk.path, from) ?? [200, 400];
   const flare = across[0] - sk.hemLeft[0];
   const folds = skirtFolds({
