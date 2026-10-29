@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -118,6 +118,20 @@ async function main(files) {
     page.close();
   } finally {
     proc.kill();
+    /*
+      The profile is a throwaway, made for this run: removed once the browser
+      has let go of it. Left behind, one a run piled up in the temp folder —
+      about 460 of them, ten gigabytes, before the disk filled.
+    */
+    await new Promise((done) => {
+      proc.once("exit", done);
+      setTimeout(done, 3000);
+    });
+    try {
+      rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (e) {
+      console.warn(`could not remove the browser profile ${profile}: ${e.message}`);
+    }
   }
 }
 
