@@ -582,6 +582,14 @@ export interface SleeveFinish {
    * narrower than the sleeve where it is sewn on.
    */
   armband?: number;
+  /**
+   * Hangs in front of its own body rather than clear of it: a robe's, whose
+   * body falls wider than the daylight under her arm, so there is no gap
+   * between the two to keep — the arm hangs over the robe's side, as it does
+   * over an A-line skirt. Absent, the sleeve keeps its daylight to the side
+   * seam.
+   */
+  front?: boolean;
 }
 
 export interface TopDraftSpec extends TopSpec {
@@ -1195,7 +1203,8 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
     */
     const seam = seamAt(side);
     const edgeAt = (y: number) => (spec.below && y > hemY ? Math.min(seam(y), spec.below(y)) : seam(y));
-    const clear = (y: number) => edgeAt(y) - (y <= d.waistY ? BODY_CLEAR : HIP_CLEAR);
+    /* a sleeve that hangs in front of its body has no daylight to keep from it — see `front` */
+    const clear = (y: number) => (fin.front ? Infinity : edgeAt(y) - (y <= d.waistY ? BODY_CLEAR : HIP_CLEAR));
     /* the arm's own lean: its centre's slope, fitted over the rows the sleeve covers */
     let follow = 0;
     if (!fin.plumb) {
@@ -1965,14 +1974,7 @@ export function tailored(body: BodyType, spec: TailoredSpec): Tailored {
 
   /* below each cuff, exactly as wide as it, just past the end of a sleeve under it */
   const cuffRow = s.hem;
-  const window = (sleeve: string): string => {
-    const xs: number[] = [];
-    const nums = (sleeve.match(/-?[0-9]*[.]?[0-9]+/g) ?? []).map(Number);
-    for (let i = 0; i + 1 < nums.length; i += 2) if (Math.abs(nums[i + 1] - cuffRow) < 1.5) xs.push(nums[i]);
-    const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
-    const [top0, foot] = [cuffRow - 2, cuffRow + WINDOW_DEPTH];
-    return `M${x0} ${top0} L${x1} ${top0} L${x1} ${foot} L${x0} ${foot} Z`;
-  };
+  const window = (sleeve: string): string => cuffWindow(sleeve, cuffRow);
 
   /*
     The sleeve buttons: a row up the outer side of each sleeve from just
@@ -2015,6 +2017,166 @@ export function tailored(body: BodyType, spec: TailoredSpec): Tailored {
     },
     sleeveButtons: { at: [...buttonRow, ...mirror(buttonRow)], r },
   };
+}
+
+/**
+ * Below a sleeve's cuff, exactly as wide as it, just past the end of a sleeve
+ * worn under it: where that sleeve's end shows — see `Encloses`.
+ */
+function cuffWindow(sleeve: string, cuffRow: number): string {
+  const xs: number[] = [];
+  const nums = (sleeve.match(/-?[0-9]*[.]?[0-9]+/g) ?? []).map(Number);
+  for (let i = 0; i + 1 < nums.length; i += 2) if (Math.abs(nums[i + 1] - cuffRow) < 1.5) xs.push(nums[i]);
+  const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
+  const [top0, foot] = [cuffRow - 2, cuffRow + WINDOW_DEPTH];
+  return `M${x0} ${top0} L${x1} ${top0} L${x1} ${foot} L${x0} ${foot} Z`;
+}
+
+/* ---------------------------------------------------------------- the robe */
+
+export interface OpenRobeSpec extends TopDraftSpec {
+  /** How far its neckline dips at the centre front, below the neck points. */
+  neckDip: number;
+  /**
+   * How far apart the fronts hang: just under the neck, and at the hem. They
+   * almost meet below the throat and fall a little apart as they hang.
+   */
+  gap: readonly [atNeck: number, atHem: number];
+}
+
+export interface OpenRobe {
+  /** The two fronts; neither laps the other. */
+  left: string;
+  right: string;
+  sleeveLeft: string;
+  sleeveRight: string;
+  /** Each piece's free edges, in the order front right, front left, sleeves. */
+  edges: { right: string; left: string; sleeveLeft: string; sleeveRight: string };
+  /** The armholes, as soft lines of shadow. */
+  seams: string[];
+  stitch: string;
+  /** The sleeve cut, for the drape it hangs in — see `sewnDrape`. */
+  cut: SleeveCut;
+  /** The closed panel the fronts are cut from, for the light's rows. */
+  panel: string;
+  /** Each front's edge from under the neck to the hem, left then right: where it hangs free. */
+  frontEdges: readonly [Pt[], Pt[]];
+  /** The row its body leaves the underarm at. */
+  underarm: number;
+  /** What it holds inside it — see `Encloses`. */
+  encloses: Encloses;
+}
+
+/**
+ * A robe open down the front, worn over whatever is under it — an abaya.
+ *
+ * - **The shoulders** are soft, walked along the body over the clothes under
+ *   it as a top's are, not padded as a jacket's.
+ * - **The body** is the shared top's, hung past the crotch to the hem as a
+ *   thobe's is, and straight from where it leaves her below the underarm —
+ *   see `straight`.
+ * - **The sleeve** is the shared long sleeve, with room over a sleeve worn
+ *   under it, in front of the robe's own side — see `front`.
+ * - **The fronts** are the panel's two halves, cut along an opening that is
+ *   narrow under the neck and wider at the hem — `gap` — each hanging free
+ *   down its edge.
+ */
+export function openRobe(body: BodyType, spec: OpenRobeSpec): OpenRobe {
+  const { neck, neckRight, hemY, neckDip } = spec;
+  const [gapNeck, gapHem] = spec.gap;
+
+  /* the neckline, right neck point round to the left, dipping at the centre front */
+  const half = (neckRight[0] - neck[0]) / 2;
+  const mid = (neckRight[0] + neck[0]) / 2;
+  const arc: Pt[] = Array.from({ length: 25 }, (_, i) => {
+    const t = i / 24;
+    const a = t * Math.PI;
+    return [mid + half * Math.cos(a), neckRight[1] + (neck[1] - neckRight[1]) * t + neckDip * Math.sin(a)] as Pt;
+  });
+  const T = top(body, spec);
+  /* closed across the neck, as a jacket's panel is: what is worn under it shows in its neckline too */
+  const frame = T.frame(`L${neck[0]} ${neck[1]}`, { type: "set-in", length: "long" });
+  const k = T.cut({ type: "set-in", length: "long" }, frame);
+  const s = k.seamed!;
+  const { armhole, side } = k.left;
+  const strapLeft = frame.parts!.strapLeft;
+  const strapRight = frame.parts!.strapRight;
+
+  /* the hem as the body draws it, and the point on it each front edge comes down to */
+  const hemLeft = side[side.length - 1];
+  const hemFull = hem(hemLeft, mirror([hemLeft])[0], spec.dip ?? 9, 24);
+  const footX = CENTER_X - gapHem / 2;
+  const hemRun = hemFull.filter(([x]) => x < footX);
+  const foot: Pt = [footX, hemAt(hemFull, footX)];
+  /* where each front's edge leaves the neckline: half the gap either side of the centre line */
+  const edgeTop: Pt = [CENTER_X - gapNeck / 2, arcAt(arc, CENTER_X - gapNeck / 2)];
+  const edgeTopRight: Pt = [CENTER_X + gapNeck / 2, arcAt(arc, CENTER_X + gapNeck / 2)];
+  const frontEdge = span(edgeTop, foot, 12);
+  const frontEdgeRight = span(edgeTopRight, mirror([foot])[0], 12);
+  /*
+    The neckline from each edge out to its neck point, along the arc. The arc
+    is cut to her throat, a little left of the centre line, so the right one
+    is its own: the left one's mirror would stand off her neck.
+  */
+  const neckRun = [edgeTop, ...arc.filter(([x]) => x < edgeTop[0] - 0.5)];
+  const neckRunRight = [edgeTopRight, ...reverse(arc.filter(([x]) => x > edgeTopRight[0] + 0.5))];
+  const downLeft = [...hemRun, foot, ...reverse(frontEdge), ...neckRun.slice(1)];
+  const downRight = [...mirror(hemRun), ...mirror([foot]), ...reverse(frontEdgeRight), ...neckRunRight.slice(1)];
+
+  const left =
+    `M${neck[0]} ${neck[1]} ${run(strapLeft.slice(1), armhole.slice(1))} ` +
+    `${run(side)} ${run(downLeft)} Z`;
+  const right =
+    `M${neckRight[0]} ${neckRight[1]} ${run(reverse(strapRight).slice(1), mirror(armhole).slice(1))} ` +
+    `${run(mirror(side))} ${run(downRight)} Z`;
+
+  /* the free edges: the shoulder, and from the underarm round the side, hem, front edge and neckline */
+  const under = side[0];
+  const edgeLeft = `M${neck[0]} ${neck[1]} ${run(strapLeft)} M${under[0]} ${under[1]} ${run(side)} ${run(downLeft)}`;
+  const edgeRight =
+    `M${neckRight[0]} ${neckRight[1]} ${run(reverse(strapRight))} ` +
+    `M${600 - under[0]} ${under[1]} ${run(mirror(side))} ${run(downRight)}`;
+
+  return {
+    left,
+    right,
+    sleeveLeft: k.sleeves[0],
+    sleeveRight: k.sleeves[1],
+    edges: { right: edgeRight, left: edgeLeft, sleeveLeft: s.edges[1], sleeveRight: s.edges[2] },
+    seams: s.seams,
+    stitch: s.sleeveStitch,
+    cut: k,
+    panel: k.body,
+    frontEdges: [frontEdge, frontEdgeRight],
+    underarm: under[1],
+    encloses: {
+      band: [Math.min(neck[1], neckRight[1]), hemY - 1.5],
+      cuff: s.hem,
+      hem: { y: hemY, x: hemLeft[0] },
+      envelope: [k.body, ...k.sleeves],
+      windows: [cuffWindow(k.sleeves[0], s.hem), cuffWindow(k.sleeves[1], s.hem)],
+    },
+  };
+}
+
+/** A run's y at an x, read along it; it runs left to right. */
+function hemAt(run: Pt[], x: number): number {
+  for (let i = 1; i < run.length; i++) {
+    const [x0, y0] = run[i - 1];
+    const [x1, y1] = run[i];
+    if (x1 >= x) return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0 || 1);
+  }
+  return run[run.length - 1][1];
+}
+
+/** A neckline's y at an x, read along the arc, which runs from the right neck point round to the left. */
+function arcAt(arc: Pt[], x: number): number {
+  for (let i = 1; i < arc.length; i++) {
+    const [x0, y0] = arc[i - 1];
+    const [x1, y1] = arc[i];
+    if (x1 <= x && x0 >= x) return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0 || 1);
+  }
+  return arc[arc.length - 1][1];
 }
 
 /* -------------------------------------------------------------- helpers */

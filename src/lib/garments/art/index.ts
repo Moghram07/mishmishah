@@ -10,6 +10,7 @@ import { trousersFront } from "./female/trousers";
 import { skirtFront } from "./female/skirt";
 import { dressFront } from "./female/dress";
 import { jacketFront } from "./female/jacket";
+import { abayaFront } from "./female/abaya";
 
 import {
   shirtCollarBehind,
@@ -260,6 +261,7 @@ const ART: Record<string, GarmentArt> = {
   "female-skirt-front": skirtFront,
   "female-dress-front": dressFront,
   "female-jacket-front": jacketFront,
+  "female-abaya-front": abayaFront,
 
   "male-t-shirt-front": maleTShirtFront,
   "male-shirt-front": maleShirtFront,

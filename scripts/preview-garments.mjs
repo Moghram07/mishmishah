@@ -471,6 +471,10 @@ const CUT_MODULES = {
   "female-skirt-front": await import(
     src("src/lib/garments/art/female/skirtCut.ts")
   ),
+  /* her abaya: a robe drafted from the shared top, and what it holds inside it */
+  "female-abaya-front": await import(
+    src("src/lib/garments/art/female/abayaCut.ts")
+  ),
 };
 
 /**
@@ -970,16 +974,29 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = nu
     if (l && r) reads.push([name, y, b[0] - l[0] - al, r[1] - b[1] - ar]);
   }
 
-  /* A thigh, below where the hands end: each leg's own run. */
+  /*
+    A thigh, below where the hands end: each leg's own run — or each front of
+    a robe open over her legs, read from the line it falls on, as at the
+    waist and hip.
+  */
   const thighY = Math.max(profile.crotchY + 40, profile.armEndY + 12);
   if (!solid(worn[thighY * W + W / 2])) {
     let l = null;
     let r = null;
     for (let x = W / 2; x > 0 && !l; x--) l = runAt(worn, thighY, x, solid);
     for (let x = W / 2; x < W - 1 && !r; x++) r = runAt(worn, thighY, x, solid);
-    const bl = l && runAt(cover, thighY, Math.round((l[0] + l[1]) / 2), solid);
-    const br = r && runAt(cover, thighY, Math.round((r[0] + r[1]) / 2), solid);
-    if (bl && br) reads.push(["thigh", thighY, bl[0] - l[0], r[1] - br[1]]);
+    /* the leg under each: the body's first run inside it, from its inner end — a front's middle may be off her leg */
+    const legUnder = (run, from, step) => {
+      for (let x = from; run && x >= run[0] && x <= run[1]; x += step) {
+        if (solid(cover[thighY * W + x])) return runAt(cover, thighY, x, solid);
+      }
+      return null;
+    };
+    const bl = legUnder(l, l?.[1], -1);
+    const br = legUnder(r, r?.[0], 1);
+    const [ll, lr] = lines && bl && br ? [lines.left(thighY), lines.right(thighY)] : [null, null];
+    const [al, ar] = [ll === null ? 0 : Math.round(Math.max(0, bl[0] - ll)), lr === null ? 0 : Math.round(Math.max(0, lr - br[1]))];
+    if (bl && br) reads.push(["thigh", thighY, bl[0] - l[0] - al, r[1] - br[1] - ar]);
   }
 
   if (reads.length === 0) return 0;
@@ -2754,7 +2771,8 @@ function checkTrouserDetails(bodyKey, body, profile, wardrobe) {
  * It also asks three things of the fit. That the jacket's shoulder sits
  * outside the shoulder under it, before any mask: nothing of the inner layer
  * shows past it. That a long inner sleeve shows `REVEAL` below the jacket's
- * cuff, as tailoring does. And that nothing the outfit erases between them is
+ * cuff, as tailoring does — or nothing at all below a sleeve cut to a long
+ * sleeve's own end, an abaya's, which hides it. And that nothing the outfit erases between them is
  * left unpainted once the inner layer is hidden — a sleeve hidden over an arm
  * the jacket does not cover would be a hole.
  */
@@ -2763,6 +2781,8 @@ const LAYER_LEAK = 0;
 const HEM_STEP = 2;
 /** How much of a long inner sleeve should show below a jacket's: 1 to 1.5 cm, in units. */
 const REVEAL = [5, 8.5];
+/** Below a sleeve cut as long as it is, none of it. */
+const HIDDEN = [0, 0];
 
 /** Every sleeve a garment can be cut with, its cuffs included; `[null]` for one that has no choice. */
 function sleeveChoicesOf(garment, bodyKey) {
@@ -2780,8 +2800,9 @@ function sleeveChoicesOf(garment, bodyKey) {
   return out;
 }
 
-/** What an outer garment holds inside it, read out of its drawing. */
+/** What an outer garment holds inside it, read out of its drawing — or out of its cut, for one drafted in a module. */
 function enclosesOf(assetId, body) {
+  if (CUT_MODULES[assetId]) return CUT_MODULES[assetId].encloses ?? null;
   for (const v of artTable(assetId, body).values()) {
     if (v && typeof v === "object" && v.encloses && Array.isArray(v.encloses.envelope)) return v.encloses;
   }
@@ -2806,14 +2827,18 @@ function jacketOf(outer, body) {
   const windows = rasterize(enc.windows);
   const [top, bottom] = [Math.ceil(enc.band[0]), Math.floor(enc.band[1])];
   /*
-    Each row's front opening: the run of open outer cloth through the centre
-    line — or, where the fronts lap there, through a pixel either side of
-    it, which is the opening's tip at the button.
+    Each row's front opening: the run through the centre line that is within
+    the jacket and open in its cloth — or, where the fronts lap there,
+    through a pixel either side of it, which is the opening's tip at the
+    button. Within it: the neck hole is not the opening, and cloth missing
+    beside the neck, joined to the hole, is not either.
   */
+  const gap = new Float32Array(W * H);
+  for (let i = 0; i < gap.length; i++) gap[i] = inside[i] >= 0.5 && open(cloth[i]) ? 1 : 0;
   const opening = [];
   for (let y = top; y < bottom; y++) {
     opening[y] = [W / 2, W / 2 - 1, W / 2 + 1, W / 2 - 2, W / 2 + 2]
-      .map((x) => runAt(cloth, y, x, open))
+      .map((x) => runAt(gap, y, x, (v) => v > 0.5))
       .find((r) => r !== null) ?? null;
   }
   const inOpening = (x, y) => {
@@ -2964,7 +2989,9 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
         holes = Math.max(holes, h);
       }
       const reveal = reveals.length ? [Math.min(...reveals), Math.max(...reveals)] : null;
-      const badReveal = reveal !== null && (reveal[0] < REVEAL[0] || reveal[1] > REVEAL[1]);
+      /* a jacket's sleeve is cut short of a long one, which shows below it; one cut to a long sleeve's own end hides it */
+      const want = enc.cuff < SLEEVE_KIT.hemRow(bodyKey, { type: "set-in", length: "long" }) ? REVEAL : HIDDEN;
+      const badReveal = reveal !== null && (reveal[0] < want[0] || reveal[1] > want[1]);
       const bad = leak > LAYER_LEAK || shoulder > LAYER_LEAK || holes > 40 || badReveal || step > HEM_STEP;
       if (bad) failed++;
       const cm = (u) => (u * BODY_CANVAS.cmPerUnit).toFixed(1);
@@ -3353,6 +3380,13 @@ for (const bodyKey of Object.keys(bodies)) {
         changes, in `checkArmGap`, `checkStandOff` and `checkBareShoulders`.
       */
       const slope = skirt ? straightOf(skirt.shape) : undefined;
+      /*
+        Or a robe — her abaya — whose body falls straight from under the arm
+        to the ankle, as an A-line does from her waist: read the same way, its
+        body alone, and its sleeve hanging in front of that body. See `FALLS`
+        in its cut.
+      */
+      const falls = CUT_MODULES[garment.asset.front]?.FALLS;
       const hung =
         skirt && (hangs(skirt) || slope !== undefined)
           ? {
@@ -3365,7 +3399,9 @@ for (const bodyKey of Object.keys(bodies)) {
                 LOOSE_SLEEVES.includes((sleeve ?? garment.sleeves?.default)?.type) ||
                 besideArms({ shape: skirt.shape, length: skirt.length }),
             }
-          : null;
+          : falls
+            ? { from: falls.from, hung: false, slope: falls.slope, cloth: rasterize(CUT_MODULES[garment.asset.front].BODY), swings: falls.front }
+            : null;
       if (!loose) failed += checkArmGap(bodyKey, label, cloth, profile, coverage, hung);
       failed += checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung);
       failed += checkLegGap(bodyKey, label, cloth, profile, coverage);
@@ -3560,6 +3596,22 @@ for (const bodyKey of Object.keys(bodies)) {
           );
         }
       }
+    }
+
+    /*
+      A sleeve a garment is cut with and offers no choice of — her abaya's —
+      is held to what every offered sleeve is above: it hangs as a tube.
+    */
+    const mod = CUT_MODULES[garment.asset.front];
+    if (mod?.SLEEVE && mod.SLEEVES) {
+      const g = sleeveGrowth(mod.SLEEVES, bodyKey, mod.SLEEVE);
+      const bad = g !== null && g.grows > SLEEVE_GROWTH;
+      if (bad) failures++;
+      console.log(
+        `${bad ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${garment.id} · its sleeve`.padEnd(26)} ` +
+          `widens ${g ? g.grows.toFixed(1) : "--"} units below its underarm` +
+          (bad ? `, to ${g.width.toFixed(1)} at y ${g.y} — a sleeve hangs as a tube` : "")
+      );
     }
 
     painted.set(garment.id, paint);

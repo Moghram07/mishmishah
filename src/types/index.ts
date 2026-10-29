@@ -27,6 +27,7 @@ export type FabricMaterial =
   | "velvet"
   | "denim"
   | "chiffon"
+  | "crepe"
   | "leather";
 
 export type FabricTexture = "smooth" | "woven" | "pile" | "sheer" | "ribbed";

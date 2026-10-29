@@ -25,9 +25,9 @@ const KNIT_CUFFS: CuffId[] = ["none", "rib"];
 /**
  * The wardrobes.
  *
- * Six garments per body, front view — deliberately few. They exist to prove the
- * four rules the renderer runs on, and every one of those is expressed here as
- * data rather than as code:
+ * Seven garments for her, with her abaya, and six for him, front view —
+ * deliberately few. They exist to prove the four rules the renderer runs on,
+ * and every one of those is expressed here as data rather than as code:
  *
  *   • `gender`     — the one body a garment is cut for. There is no `unisex`:
  *                    a drawing is built against one figure's anchors and its
@@ -47,7 +47,7 @@ const KNIT_CUFFS: CuffId[] = ["none", "rib"];
  * decorative: `garmentPiece` strips it to pair a garment with its counterpart
  * on the other body when the mannequin is switched.
  *
- * Adding a seventh garment is a record here plus a drawing in
+ * Adding a garment is a record here plus a drawing in
  * `lib/garments/art/<body>/`. Nothing else moves.
  */
 
@@ -173,6 +173,26 @@ export const garments: Garment[] = [
     acceptsCollar: true,
     defaultCollar: "female-notched-collar",
     asset: { front: "female-jacket-front" },
+  },
+  {
+    id: "female-abaya",
+    name: { en: "Abaya", ar: "عباية" },
+    category: "outerwear",
+    gender: "female",
+    /* worn over everything, as the jacket is: putting one on takes the other off */
+    layer: "outer",
+    /**
+     * Its shoulders and upper arms, and nothing its open front shows: between
+     * the fronts are her trunk, hips and legs, or what is worn over them, so
+     * erasing them would cut a hole the shape of the opening. Nor the
+     * forearm: its sleeve ends where any long sleeve does, short of the
+     * zone's last rows, and the wrist below it is her own.
+     */
+    coverage: ["shoulderCap", "upperArm"],
+    fabricRegions: ["body"],
+    incompatibleWith: [],
+    acceptsCollar: false,
+    asset: { front: "female-abaya-front" },
   },
 
   /* --------------------------------------------------------------- male */

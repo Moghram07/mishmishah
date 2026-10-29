@@ -890,6 +890,27 @@ export interface TopSpec {
    * came out as an hourglass.
    */
   bridge?: number;
+  /**
+   * A robe's A-line, as `column`'s `straight` cuts a skirt's: the side seam
+   * straight from where it leaves her below the underarm, out by this much
+   * per unit down to the hem, and never closer to her than its ease. An
+   * abaya hangs this way, loose over whatever is worn under it.
+   */
+  straight?: number;
+}
+
+/**
+ * A side straightened from where a line of `slope` first touches it from
+ * outside: above that point the side as it was, below it the line — so the
+ * line clears every row below, as an A-line's does. See `column`.
+ */
+function straightened(side: Pt[], slope: number): Pt[] {
+  let k = 0;
+  side.forEach(([x, y], i) => {
+    if (x + slope * y < side[k][0] + slope * side[k][1]) k = i;
+  });
+  const [kx, ky] = side[k];
+  return side.map(([x, y], i) => (i <= k ? [x, y] : [kx - slope * (y - ky), y]) as Pt);
 }
 
 export interface Top {
@@ -926,6 +947,11 @@ export interface Top {
  * is cut with a deeper one — down to its hem.
  */
 export function bodySide(body: BodyType, spec: TopSpec, fromY: number): Pt[] {
+  const side = hungSide(body, spec, fromY);
+  return spec.straight === undefined ? side : straightened(side, spec.straight);
+}
+
+function hungSide(body: BodyType, spec: TopSpec, fromY: number): Pt[] {
   const d = draft(body);
   const { ease, hemY, hemEase = 0 } = spec;
   const waistEase = ease;

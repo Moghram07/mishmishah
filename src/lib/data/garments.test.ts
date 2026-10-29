@@ -41,12 +41,11 @@ describe("every garment belongs to exactly one body", () => {
     }
   });
 
-  it("splits the whole catalogue between the wardrobes, six each", () => {
+  it("splits the whole catalogue between the wardrobes: seven for her, with her abaya, six for him", () => {
     const total = BODY_TYPES.reduce((n, b) => n + garmentsFor(b).length, 0);
     expect(total).toBe(garments.length);
-    for (const body of BODY_TYPES) {
-      expect(garmentsFor(body), body).toHaveLength(6);
-    }
+    expect(garmentsFor("female")).toHaveLength(7);
+    expect(garmentsFor("male")).toHaveLength(6);
   });
 
   it("never names a garment from the other body in incompatibleWith", () => {

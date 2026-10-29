@@ -169,6 +169,19 @@ export const fabrics: Fabric[] = [
     texture: "smooth",
     categories: ["home-decor", "curtains", "luxury", "wedding"],
   },
+  /* the plain black most abayas are cut from */
+  {
+    id: "fb-black-crepe",
+    name: { en: "Black Crepe", ar: "كريب أسود" },
+    source: "procedural",
+    motif: "solid",
+    palette: { base: "#1F1D1F", accent: "#0F0E10", highlight: "#4B474C" },
+    color: "#161417",
+    material: "crepe",
+    colorName: { en: "Black", ar: "أسود" },
+    texture: "smooth",
+    categories: ["fashion"],
+  },
 ];
 
 // Fails loudly in dev if scale ever stops being motif-owned. See the note on

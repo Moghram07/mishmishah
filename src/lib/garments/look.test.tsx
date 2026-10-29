@@ -1725,6 +1725,111 @@ describe("the A-line, light and dark", () => {
 });
 
 /**
+ * Her abaya, on a light page and a dark one: on its own in black crepe, a
+ * plain cloth and a print, with its opening, cuff and hem close up — and over
+ * what she wears, each outfit beside the same outfit under the abaya: the
+ * dress in several styles, a blouse with a skirt or trousers, a t-shirt with
+ * a skirt, and nothing but her base layer.
+ */
+describe("abaya, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Look = {
+    name: string;
+    wear: [id: string, cloth: string][];
+    sleeve?: [id: string, choice: SleeveChoice];
+    skirt?: [id: string, choice: Partial<{ shape: SkirtShapeId; length: SkirtLengthId; waist: WaistId }>];
+  };
+  const LONG: SleeveChoice = { type: "set-in", length: "long" };
+  const OUTFITS: Look[] = [
+    { name: "the dress as it arrives", wear: [["female-dress", "fb-apricot-linen"]] },
+    { name: "the dress, long sleeves, print", wear: [["female-dress", "fb-midnight-floral"]], sleeve: ["female-dress", LONG] },
+    { name: "empire A-line maxi, long sleeves", wear: [["female-dress", "fb-indigo-plaid"]], sleeve: ["female-dress", LONG], skirt: ["female-dress", { shape: "aline", length: "maxi", waist: "empire" }] },
+    { name: "mermaid maxi", wear: [["female-dress", "fb-rose-silk"]], skirt: ["female-dress", { shape: "mermaid", length: "maxi" }] },
+    { name: "blouse, A-line maxi skirt", wear: [["female-blouse", "fb-cream-dots"], ["female-skirt", "fb-terracotta-herring"]], skirt: ["female-skirt", { shape: "aline", length: "maxi" }] },
+    { name: "blouse, trousers", wear: [["female-blouse", "fb-rose-silk"], ["female-trousers", "fb-denim-classic"]] },
+    { name: "t-shirt, skirt", wear: [["female-t-shirt", "fb-saffron-stripe"], ["female-skirt", "fb-emerald-velvet"]] },
+    { name: "nothing under it", wear: [] },
+  ];
+  const ABAYA_CLOTH = "fb-black-crepe";
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/abaya-a1-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const stage = (look: Look, abaya: string | null, zoom = 1, focus: [number, number] = [300, 500]) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      const all: [string, string][] = abaya ? [...look.wear, ["female-abaya", abaya]] : look.wear;
+      for (const [gid, clothId] of all) {
+        const g = garmentById(gid)!;
+        const cloth = f(clothId);
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      if (look.sleeve) worn = setSleeve(worn, look.sleeve[0], look.sleeve[1]);
+      if (look.skirt) {
+        const [sid, choice] = look.skirt;
+        worn = worn.map((w) => {
+          const skirt = w.garmentId === sid ? skirtOf(w) : undefined;
+          return skirt ? { ...w, skirt: { ...skirt, ...choice } } : w;
+        });
+      }
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={zoom} focus={focus} />;
+    };
+    const d = draft("female");
+    const alone: Look = { name: "the abaya", wear: [] };
+    const overDress: Look = OUTFITS[1];
+    const rows: { caption: string; node: React.ReactNode }[][] = [
+      /* on its own, in black crepe, a plain cloth and a print, and close up in black */
+      [
+        ...([[ABAYA_CLOTH, "black crepe"], ["fb-apricot-linen", "plain"], ["fb-midnight-floral", "print"]] as const).map(([cloth, kind]) => ({
+          caption: `the abaya, ${kind}`,
+          node: stage(alone, cloth),
+        })),
+        { caption: "black crepe, the opening under the neck, 2.4×", node: stage(alone, ABAYA_CLOTH, 2.4, [300, 260]) },
+        { caption: "black crepe, the cuff, 2.4×", node: stage(alone, ABAYA_CLOTH, 2.4, [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2, d.wristY]) },
+        { caption: "black crepe, the hem, 2.4×", node: stage(alone, ABAYA_CLOTH, 2.4, [300, 860]) },
+        { caption: "over the dress, print, the opening, 2.4×", node: stage(overDress, ABAYA_CLOTH, 2.4, [300, 330]) },
+        { caption: "over the dress, print, the cuff, 2.4×", node: stage(overDress, ABAYA_CLOTH, 2.4, [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2, d.wristY]) },
+      ],
+      /* over what she wears: each outfit, then the same under the abaya */
+      ...[OUTFITS.slice(0, 4), OUTFITS.slice(4)].map((outfits) =>
+        outfits.flatMap((look) => [
+          { caption: look.name, node: stage(look, null) },
+          { caption: `${look.name}, under the abaya`, node: stage(look, ABAYA_CLOTH) },
+        ])
+      ),
+    ];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {tile.node}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/abaya-a1-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});
+
+/**
  * Round 4's details, on a light page and a dark one, in a plain cloth and a
  * print: both jackets over the top each is worn over — whole, and the end of
  * a sleeve close up, where its buttons are and the cuff under it shows — and
