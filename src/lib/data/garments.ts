@@ -192,6 +192,13 @@ export const garments: Garment[] = [
     fabricRegions: ["body"],
     incompatibleWith: [],
     acceptsCollar: false,
+    /**
+     * Open, its fronts hang apart and what she wears shows between them;
+     * closed on hidden snaps, only in its neckline. Either way it holds what
+     * is worn under it the same, and claims no more of her: what it covers
+     * closed, its cloth simply paints over.
+     */
+    fronts: { offered: ["open", "closed"], default: "open" },
     asset: { front: "female-abaya-front" },
   },
 

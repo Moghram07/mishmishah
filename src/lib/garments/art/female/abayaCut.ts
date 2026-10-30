@@ -5,8 +5,9 @@
   for why the checker must see the real geometry.
 */
 import { BODY_CANVAS, FEMALE_ANCHORS } from "../../../mannequin/bodies.ts";
-import { openRobe } from "../../sleeves.ts";
-import type { SleeveChoice } from "@/types";
+import { robe } from "../../sleeves.ts";
+import type { Pt } from "../../fit.ts";
+import type { FrontId, SleeveChoice } from "@/types";
 import type { GarmentChoice } from "../index.ts";
 import { OUTER_NECK_LEFT, OUTER_NECK_RIGHT, OUTER_TIP_LEFT } from "./yoke.ts";
 
@@ -27,7 +28,9 @@ const CM = 1 / BODY_CANVAS.cmPerUnit;
  *   units of room over a sleeve under it, in front of the robe's own side.
  *   It ends where a long sleeve does, so one worn under it does not show.
  * - **Its fronts** almost meet under the neck, 5 cm apart, and fall a little
- *   apart as they hang: 15 cm at the hem.
+ *   apart as they hang: 15 cm at the hem. Or it is closed on hidden snaps:
+ *   the fronts meet down the centre under a plain seam, topstitched five
+ *   units beside it on the front that laps over.
  */
 export const ABAYA = {
   hemY: FEMALE_ANCHORS.ankleY,
@@ -40,7 +43,7 @@ export const ABAYA = {
 /** The sleeve it is cut with. */
 export const SLEEVE: SleeveChoice = { type: "set-in", length: "long" };
 
-export const ROBE = openRobe("female", {
+export const ROBE = robe("female", {
   tip: [OUTER_TIP_LEFT[0], OUTER_TIP_LEFT[1]],
   neck: [OUTER_NECK_LEFT[0], OUTER_NECK_LEFT[1]],
   neckRight: [OUTER_NECK_RIGHT[0], OUTER_NECK_RIGHT[1]],
@@ -56,11 +59,23 @@ export const ROBE = openRobe("female", {
   gap: ABAYA.gap,
 });
 
-/** Every piece of cloth it is — what `check:garments` rasterises. */
-export const cloth = (_choice: GarmentChoice = {}): string[] => [ROBE.right, ROBE.left, ROBE.sleeveLeft, ROBE.sleeveRight];
+/** Its body alone, without the sleeves, open or closed: what the stand-off is read off. */
+export const bodyOf = (front: FrontId = "open"): string[] =>
+  front === "closed" ? [ROBE.closed.body] : [ROBE.open.right, ROBE.open.left];
 
-/** Its fronts alone, without the sleeves: the body the stand-off is read off. */
-export const BODY = [ROBE.right, ROBE.left];
+/** Every piece of cloth it is, as worn — what `check:garments` rasterises. */
+export const cloth = (choice: GarmentChoice = {}): string[] => [...bodyOf(choice.front), ROBE.sleeveLeft, ROBE.sleeveRight];
+
+/**
+ * Closed, its topstitch: down the front that laps over — hers on the right,
+ * the left as seen — five units beside the seam, from the neckline to just
+ * above the hem's own stitch.
+ */
+const seamFoot = ROBE.closed.seam[ROBE.closed.seam.length - 1][1];
+export const CLOSED_STITCH: Pt[] = ROBE.closed.seam.map(([x, y]) => [x - 5, y] as Pt).filter(([, y]) => y < seamFoot - 10);
+
+/** What fastens it closed, for `check:garments`: the seam and its stitch, on the cloth they are sewn to. */
+export const fastening = { pieces: bodyOf("closed"), seam: ROBE.closed.seam, stitch: CLOSED_STITCH };
 
 /** Its sleeves alone, left then right: what is measured for hanging as a tube. */
 export const SLEEVES = [ROBE.sleeveLeft, ROBE.sleeveRight];

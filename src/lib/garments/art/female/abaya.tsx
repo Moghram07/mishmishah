@@ -1,34 +1,46 @@
 import { DRAPE, vertical } from "@/lib/garments/shading";
-import { foldDefs, foldLights, foldShadows, hangingFolds, mirrorFold, rowSpan } from "@/lib/garments/folds";
+import { foldDefs, foldLights, foldShadows, hangingFolds, mirrorFold, rowSpan, type Fold } from "@/lib/garments/folds";
 import { hem, line, mirrorPts, type Pt } from "@/lib/garments/fit";
-import type { GarmentArt } from "../index";
+import type { GarmentArt, RegionArt } from "../index";
 import { rowsOf, sewnDrape, shoulderFall } from "../sleevedTop";
 import { seamShadows, sleeveFoldDefs } from "../sleeveFolds";
-import { ABAYA, ROBE } from "./abayaCut";
+import { ABAYA, CLOSED_STITCH, ROBE, bodyOf } from "./abayaCut";
 
 /**
- * Abaya, front: a loose robe open down the front, over whatever she wears —
- * see `openRobe` in `garments/sleeves.ts` for how it is cut, and
+ * Abaya, front: a loose robe over whatever she wears, open down the front or
+ * closed — see `robe` in `garments/sleeves.ts` for how it is cut, and
  * `abayaCut.ts` for its numbers.
  *
  * One fabric, the whole of it. Its sleeves are sewn sleeves drawn as every
  * top draws them — outlined only along their free edges, the armhole a soft
  * line of shadow, the shoulder's light carried onto the sleeve head, the
  * shared drape down each — and they hang in front of its body, which falls
- * wider than her arms. Down each front a few long folds fall from under the
- * arm to the hem, opening as the robe widens. It holds what is worn under it:
- * from the shoulders to the hem that shows only between the fronts, at the
- * cuffs and below the hem — see `encloses`.
+ * wider than her arms. A few long folds fall from under each arm to the hem,
+ * opening as the robe widens. It holds what is worn under it: from the
+ * shoulders to the hem that shows only between the fronts, in its neckline,
+ * at the cuffs and below the hem — see `encloses`.
  *
- * It claims no torso, hip or leg: its fronts stand open over them, and what
- * shows there is whatever is worn under it, or her.
+ * Closed, the fronts meet down the centre on hidden snaps: one panel with a
+ * plain seam down the middle, topstitched beside it on the front that laps
+ * over, and what is worn under it shows only in its neckline.
+ *
+ * It claims no torso, hip or leg, open or closed: open, its fronts stand
+ * apart over them, and what shows there is whatever is worn under it, or her;
+ * closed, its cloth simply paints over them.
  */
 
-const pieces = [ROBE.right, ROBE.left, ROBE.sleeveLeft, ROBE.sleeveRight];
-const edges = [ROBE.edges.right, ROBE.edges.left, ROBE.edges.sleeveLeft, ROBE.edges.sleeveRight];
 const sleeves = [ROBE.sleeveLeft, ROBE.sleeveRight];
 const [bodyTop, bodyBottom] = rowsOf(ROBE.panel);
 const drape = sewnDrape(ROBE.cut);
+
+/** One way of wearing it at the front: its body's pieces and edges, its folds, seams and stitch. */
+interface FrontArt {
+  body: string[];
+  edges: string[];
+  folds: Fold[];
+  seams: string[];
+  stitch: string;
+}
 
 /*
   The long folds down each front: released under the arm, where the robe
@@ -36,7 +48,7 @@ const drape = sewnDrape(ROBE.cut);
   front, between its side and its edge.
 */
 const FROM = ROBE.underarm + 30;
-const [frontEdge] = ROBE.frontEdges;
+const [frontEdge] = ROBE.open.frontEdges;
 const edgeAt = (y: number): number => {
   for (let i = 1; i < frontEdge.length; i++) {
     const [[x0, y0], [x1, y1]] = [frontEdge[i - 1], frontEdge[i]];
@@ -44,7 +56,7 @@ const edgeAt = (y: number): number => {
   }
   return frontEdge[frontEdge.length - 1][0];
 };
-const across = rowSpan(ROBE.left, FROM) ?? [200, 280];
+const across = rowSpan(ROBE.open.left, FROM) ?? [200, 280];
 const hemLeft = ROBE.encloses.hem.x;
 const foot = frontEdge[frontEdge.length - 1];
 const folds = hangingFolds({
@@ -72,74 +84,126 @@ const STITCH = [
   ROBE.stitch,
   line(hemStitch.filter(([x]) => x < foot[0] - 12)),
   line(mirrorPts(hemStitch.filter(([x]) => x < foot[0] - 12))),
-  line(edgeStitch(ROBE.frontEdges[0], -5)),
-  line(edgeStitch(ROBE.frontEdges[1], 5)),
+  line(edgeStitch(ROBE.open.frontEdges[0], -5)),
+  line(edgeStitch(ROBE.open.frontEdges[1], 5)),
 ].join(" ");
+
+const OPEN: FrontArt = {
+  body: bodyOf("open"),
+  edges: [ROBE.open.edges.right, ROBE.open.edges.left],
+  folds: FOLDS,
+  seams: ROBE.seams,
+  stitch: STITCH,
+};
+
+/*
+  Closed, the same folds across the one panel: released under each arm and
+  falling to the hem between its side and the centre seam — four to a half,
+  so they lie as far apart as they do on an open front.
+*/
+const [seamTop, seamFoot] = [ROBE.closed.seam[0], ROBE.closed.seam[ROBE.closed.seam.length - 1]];
+const closedFolds = hangingFolds({
+  seam: [
+    [across[0] + 8, FROM],
+    [seamTop[0] - 10, FROM],
+  ],
+  hem: [
+    [hemLeft + 8, ABAYA.hemY],
+    [seamFoot[0] - 10, seamFoot[1]],
+  ],
+  count: 4,
+  width: [2, 16],
+  shadow: 0.45,
+  light: 0.26,
+  seed: 53,
+});
+
+const CLOSED: FrontArt = {
+  body: bodyOf("closed"),
+  edges: [ROBE.closed.edge],
+  folds: [...closedFolds, ...closedFolds.map(mirrorFold)],
+  /* the centre seam it closes under, a soft line like the armholes' */
+  seams: [...ROBE.seams, line(ROBE.closed.seam)],
+  /* the hem's topstitch right across, and the placket's beside the seam */
+  stitch: [ROBE.stitch, line(hemStitch), line(CLOSED_STITCH)].join(" "),
+};
+
+const region = (front: FrontArt): RegionArt => {
+  const pieces = [...front.body, ...sleeves];
+  const edges = [...front.edges, ...ROBE.sleeveEdges];
+  return {
+    focus: [300, 420],
+    surface: { blur: 18, relief: 5, warp: 5, joined: true },
+    shape: (fill) => (
+      <>
+        {pieces.map((d, i) => (
+          <path key={i} d={d} fill={fill} />
+        ))}
+      </>
+    ),
+    edge: () => (
+      <>
+        {edges.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </>
+    ),
+    defs: (uid) => (
+      <>
+        {vertical(uid("drape"), DRAPE)}
+        <linearGradient id={uid("fall")} gradientUnits="userSpaceOnUse" x1="0" y1={bodyTop} x2="0" y2={bodyBottom}>
+          {shoulderFall(DRAPE).map(([o, c]) => (
+            <stop key={o} offset={o} stopColor={c} />
+          ))}
+        </linearGradient>
+        {sleeveFoldDefs(uid)}
+        {foldDefs(uid)}
+        <mask id={uid("fold-sleeves")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
+          {sleeves.map((d, i) => (
+            <path key={i} d={d} fill="#fff" />
+          ))}
+        </mask>
+        <mask id={uid("fold-fronts")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
+          {front.body.map((d, i) => (
+            <path key={`body-${i}`} d={d} fill="#fff" />
+          ))}
+          {sleeves.map((d, i) => (
+            <path key={i} d={d} fill="#000" />
+          ))}
+        </mask>
+      </>
+    ),
+    shading: (uid) => (
+      <>
+        {front.body.map((d, i) => (
+          <path key={`body-${i}`} d={d} fill={`url(#${uid("drape")})`} />
+        ))}
+        {sleeves.map((d, i) => (
+          <path key={i} d={d} fill={`url(#${uid("fall")})`} />
+        ))}
+        <g mask={`url(#${uid("fold-fronts")})`}>{foldShadows(uid, front.folds)}</g>
+        <g mask={`url(#${uid("fold-sleeves")})`}>{foldShadows(uid, drape)}</g>
+        {seamShadows(uid, front.seams)}
+      </>
+    ),
+    light: (uid) => (
+      <>
+        <g mask={`url(#${uid("fold-fronts")})`}>{foldLights(uid, front.folds)}</g>
+        <g mask={`url(#${uid("fold-sleeves")})`}>{foldLights(uid, drape)}</g>
+      </>
+    ),
+    stitch: front.stitch,
+  };
+};
+
+const CLOSED_REGION = region(CLOSED);
 
 export const abayaFront: GarmentArt = {
   regions: {
-    body: {
-      focus: [300, 420],
-      surface: { blur: 18, relief: 5, warp: 5, joined: true },
-      shape: (fill) => (
-        <>
-          {pieces.map((d, i) => (
-            <path key={i} d={d} fill={fill} />
-          ))}
-        </>
-      ),
-      edge: () => (
-        <>
-          {edges.map((d, i) => (
-            <path key={i} d={d} />
-          ))}
-        </>
-      ),
-      defs: (uid) => (
-        <>
-          {vertical(uid("drape"), DRAPE)}
-          <linearGradient id={uid("fall")} gradientUnits="userSpaceOnUse" x1="0" y1={bodyTop} x2="0" y2={bodyBottom}>
-            {shoulderFall(DRAPE).map(([o, c]) => (
-              <stop key={o} offset={o} stopColor={c} />
-            ))}
-          </linearGradient>
-          {sleeveFoldDefs(uid)}
-          {foldDefs(uid)}
-          <mask id={uid("fold-sleeves")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
-            {sleeves.map((d, i) => (
-              <path key={i} d={d} fill="#fff" />
-            ))}
-          </mask>
-          <mask id={uid("fold-fronts")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
-            <path d={ROBE.right} fill="#fff" />
-            <path d={ROBE.left} fill="#fff" />
-            {sleeves.map((d, i) => (
-              <path key={i} d={d} fill="#000" />
-            ))}
-          </mask>
-        </>
-      ),
-      shading: (uid) => (
-        <>
-          <path d={ROBE.right} fill={`url(#${uid("drape")})`} />
-          <path d={ROBE.left} fill={`url(#${uid("drape")})`} />
-          {sleeves.map((d, i) => (
-            <path key={i} d={d} fill={`url(#${uid("fall")})`} />
-          ))}
-          <g mask={`url(#${uid("fold-fronts")})`}>{foldShadows(uid, FOLDS)}</g>
-          <g mask={`url(#${uid("fold-sleeves")})`}>{foldShadows(uid, drape)}</g>
-          {seamShadows(uid, ROBE.seams)}
-        </>
-      ),
-      light: (uid) => (
-        <>
-          <g mask={`url(#${uid("fold-fronts")})`}>{foldLights(uid, FOLDS)}</g>
-          <g mask={`url(#${uid("fold-sleeves")})`}>{foldLights(uid, drape)}</g>
-        </>
-      ),
-      stitch: STITCH,
-    },
+    body: region(OPEN),
   },
+  /* closed: the one panel in place of the two fronts; open is the regions above */
+  cut: (choice) => (choice.front === "closed" ? { body: CLOSED_REGION } : {}),
   armCover: () => sleeves,
   encloses: ROBE.encloses,
 };

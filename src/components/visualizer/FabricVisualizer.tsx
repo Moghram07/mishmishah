@@ -24,6 +24,7 @@ import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
 import { collarsForGarment } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
+import { frontsFor } from "@/lib/data/fronts";
 import {
   sleeveCuffById,
   sleeveCuffsFor,
@@ -47,10 +48,12 @@ import {
   collarOf,
   collarsFitting,
   cutFrom,
+  frontOf,
   isWearing,
   necklineOf,
   regionsOf,
   setCollar,
+  setFront,
   setNeckline,
   setSkirt,
   setSleeve,
@@ -79,6 +82,7 @@ import type {
   Design,
   Fabric,
   FabricRegionId,
+  FrontId,
   GarmentPartId,
   Outfit,
   ProductKind,
@@ -388,6 +392,12 @@ export function FabricVisualizer() {
     setOutfit((o) => ({ ...o, worn: setSkirt(o.worn, cuttingGarment.id, { ...current, ...next }) }));
   };
 
+  /** Wear the garment being cut open or closed at the front — resolved when read, see `frontOf`. */
+  const chooseFront = (front: FrontId) => {
+    if (!cuttingGarment) return;
+    setOutfit((o) => ({ ...o, worn: setFront(o.worn, cuttingGarment.id, front) }));
+  };
+
   /** Put a garment on or take it off. Layer and compatibility rules apply. */
   const toggleGarment = (id: string) => {
     const garment = garmentById(id);
@@ -635,17 +645,28 @@ export function FabricVisualizer() {
     (skirtShapeChoices.length > 1 || skirtLengthChoices.length > 1 || waistChoices.length > 1) &&
     (onBottom || !cuttingGarment?.fabricRegions.includes("bottom"));
 
+  /* how a robe is worn at the front, her abaya's: open or closed */
+  const frontChoices = cuttingGarment ? frontsFor(cuttingGarment) : [];
+  const wornFront = cuttingEntry ? frontOf(cuttingEntry.worn) : undefined;
+  const showFront = subject === "wardrobe" && frontChoices.length > 1 && wornFront !== undefined;
+
   /*
     On a phone the controls under the stage show a few rows at a time, and the
     skirt's switches sat below them. Picking the skirt's part — the dress's
     Bottom, or the skirt — brings them into view, so its length is never a
-    scroll away; where they already show, nothing moves.
+    scroll away; where they already show, nothing moves. Picking the abaya
+    does the same for its front.
   */
   const skirtOptions = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!isOpen || !showSkirt) return;
     skirtOptions.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [isOpen, showSkirt, cutting.garmentId, cutting.region]);
+  const frontOptions = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isOpen || !showFront) return;
+    frontOptions.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [isOpen, showFront, cutting.garmentId]);
 
   if (!isOpen) return null;
 
@@ -1139,6 +1160,37 @@ export function FabricVisualizer() {
                         }
                       />
                       {pick(region.label)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* how it is worn at the front, an abaya's: open or closed, one row */}
+            {showFront && wornFront && (
+              <div ref={frontOptions} className="scroll-my-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("viz.front")}
+                </p>
+                <div
+                  role="group"
+                  aria-label={t("viz.front")}
+                  className="grid gap-1 rounded-full bg-muted/60 p-1"
+                  style={{ gridTemplateColumns: `repeat(${frontChoices.length}, minmax(0, 1fr))` }}
+                >
+                  {frontChoices.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => chooseFront(f.id)}
+                      aria-pressed={wornFront === f.id}
+                      className={cn(
+                        "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
+                        wornFront === f.id
+                          ? "bg-card text-foreground shadow-soft"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {pick(f.name)}
                     </button>
                   ))}
                 </div>

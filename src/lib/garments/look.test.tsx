@@ -5,12 +5,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
-import { collarOf, cutFrom, setCollar, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
+import { collarOf, cutFrom, setCollar, setFront, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
 import { SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
 import { collars, collarsForGarment } from "@/lib/data/collars";
 import { sleeveLengthsFor, sleeveTypesFor } from "@/lib/data/sleeves";
-import type { BodyType, Fabric, FabricRegionId, Outfit, SkirtLengthId, SkirtShapeId, SleeveChoice, WaistId, WornGarment } from "@/types";
+import type { BodyType, Fabric, FabricRegionId, FrontId, Outfit, SkirtLengthId, SkirtShapeId, SleeveChoice, WaistId, WornGarment } from "@/types";
 import { DEFAULT_SKIN_TONE, skinTones } from "@/lib/data/skinTones";
 import { chroma, ciede2000, hexToRgb, hue, ita, itaClass } from "@/lib/color/cielab";
 import { frameFor } from "@/lib/mannequin/frame";
@@ -1824,6 +1824,87 @@ describe("abaya, light and dark", () => {
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
     writeFileSync(
       `.preview/wardrobe/abaya-a1-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+
+  /*
+    Round A2, the abaya closed on hidden snaps: on its own in black crepe, a
+    plain cloth and a print, with its neckline and the top of its seam, the
+    seam's foot at the hem and its cuff close up; its neckline
+    over a print dress and over a collared blouse; and each outfit under it
+    open, then closed.
+  */
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/abaya-a2-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const stage = (look: Look, front: FrontId, zoom = 1, focus: [number, number] = [300, 500], abaya = ABAYA_CLOTH) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const [gid, clothId] of [...look.wear, ["female-abaya", abaya] as [string, string]]) {
+        const g = garmentById(gid)!;
+        const cloth = f(clothId);
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      if (look.sleeve) worn = setSleeve(worn, look.sleeve[0], look.sleeve[1]);
+      if (look.skirt) {
+        const [sid, choice] = look.skirt;
+        worn = worn.map((w) => {
+          const skirt = w.garmentId === sid ? skirtOf(w) : undefined;
+          return skirt ? { ...w, skirt: { ...skirt, ...choice } } : w;
+        });
+      }
+      worn = setFront(worn, "female-abaya", front);
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={zoom} focus={focus} />;
+    };
+    const d = draft("female");
+    const cuff: [number, number] = [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2, d.wristY];
+    const alone: Look = { name: "the abaya", wear: [] };
+    const rows: { caption: string; node: React.ReactNode }[][] = [
+      /* on its own, closed, in black crepe, a plain cloth and a print, and close up */
+      [
+        ...([[ABAYA_CLOTH, "black crepe"], ["fb-apricot-linen", "plain"], ["fb-midnight-floral", "print"]] as const).map(([cloth, kind]) => ({
+          caption: `closed, ${kind}`,
+          node: stage(alone, "closed", 1, [300, 500], cloth),
+        })),
+        { caption: "closed, the neckline and the seam's top, 2.4×", node: stage(alone, "closed", 2.4, [300, 250]) },
+        { caption: "closed, the seam at the hem, 2.4×", node: stage(alone, "closed", 2.4, [300, 860]) },
+        { caption: "closed, the cuff, 2.4×", node: stage(alone, "closed", 2.4, cuff) },
+        { caption: "closed over the dress, print, the neckline, 2.4×", node: stage(OUTFITS[1], "closed", 2.4, [300, 250]) },
+        { caption: "closed over the blouse, its collar, 2.4×", node: stage(OUTFITS[5], "closed", 2.4, [300, 250]) },
+      ],
+      /* over what she wears: each outfit under it open, then closed */
+      ...[OUTFITS.slice(0, 4), OUTFITS.slice(4)].map((outfits) =>
+        outfits.flatMap((look) => [
+          { caption: `${look.name}, open`, node: stage(look, "open") },
+          { caption: `${look.name}, closed`, node: stage(look, "closed") },
+        ])
+      ),
+    ];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {tile.node}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/abaya-a2-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
   });

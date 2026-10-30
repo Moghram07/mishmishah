@@ -2034,7 +2034,7 @@ function cuffWindow(sleeve: string, cuffRow: number): string {
 
 /* ---------------------------------------------------------------- the robe */
 
-export interface OpenRobeSpec extends TopDraftSpec {
+export interface RobeSpec extends TopDraftSpec {
   /** How far its neckline dips at the centre front, below the neck points. */
   neckDip: number;
   /**
@@ -2044,31 +2044,54 @@ export interface OpenRobeSpec extends TopDraftSpec {
   gap: readonly [atNeck: number, atHem: number];
 }
 
-export interface OpenRobe {
-  /** The two fronts; neither laps the other. */
-  left: string;
-  right: string;
+export interface Robe {
+  /** Its fronts as they hang open — see `OpenFront`. */
+  open: OpenFront;
+  /** The same fronts closed down the centre — see `ClosedFront`. */
+  closed: ClosedFront;
   sleeveLeft: string;
   sleeveRight: string;
-  /** Each piece's free edges, in the order front right, front left, sleeves. */
-  edges: { right: string; left: string; sleeveLeft: string; sleeveRight: string };
+  /** Each sleeve's free edges, left then right. */
+  sleeveEdges: readonly [string, string];
   /** The armholes, as soft lines of shadow. */
   seams: string[];
   stitch: string;
   /** The sleeve cut, for the drape it hangs in — see `sewnDrape`. */
   cut: SleeveCut;
-  /** The closed panel the fronts are cut from, for the light's rows. */
+  /** The closed panel the fronts are cut from, closed across the neck too, for the light's rows. */
   panel: string;
-  /** Each front's edge from under the neck to the hem, left then right: where it hangs free. */
-  frontEdges: readonly [Pt[], Pt[]];
   /** The row its body leaves the underarm at. */
   underarm: number;
-  /** What it holds inside it — see `Encloses`. */
+  /** What it holds inside it — see `Encloses`. Open or closed, the same robe holds the same. */
   encloses: Encloses;
 }
 
+/** A robe's two fronts hanging open; neither laps the other. */
+export interface OpenFront {
+  left: string;
+  right: string;
+  /** Each front's free edges: its shoulder, and from the underarm round the side, hem, front edge and neckline. */
+  edges: { left: string; right: string };
+  /** Each front's edge from under the neck to the hem, left then right: where it hangs free. */
+  frontEdges: readonly [Pt[], Pt[]];
+}
+
 /**
- * A robe open down the front, worn over whatever is under it — an abaya.
+ * A robe's two fronts closed down the centre — her abaya on hidden snaps.
+ * They meet edge to edge under a plain seam, so it is one panel from the
+ * shoulders to the hem, with the robe's own neckline.
+ */
+export interface ClosedFront {
+  body: string;
+  /** Its free edges: the shoulders, the sides and hem, and the neckline. */
+  edge: string;
+  /** The seam down the centre front, from the neckline to the hem. */
+  seam: Pt[];
+}
+
+/**
+ * A robe worn over whatever is under it — an abaya: open down the front, or
+ * closed.
  *
  * - **The shoulders** are soft, walked along the body over the clothes under
  *   it as a top's are, not padded as a jacket's.
@@ -2079,9 +2102,10 @@ export interface OpenRobe {
  *   under it, in front of the robe's own side — see `front`.
  * - **The fronts** are the panel's two halves, cut along an opening that is
  *   narrow under the neck and wider at the hem — `gap` — each hanging free
- *   down its edge.
+ *   down its edge. Closed, they meet down the centre line under a seam, from
+ *   the neckline to the hem.
  */
-export function openRobe(body: BodyType, spec: OpenRobeSpec): OpenRobe {
+export function robe(body: BodyType, spec: RobeSpec): Robe {
   const { neck, neckRight, hemY, neckDip } = spec;
   const [gapNeck, gapHem] = spec.gap;
 
@@ -2137,17 +2161,26 @@ export function openRobe(body: BodyType, spec: OpenRobeSpec): OpenRobe {
     `M${neckRight[0]} ${neckRight[1]} ${run(reverse(strapRight))} ` +
     `M${600 - under[0]} ${under[1]} ${run(mirror(side))} ${run(downRight)}`;
 
+  /*
+    Closed: the two fronts met, one panel — the top's own, cut to the robe's
+    neckline rather than closed across the neck, so its sides and hem are to
+    the pixel the outline it holds what is under it in — and the seam they
+    are fastened under, straight down the centre line from the neckline to
+    the hem.
+  */
+  const kc = T.cut({ type: "set-in", length: "long" }, T.frame(run(arc), { type: "set-in", length: "long" }));
+  const seam = span([CENTER_X, arcAt(arc, CENTER_X)], [CENTER_X, hemAt(kc.left.hem, CENTER_X)], 24);
+
   return {
-    left,
-    right,
+    open: { left, right, edges: { left: edgeLeft, right: edgeRight }, frontEdges: [frontEdge, frontEdgeRight] },
+    closed: { body: kc.body, edge: kc.seamed!.edges[0], seam },
     sleeveLeft: k.sleeves[0],
     sleeveRight: k.sleeves[1],
-    edges: { right: edgeRight, left: edgeLeft, sleeveLeft: s.edges[1], sleeveRight: s.edges[2] },
+    sleeveEdges: [s.edges[1], s.edges[2]],
     seams: s.seams,
     stitch: s.sleeveStitch,
     cut: k,
     panel: k.body,
-    frontEdges: [frontEdge, frontEdgeRight],
     underarm: under[1],
     encloses: {
       band: [Math.min(neck[1], neckRight[1]), hemY - 1.5],

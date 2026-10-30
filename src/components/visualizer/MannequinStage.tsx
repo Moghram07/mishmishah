@@ -12,6 +12,7 @@ import { collarArt, garmentArt, type GarmentArt, type GarmentChoice } from "@/li
 import {
   collarOf,
   coveredZones,
+  frontOf,
   necklineOf,
   skirtOf,
   sleeveOf,
@@ -141,11 +142,13 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
       const index = visible.findIndex((v) => v.worn === w);
       const inside = index >= 0 ? insideOf(index)[0]?.encloses.hem : undefined;
       const skirt = skirtOf(w);
+      const front = frontOf(w);
       return {
         neckline: necklineOf(w)?.cut,
         opening: collarOf(w)?.opening,
         sleeve: sleeveOf(w),
         ...(skirt ? { skirt } : {}),
+        ...(front ? { front } : {}),
         ...(inside ? { inside } : {}),
       };
     };

@@ -93,6 +93,7 @@ export const dictionaries = {
     "viz.length": "Length",
     "viz.shape": "Shape",
     "viz.waist": "Waist",
+    "viz.front": "Front",
     "viz.collar": "Collar",
     "viz.noCollar": "Plain",
     "viz.collarHint":
@@ -248,6 +249,7 @@ export const dictionaries = {
     "viz.length": "الطول",
     "viz.shape": "القصّة",
     "viz.waist": "الخصر",
+    "viz.front": "الأمام",
     "viz.collar": "الياقة",
     "viz.noCollar": "بدون ياقة",
     "viz.collarHint": "يمكن تفصيل الياقة من قماش مختلف.",

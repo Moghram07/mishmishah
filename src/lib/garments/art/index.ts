@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { FabricRegionId, OpeningShape, SkirtChoice, SleeveChoice } from "@/types";
+import type { FabricRegionId, FrontId, OpeningShape, SkirtChoice, SleeveChoice } from "@/types";
 import type { Uid } from "@/lib/garments/shading";
 import type { Encloses } from "@/lib/garments/sleeves";
 import type { Tuck } from "@/lib/garments/fit";
@@ -156,6 +156,8 @@ export interface GarmentChoice {
   sleeve?: SleeveChoice;
   /** The skirt's style, for a garment that takes one — see `lib/garments/skirts.ts`. */
   skirt?: SkirtChoice;
+  /** How it is worn at the front, for a robe that can be worn open or closed — see `robe` in `lib/garments/sleeves.ts`. */
+  front?: FrontId;
   /**
    * The hem of a jacket it is worn under, if it is: it comes out from under it
    * no wider than the jacket — see `tucked` in `garments/fit.ts`.

@@ -3,6 +3,7 @@ import type {
   BodyZone,
   Collar,
   FabricRegionId,
+  FrontId,
   Garment,
   GarmentLayer,
   Neckline,
@@ -199,6 +200,23 @@ export function skirtOf(worn: WornGarment): SkirtChoice | undefined {
     },
     lengths
   );
+}
+
+/**
+ * How a worn garment is worn at the front — a robe's, open or closed —
+ * resolved against what it offers. `undefined` when it has no choice of
+ * front; anything it does not offer falls back to how it arrives.
+ */
+export function frontOf(worn: WornGarment): FrontId | undefined {
+  const garment = garmentById(worn.garmentId);
+  if (!garment?.fronts) return undefined;
+  const wanted = worn.front ?? garment.fronts.default;
+  return garment.fronts.offered.includes(wanted) ? wanted : garment.fronts.default;
+}
+
+/** Wear a garment open or closed at the front. The choice is resolved when it is read. */
+export function setFront(worn: WornGarment[], garmentId: string, front: FrontId): WornGarment[] {
+  return worn.map((w) => (w.garmentId === garmentId ? { ...w, front } : w));
 }
 
 /** Recut a worn garment's skirt. The choice is resolved when it is read. */

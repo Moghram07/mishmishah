@@ -322,6 +322,9 @@ export interface SkirtChoice {
   waist?: WaistId;
 }
 
+/** How a robe is worn at the front — her abaya: hanging open, or closed down the centre. */
+export type FrontId = "open" | "closed";
+
 /**
  * The drawing a body or a garment is rendered from.
  *
@@ -513,6 +516,11 @@ export interface Garment {
     waists?: WaistId[];
     default: SkirtChoice;
   };
+  /**
+   * How it can be worn at the front — a robe's, open or closed — and how it
+   * arrives. Absent, its front is part of its drawing.
+   */
+  fronts?: { offered: FrontId[]; default: FrontId };
   /** Which drawing to use, per view. Ids resolved by `lib/garments/art`. */
   asset: ViewAssets;
 }
@@ -696,6 +704,8 @@ export interface WornGarment {
   sleeve?: SleeveChoice;
   /** Its skirt, if it takes a choice of one and one was made. */
   skirt?: SkirtChoice;
+  /** How it is worn at the front, if it can be worn open or closed and one was chosen. */
+  front?: FrontId;
   /**
    * The collar sewn to it, if it accepts one and one was chosen. It belongs to
    * the garment rather than to the outfit, because that is where a collar is:
