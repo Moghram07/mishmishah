@@ -199,6 +199,21 @@ export const garments: Garment[] = [
      * closed, its cloth simply paints over.
      */
     fronts: { offered: ["open", "closed"], default: "open" },
+    /**
+     * Its own sleeves, every one long, and named as an abaya's are: the regular
+     * one «عادي»; the wide one «واسع», a bell; and the kimono, cut in one
+     * with the body — long on the abaya alone.
+     */
+    sleeves: {
+      types: ["set-in", "bell", "kimono"],
+      default: { type: "set-in", length: "long" },
+      lengths: ["long"],
+      names: {
+        "set-in": { en: "Regular", ar: "عادي" },
+        bell: { en: "Wide", ar: "واسع" },
+        kimono: { en: "Kimono", ar: "كيمونو" },
+      },
+    },
     asset: { front: "female-abaya-front" },
   },
 

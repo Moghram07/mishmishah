@@ -129,8 +129,10 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
       jacket's shoulders to its hem the garment shows only within the jacket,
       and is hidden outside it, except a sleeve's end below the jacket's cuff.
     */
-    const holders = visible.flatMap(({ garment }) => {
-      const encloses = garmentArt(garment.asset.front)?.encloses;
+    const holders = visible.flatMap(({ garment, worn: w }) => {
+      const held = garmentArt(garment.asset.front)?.encloses;
+      /* an abaya holds what is under it by its sleeve and its front: asked of them, as it is worn */
+      const encloses = typeof held === "function" ? held({ sleeve: sleeveOf(w), front: frontOf(w) }) : held;
       return encloses ? [{ id: garment.id, encloses }] : [];
     });
     const insideOf = (index: number) =>

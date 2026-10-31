@@ -1908,6 +1908,104 @@ describe("abaya, light and dark", () => {
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
   });
+
+  /*
+    Round A3, the abaya's wide and kimono sleeves: whole, open in black crepe,
+    a plain cloth and a print, and closed; close up at the shoulder and the
+    cuff, on its own and over a print dress in long sleeves; and over a few
+    outfits, open and closed.
+  */
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/abaya-a3-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const WIDE: SleeveChoice = { type: "bell", length: "long" };
+    const KIMONO: SleeveChoice = { type: "kimono", length: "long" };
+    const stage = (look: Look, front: FrontId, sleeve: SleeveChoice, zoom = 1, focus: [number, number] = [300, 500], abaya = ABAYA_CLOTH) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const [gid, clothId] of [...look.wear, ["female-abaya", abaya] as [string, string]]) {
+        const g = garmentById(gid)!;
+        const cloth = f(clothId);
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      if (look.sleeve) worn = setSleeve(worn, look.sleeve[0], look.sleeve[1]);
+      if (look.skirt) {
+        const [sid, choice] = look.skirt;
+        worn = worn.map((w) => {
+          const skirt = w.garmentId === sid ? skirtOf(w) : undefined;
+          return skirt ? { ...w, skirt: { ...skirt, ...choice } } : w;
+        });
+      }
+      worn = setSleeve(setFront(worn, "female-abaya", front), "female-abaya", sleeve);
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={zoom} focus={focus} />;
+    };
+    const d = draft("female");
+    const cuff: [number, number] = [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2, d.wristY];
+    const shoulder: [number, number] = [215, 300];
+    const alone: Look = { name: "the abaya", wear: [] };
+    const plain = "fb-apricot-linen";
+    const rows: { caption: string; node: React.ReactNode }[][] = [
+      /* whole: open in three cloths, each sleeve; and closed */
+      [
+        ...([[WIDE, "wide"], [KIMONO, "kimono"]] as const).flatMap(([sleeve, name]) =>
+          ([[ABAYA_CLOTH, "black crepe"], [plain, "plain"], ["fb-midnight-floral", "print"]] as const).map(([cloth, kind]) => ({
+            caption: `${name}, open, ${kind}`,
+            node: stage(alone, "open", sleeve, 1, [300, 500], cloth),
+          }))
+        ),
+        { caption: "wide, closed, black crepe", node: stage(alone, "closed", WIDE) },
+        { caption: "kimono, closed, black crepe", node: stage(alone, "closed", KIMONO) },
+      ],
+      /* close up, in the plain cloth: the shoulder and the cuff; and each cuff over a print dress in long sleeves */
+      [
+        { caption: "wide, the shoulder, plain, 2.4×", node: stage(alone, "open", WIDE, 2.4, shoulder, plain) },
+        { caption: "wide, the cuff, plain, 2.4×", node: stage(alone, "open", WIDE, 2.4, cuff, plain) },
+        { caption: "kimono, the shoulder, plain, 2.4×", node: stage(alone, "open", KIMONO, 2.4, shoulder, plain) },
+        { caption: "kimono, the cuff, plain, 2.4×", node: stage(alone, "open", KIMONO, 2.4, cuff, plain) },
+        { caption: "wide over the dress, long sleeves, the cuff, 2.4×", node: stage(OUTFITS[1], "open", WIDE, 2.4, cuff) },
+        { caption: "kimono over the dress, long sleeves, the cuff, 2.4×", node: stage(OUTFITS[1], "open", KIMONO, 2.4, cuff) },
+        { caption: "wide, closed over a blouse and trousers", node: stage(OUTFITS[5], "closed", WIDE) },
+        { caption: "kimono, closed over a blouse and trousers", node: stage(OUTFITS[5], "closed", KIMONO) },
+      ],
+      /* over what she wears */
+      [
+        { caption: "the dress as it arrives, wide, open", node: stage(OUTFITS[0], "open", WIDE) },
+        { caption: "the dress as it arrives, kimono, open", node: stage(OUTFITS[0], "open", KIMONO) },
+        { caption: "empire A-line maxi, wide, open", node: stage(OUTFITS[2], "open", WIDE) },
+        { caption: "empire A-line maxi, kimono, open", node: stage(OUTFITS[2], "open", KIMONO) },
+        { caption: "mermaid maxi, wide, closed", node: stage(OUTFITS[3], "closed", WIDE) },
+        { caption: "mermaid maxi, kimono, closed", node: stage(OUTFITS[3], "closed", KIMONO) },
+        { caption: "nothing under it, wide, open", node: stage(OUTFITS[7], "open", WIDE) },
+        { caption: "nothing under it, kimono, open", node: stage(OUTFITS[7], "open", KIMONO) },
+      ],
+    ];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {tile.node}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/abaya-a3-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
 });
 
 /**

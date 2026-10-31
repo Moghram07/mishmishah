@@ -35,7 +35,7 @@ import {
 import {
   defaultSleeve,
   sleeveCuffsFor,
-  firstLength,
+  fallbackLength,
   sleeveLengthsFor,
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
@@ -165,8 +165,8 @@ export function sleeveOf(worn: WornGarment): SleeveChoice | undefined {
     : types.includes(garment.sleeves.default.type)
       ? garment.sleeves.default.type
       : types[0];
-  const lengths = sleeveLengthsFor(type, necklineOf(worn));
-  const length = lengths.includes(wanted.length) ? wanted.length : firstLength(type);
+  const lengths = sleeveLengthsFor(type, necklineOf(worn), garment);
+  const length = lengths.includes(wanted.length) ? wanted.length : fallbackLength(type, lengths);
   const cuffs = sleeveCuffsFor(garment, { type, length });
   if (cuffs.length === 0) return { type, length };
   const own = garment.sleeves.default.cuff;

@@ -252,7 +252,8 @@ describe("a jacket's sleeve buttons", () => {
         expect(Math.hypot(row[i].x - row[i - 1].x, row[i].y - row[i - 1].y)).toBeCloseTo(2 * row[i].r, 1);
       }
       // the lowest a little above the end of the sleeve, which the cuff under it shows below
-      const gap = cm(art.encloses!.cuff - (row[0].y + row[0].r));
+      const held = art.encloses!;
+      const gap = cm((typeof held === "function" ? held({}) : held).cuff - (row[0].y + row[0].r));
       expect(gap).toBeGreaterThan(1.5);
       expect(gap).toBeLessThan(2.5);
     }

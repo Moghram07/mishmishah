@@ -239,9 +239,10 @@ export interface GarmentArt {
   bandTrim?: ReactNode;
   /**
    * What a garment worn under this one is allowed to show of itself: a
-   * jacket's, which holds whatever is under it — see `Encloses`.
+   * jacket's, which holds whatever is under it — see `Encloses`. An abaya's
+   * depends on its sleeve, so it is asked of the choice it is worn in.
    */
-  encloses?: Encloses;
+  encloses?: Encloses | ((choice: GarmentChoice) => Encloses);
   /**
    * How many buttons close a collar's band on this garment, where the band
    * shows: two on a thobe, one on a shirt. The collar is shared between

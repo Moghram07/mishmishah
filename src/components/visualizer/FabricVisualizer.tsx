@@ -29,9 +29,9 @@ import {
   sleeveCuffById,
   sleeveCuffsFor,
   sleeveLengthById,
-  firstLength,
+  fallbackLength,
   sleeveLengthsFor,
-  sleeveTypeById,
+  sleeveTypeName,
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
 import { fabrics, fabricById } from "@/lib/data/fabrics";
@@ -370,13 +370,13 @@ export function FabricVisualizer() {
     const current = sleeveOf(cuttingEntry.worn);
     if (!current) return;
     const type = next.type ?? current.type;
-    const lengths = sleeveLengthsFor(type, necklineOf(cuttingEntry.worn));
+    const lengths = sleeveLengthsFor(type, necklineOf(cuttingEntry.worn), cuttingGarment);
     const length =
       next.length && lengths.includes(next.length)
         ? next.length
         : lengths.includes(current.length)
           ? current.length
-          : firstLength(type);
+          : fallbackLength(type, lengths);
     const cuff = next.cuff ?? cuttingEntry.worn.sleeve?.cuff;
     setOutfit((o) => ({
       ...o,
@@ -707,6 +707,11 @@ export function FabricVisualizer() {
       ? sleeveTypesFor(cuttingGarment, necklineOf(cuttingEntry.worn))
       : [];
   const wornSleeve = cuttingEntry ? sleeveOf(cuttingEntry.worn) : undefined;
+  /* the lengths the sleeve worn is cut at, on this garment */
+  const sleeveLengths =
+    wornSleeve && cuttingEntry
+      ? sleeveLengthsFor(wornSleeve.type, necklineOf(cuttingEntry.worn), cuttingGarment)
+      : [];
   const collarChoices =
     cuttingGarment && cuttingEntry
       ? collarsFitting(cuttingGarment, cuttingEntry.worn)
@@ -1339,25 +1344,30 @@ export function FabricVisualizer() {
                   {sleeveChoices.map((id) => (
                     <CollarChoice
                       key={id}
-                      label={pick(sleeveTypeById(id)!.name)}
+                      label={pick(sleeveTypeName(cuttingGarment, id))}
                       active={wornSleeve.type === id}
                       onClick={() => chooseSleeve({ type: id })}
                     />
                   ))}
                 </div>
-                <p className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.sleeveLength")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {sleeveLengthsFor(wornSleeve.type, cuttingEntry ? necklineOf(cuttingEntry.worn) : undefined).map((id) => (
-                    <CollarChoice
-                      key={id}
-                      label={pick(sleeveLengthById(id)!.name)}
-                      active={wornSleeve.length === id}
-                      onClick={() => chooseSleeve({ length: id })}
-                    />
-                  ))}
-                </div>
+                {/* where it ends — not asked of a garment cut at one length only, an abaya's long sleeves */}
+                {sleeveLengths.length > 1 && (
+                  <>
+                    <p className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("viz.sleeveLength")}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {sleeveLengths.map((id) => (
+                        <CollarChoice
+                          key={id}
+                          label={pick(sleeveLengthById(id)!.name)}
+                          active={wornSleeve.length === id}
+                          onClick={() => chooseSleeve({ length: id })}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
                 {/* a cuff is a long sleeve's, on a garment that offers one */}
                 {cuttingGarment && sleeveCuffsFor(cuttingGarment, wornSleeve).length > 0 && (
                   <>

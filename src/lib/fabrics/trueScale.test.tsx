@@ -159,10 +159,10 @@ describe("every print at its true size", () => {
     }
   }, 60_000);
 
-  /* every way a robe is worn at the front, her abaya open and closed, likewise at one zoom */
-  it("on every front a robe is worn with, in every size of repeat", () => {
+  /* every way a robe is worn at the front, her abaya open and closed, with every sleeve it is cut with, likewise at one zoom */
+  it("on every front a robe is worn with, and every sleeve, in every size of repeat", () => {
     for (const garment of garments.filter((g) => g.fronts)) {
-      for (const front of garment.fronts!.offered) {
+      for (const front of garment.fronts!.offered) for (const type of garment.sleeves?.types ?? [undefined]) {
         for (const fabric of byRepeat) {
           const repeat = fabricRepeatCm(fabric) / BODY_CANVAS.cmPerUnit;
           const regions = Object.fromEntries(
@@ -172,13 +172,13 @@ describe("every print at its true size", () => {
             bodyType: garment.gender,
             skinTone: DEFAULT_SKIN_TONE,
             direction: 0,
-            worn: [{ ...cutFrom(garment, fabric.id), front }],
+            worn: [{ ...cutFrom(garment, fabric.id), front, ...(type ? { sleeve: { type, length: garment.sleeves!.lengths?.[0] ?? "long" } } : {}) }],
           };
           const html = renderToStaticMarkup(
             <MannequinStage outfit={outfit} fabrics={{ [garment.id]: regions }} zoom={2} focus={[300, 420]} />
           );
           const frameW = Number(html.match(/<svg[^>]*viewBox="[^ ]+ [^ ]+ ([^ ]+) [^"]+"/)?.[1]);
-          expectTrueTiles(html, repeat, RENDER_PX / frameW, `${garment.id}, ${front}, in ${fabric.id}`);
+          expectTrueTiles(html, repeat, RENDER_PX / frameW, `${garment.id}, ${front}, ${type ?? ""}, in ${fabric.id}`);
         }
       }
     }

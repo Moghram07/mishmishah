@@ -1721,12 +1721,13 @@ function crossingsAt(polys, y) {
  * own piece is measured across that piece; one cut in one with the body, across
  * the outermost run of cloth on each row.
  */
-function sleeveGrowth(paths, bodyKey, sleeve) {
+function sleeveGrowth(paths, bodyKey, sleeve, own = false) {
   const top = SLEEVE_KIT.underarmRow(bodyKey, sleeve);
   const cuff = SLEEVE_KIT.hemRow(bodyKey, sleeve);
   if (top === null || cuff === null) return null;
   const pieces = paths.map((d) => flatten(d).flat());
-  const cutOn = SLEEVE_KINDS[sleeve.type].construction === "cut-on";
+  /* given the sleeves alone — a robe's — each is measured as a piece of its own, however it is cut */
+  const cutOn = !own && SLEEVE_KINDS[sleeve.type].construction === "cut-on";
   let narrowest = Infinity;
   let worst = { grows: 0, y: null, width: null };
   /*
@@ -2655,6 +2656,63 @@ function checkDrawingsRead(bodyKey, body, wardrobe) {
   return failed;
 }
 
+/* ------------------------------------------------------- a robe's cloth whole */
+
+/** How finely a robe is read for holes: three samples a unit, so a sliver a third of a unit wide is seen. */
+const HOLE_GRID = 3;
+
+/**
+ * Is a robe's cloth whole — no hole in it but the openings it is cut with?
+ *
+ * Its body and its sleeves are pieces of their own, laid over each other, and
+ * where two only met, or a piece stopped short of the other, the page showed
+ * through between them: a sliver down a wide sleeve's armhole, a gap under a
+ * kimono's arm, invisible in a light cloth and white on black crepe. Its front
+ * opening and its neckline reach the page; a hole does not.
+ *
+ * Read finer than the rest of this file: every sample its pieces leave
+ * uncovered, flooded from the edge of the canvas — what the flood cannot
+ * reach is a hole.
+ */
+function checkRobeWhole(bodyKey, label, paths) {
+  const k = HOLE_GRID;
+  const [w, h] = [W * k, H * k];
+  const grid = new Float32Array(w * h);
+  for (const d of paths) fillPolys(flatten(d).map((poly) => poly.map(([x, y]) => [x * k, y * k])), grid, w, h, 1);
+  const seen = new Uint8Array(w * h);
+  const stack = [];
+  for (let x = 0; x < w; x++) stack.push(x, (h - 1) * w + x);
+  for (let y = 0; y < h; y++) stack.push(y * w, y * w + w - 1);
+  while (stack.length) {
+    const i = stack.pop();
+    if (seen[i] || grid[i] > 0) continue;
+    seen[i] = 1;
+    const x = i % w;
+    if (x > 0) stack.push(i - 1);
+    if (x < w - 1) stack.push(i + 1);
+    if (i >= w) stack.push(i - w);
+    if (i < w * (h - 1)) stack.push(i + w);
+  }
+  let holes = 0;
+  const box = [Infinity, Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < w * h; i++) {
+    if (seen[i] || grid[i] > 0) continue;
+    holes++;
+    const [x, y] = [(i % w) / k, Math.floor(i / w) / k];
+    box[0] = Math.min(box[0], x);
+    box[1] = Math.min(box[1], y);
+    box[2] = Math.max(box[2], x);
+    box[3] = Math.max(box[3], y);
+  }
+  console.log(
+    `${holes ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${label.padEnd(26)} ` +
+      (holes
+        ? `a hole in its cloth, ${(holes / (k * k)).toFixed(1)} square units at x ${box[0].toFixed(0)}–${box[2].toFixed(0)}, y ${box[1].toFixed(0)}–${box[3].toFixed(0)}: the page shows through it`
+        : `its cloth whole: nothing open inside its outline but what reaches the page`)
+  );
+  return holes ? 1 : 0;
+}
+
 /* ------------------------------------------------------- a robe's fastening */
 
 /** How far a closed front's topstitch may sit from its seam, in units: a placket's width, no more. */
@@ -2963,7 +3021,7 @@ function sleeveChoicesOf(garment, bodyKey) {
   const out = [];
   for (const type of garment.sleeves.types) {
     if (!SLEEVE_KINDS[type].bodies.includes(bodyKey)) continue;
-    for (const length of ["sleeveless", ...SLEEVE_KINDS[type].lengths]) {
+    for (const length of garment.sleeves.lengths ?? ["sleeveless", ...SLEEVE_KINDS[type].lengths]) {
       const cuffs = SLEEVE_KIT.cuffsOffered(garment.sleeves.cuffs, { type, length });
       for (const cuff of cuffs.length > 0 ? cuffs : [null]) {
         out.push(cuff ? { type, length, cuff } : { type, length });
@@ -2973,9 +3031,9 @@ function sleeveChoicesOf(garment, bodyKey) {
   return out;
 }
 
-/** What an outer garment holds inside it, read out of its drawing — or out of its cut, for one drafted in a module. */
-function enclosesOf(assetId, body) {
-  if (CUT_MODULES[assetId]) return CUT_MODULES[assetId].encloses ?? null;
+/** What an outer garment holds inside it, read out of its drawing — or out of its cut, for one drafted in a module, as it is worn. */
+function enclosesOf(assetId, body, choice = {}) {
+  if (CUT_MODULES[assetId]) return CUT_MODULES[assetId].enclosesFor?.(choice) ?? CUT_MODULES[assetId].encloses ?? null;
   for (const v of artTable(assetId, body).values()) {
     if (v && typeof v === "object" && v.encloses && Array.isArray(v.encloses.envelope)) return v.encloses;
   }
@@ -2991,11 +3049,11 @@ const conflicts = (a, b) =>
  * layer shows through, the rows it holds that layer over, and each row's
  * front opening. `null` for an outer garment that holds nothing.
  */
-function jacketOf(outer, body, front = null) {
-  const enc = enclosesOf(outer.asset.front, body);
+function jacketOf(outer, body, front = null, sleeve = null) {
+  const enc = enclosesOf(outer.asset.front, body, { front: front ?? undefined, sleeve: sleeve ?? undefined });
   if (!enc) return null;
   const open = (v) => v < 0.5;
-  const cloth = rasterize(artPaths(outer.asset.front, body, { front }));
+  const cloth = rasterize(artPaths(outer.asset.front, body, { front, sleeve }));
   const inside = rasterize(enc.envelope);
   const windows = rasterize(enc.windows);
   const [top, bottom] = [Math.ceil(enc.band[0]), Math.floor(enc.band[1])];
@@ -3085,16 +3143,31 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
   const profile = profileFor(bodyKey);
   const solid = (v) => v >= 0.5;
 
-  /* each outer garment in each way it is worn — her abaya open, then closed */
-  const holders = wardrobe.flatMap((outer) =>
-    (outer.fronts ? [outer.fronts.default, ...outer.fronts.offered.filter((f) => f !== outer.fronts.default)] : [null]).map(
-      (front, k) => ({ outer, front, first: k === 0 })
-    )
-  );
-  for (const { outer, front, first } of holders) {
-    const jacket = jacketOf(outer, body, front);
+  /*
+    Each outer garment in each way it is worn — her abaya open and closed,
+    with each of its sleeves — the way it arrives first.
+  */
+  const holders = wardrobe.flatMap((outer) => {
+    const fronts = outer.fronts ? [outer.fronts.default, ...outer.fronts.offered.filter((f) => f !== outer.fronts.default)] : [null];
+    const own = outer.sleeves?.default;
+    const sleeves =
+      own && CUT_MODULES[outer.asset.front]
+        ? [own, ...sleeveChoicesOf(outer, bodyKey).filter((c) => c.type !== own.type || c.length !== own.length)]
+        : [null];
+    return fronts
+      .flatMap((front) => sleeves.map((sleeve) => ({ outer, front, sleeve })))
+      .map((h, k) => ({ ...h, first: k === 0 }));
+  });
+  for (const { outer, front, sleeve, first } of holders) {
+    const jacket = jacketOf(outer, body, front, sleeve);
     if (!jacket) continue;
-    const name = first ? outer.id : `${outer.id} · ${front}`;
+    const name = [
+      outer.id,
+      front && front !== outer.fronts.default ? front : null,
+      sleeve && sleeve.type !== outer.sleeves.default.type ? (outer.sleeves.names?.[sleeve.type]?.en ?? sleeve.type).toLowerCase() : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
     const { enc, cloth: outerCloth, inside, windows, top, bottom, inOpening } = jacket;
     const shoulderTo = top + 40;
 
@@ -3668,7 +3741,7 @@ for (const bodyKey of Object.keys(bodies)) {
         body alone, and its sleeve hanging in front of that body. See `FALLS`
         in its cut.
       */
-      const falls = CUT_MODULES[garment.asset.front]?.FALLS;
+      const falls = CUT_MODULES[garment.asset.front]?.fallsOf?.({ sleeve: sleeve ?? undefined, front: front ?? undefined });
       const hung =
         skirt && (hangs(skirt) || slope !== undefined)
           ? {
@@ -3682,7 +3755,7 @@ for (const bodyKey of Object.keys(bodies)) {
                 besideArms({ shape: skirt.shape, length: skirt.length }),
             }
           : falls
-            ? { from: falls.from, hung: false, slope: falls.slope, cloth: rasterize(CUT_MODULES[garment.asset.front].bodyOf(front ?? undefined)), swings: falls.front }
+            ? { from: falls.from, hung: false, slope: falls.slope, cloth: rasterize(CUT_MODULES[garment.asset.front].bodyFor({ front: front ?? undefined, sleeve: sleeve ?? undefined })), swings: falls.front }
             : null;
       if (!loose) failed += checkArmGap(bodyKey, label, cloth, profile, coverage, hung);
       failed += checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung);
@@ -3717,10 +3790,34 @@ for (const bodyKey of Object.keys(bodies)) {
         and sleeve it arrives in: the front is its body, and nothing else. And
         closed, what fastens it lies on its cloth.
       */
+      /* a robe, its cloth whole in every way it is worn: each front, with each sleeve */
+      if (garment.fronts && CUT_MODULES[garment.asset.front]) {
+        for (const front of garment.fronts.offered) {
+          for (const sleeve of garment.sleeves ? sleeveChoicesOf(garment, bodyKey) : [null]) {
+            const named = [
+              front !== garment.fronts.default ? front : null,
+              sleeve && sleeve.type !== garment.sleeves.default.type ? (garment.sleeves.names?.[sleeve.type]?.en ?? sleeve.type).toLowerCase() : null,
+            ].filter(Boolean);
+            const label = [name, ...named].join(" · ");
+            failures += checkRobeWhole(bodyKey, label, artPaths(garment.asset.front, body, { front, sleeve }));
+          }
+        }
+      }
+
       for (const front of (garment.fronts?.offered ?? []).filter((f) => f !== garment.fronts.default)) {
-        failures += checkCut(wornCuts[0], null, `${name} · ${front}`, false, skirt, front).failed;
-        const fastening = CUT_MODULES[garment.asset.front]?.fastening;
-        if (front === "closed" && fastening) failures += checkFastening(bodyKey, `${name} · ${front}`, fastening);
+        /* with each sleeve it is cut with */
+        const sleeves = garment.sleeves && CUT_MODULES[garment.asset.front] ? sleeveChoicesOf(garment, bodyKey) : [null];
+        for (const sleeve of sleeves) {
+          const named =
+            sleeve && sleeve.type !== garment.sleeves.default.type
+              ? ` · ${(garment.sleeves.names?.[sleeve.type]?.en ?? sleeve.type).toLowerCase()}`
+              : "";
+          const label = `${name} · ${front}${named}`;
+          const cutOn = sleeve !== null && SLEEVE_KINDS[sleeve.type].construction === "cut-on";
+          failures += checkCut(wornCuts[0], sleeve, label, cutOn, skirt, front).failed;
+          const fastening = CUT_MODULES[garment.asset.front]?.fasteningOf?.({ sleeve: sleeve ?? undefined });
+          if (front === "closed" && fastening) failures += checkFastening(bodyKey, label, fastening);
+        }
       }
 
       /*
@@ -3845,7 +3942,7 @@ for (const bodyKey of Object.keys(bodies)) {
           const cuffed = garment.sleeves.cuffs?.length ? garment.sleeves.cuffs : null;
           for (const type of garment.sleeves.types) {
             if (!SLEEVE_KINDS[type].bodies.includes(bodyKey)) continue;
-            for (const length of ["sleeveless", ...SLEEVE_KINDS[type].lengths]) {
+            for (const length of garment.sleeves.lengths ?? ["sleeveless", ...SLEEVE_KINDS[type].lengths]) {
               /*
                 And a long sleeve once per cuff it is offered with: a cuff is its
                 own piece of cloth, and the sleeve above it ends differently.
@@ -3861,7 +3958,10 @@ for (const bodyKey of Object.keys(bodies)) {
               try {
                 failed = checkCut(cutId, sleeve, label, SLEEVE_KINDS[type].construction === "cut-on" || type === "flutter", skirt).failed;
                 if (!LOOSE_SLEEVES.includes(type) && length !== "sleeveless") {
-                  const g = sleeveGrowth(artPaths(garment.asset.front, body, { cut: cutId, sleeve, skirt }), bodyKey, sleeve);
+                  const own = CUT_MODULES[garment.asset.front]?.sleevesOf;
+                  const g = own
+                    ? sleeveGrowth(own({ sleeve }), bodyKey, sleeve, true)
+                    : sleeveGrowth(artPaths(garment.asset.front, body, { cut: cutId, sleeve, skirt }), bodyKey, sleeve);
                   if (g && g.grows > SLEEVE_GROWTH) {
                     failed++;
                     console.log(
@@ -3889,22 +3989,6 @@ for (const bodyKey of Object.keys(bodies)) {
           );
         }
       }
-    }
-
-    /*
-      A sleeve a garment is cut with and offers no choice of — her abaya's —
-      is held to what every offered sleeve is above: it hangs as a tube.
-    */
-    const mod = CUT_MODULES[garment.asset.front];
-    if (mod?.SLEEVE && mod.SLEEVES) {
-      const g = sleeveGrowth(mod.SLEEVES, bodyKey, mod.SLEEVE);
-      const bad = g !== null && g.grows > SLEEVE_GROWTH;
-      if (bad) failures++;
-      console.log(
-        `${bad ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${garment.id} · its sleeve`.padEnd(26)} ` +
-          `widens ${g ? g.grows.toFixed(1) : "--"} units below its underarm` +
-          (bad ? `, to ${g.width.toFixed(1)} at y ${g.y} — a sleeve hangs as a tube` : "")
-      );
     }
 
     painted.set(garment.id, paint);

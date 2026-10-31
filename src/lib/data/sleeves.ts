@@ -145,13 +145,28 @@ export function sleeveTypesFor(
  * where every sleeve hangs from the band and the shortest is the band alone:
  * without a sleeve the cut would be a strapless one.
  */
-export const sleeveLengthsFor = (type: SleeveTypeId, neckline?: Neckline): SleeveLengthId[] =>
-  SLEEVE_KINDS[type].construction === "band" || neckline?.sleeves === "band"
-    ? [...SLEEVE_KINDS[type].lengths]
-    : ["sleeveless", ...SLEEVE_KINDS[type].lengths];
+export const sleeveLengthsFor = (type: SleeveTypeId, neckline?: Neckline, garment?: Garment): SleeveLengthId[] =>
+  garment?.sleeves?.lengths
+    ? [...garment.sleeves.lengths]
+    : SLEEVE_KINDS[type].construction === "band" || neckline?.sleeves === "band"
+      ? [...SLEEVE_KINDS[type].lengths]
+      : ["sleeveless", ...SLEEVE_KINDS[type].lengths];
+
+/**
+ * The length a sleeve falls back to when the one worn is not offered: the
+ * type's own first, where the garment cuts it — else the garment's first.
+ */
+export const fallbackLength = (type: SleeveTypeId, offered: SleeveLengthId[]): SleeveLengthId =>
+  offered.includes(firstLength(type)) ? firstLength(type) : offered[0];
+
+/** What a garment calls a sleeve: its own name for it, or the catalogue's. */
+export const sleeveTypeName = (garment: Garment | undefined, type: SleeveTypeId): { en: string; ar: string } =>
+  garment?.sleeves?.names?.[type] ?? TYPE_NAMES[type];
 
 /** A type's own first length — its shortest sleeve, never "none". */
-export const firstLength = (type: SleeveTypeId): SleeveLengthId => SLEEVE_KINDS[type].lengths[0];
+export function firstLength(type: SleeveTypeId): SleeveLengthId {
+  return SLEEVE_KINDS[type].lengths[0];
+}
 
 /**
  * The cuffs a sleeve can be finished with on this garment: the garment's own

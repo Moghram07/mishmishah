@@ -462,8 +462,24 @@ export interface SleeveCut {
    */
   underarm?: number;
   /** The left half's pieces, for a garment that is only sleeved on one side. */
-  left: { armhole: Pt[]; side: Pt[]; hem: Pt[]; sleeve: string };
+  left: {
+    armhole: Pt[];
+    side: Pt[];
+    hem: Pt[];
+    sleeve: string;
+    /**
+     * A sleeve cut in one with the body, as the panel runs it: down the outside
+     * of the arm from the shoulder's end, across the hem, and back up its inner
+     * edge, round the underarm and down the side — for a garment cut from the
+     * panel's halves, a robe's fronts.
+     */
+    cutOn?: { out: Pt[]; hem: Pt[]; inner: Pt[]; lower: Pt[] };
+    /** A loose sleeve's seam, from the top of its cap to the underarm: what it is sewn along. */
+    sewnAlong?: Pt[];
+  };
   right: { sleeve: string };
+  /** The topstitch of the sleeves alone, without the body's hem: a loose or cut-on sleeve's — a sewn one's is `seamed.sleeveStitch`. */
+  sleeveStitch?: string;
   /**
    * A sewn sleeve — set-in, drop or raglan — is sewn on, but the cloth runs on
    * over the seam. So its pieces are outlined only along their free edges, its
@@ -590,6 +606,12 @@ export interface SleeveFinish {
    * seam.
    */
   front?: boolean;
+  /**
+   * How much fuller a sleeve cut in one with the body is cut, on each side,
+   * than its arm and ease: an abaya's kimono, wide and straight. Absent, a
+   * kimono is cut as close as a dress's.
+   */
+  full?: number;
 }
 
 export interface TopDraftSpec extends TopSpec {
@@ -696,19 +718,21 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
    *
    * The inner edge keeps its daylight to the side seam and never comes off the
    * arm — the same two demands `setIn` makes — until `free`, below which a full
-   * sleeve is allowed to swing over the body it hangs beside.
+   * sleeve is allowed to swing over the body it hangs beside. A garment's own
+   * finish can ask more: room over a sleeve worn under it, outside, and a
+   * sleeve hanging in front of its body all the way down — see `SleeveFinish`.
    */
-  const edges = (topY: number, innerTop: number, cuff: number, p: Profile, side: Pt[], tip?: Pt) => {
+  const edges = (topY: number, innerTop: number, cuff: number, p: Profile, side: Pt[], tip?: Pt, fin: SleeveFinish = {}) => {
     const keep = keepOff(side, innerTop);
     const out = rows(topY, cuff).map((y) => {
       const t = (y - topY) / (cuff - topY || 1);
-      return [d.armOutAt(y, p.out(t)), y] as Pt;
+      return [d.armOutAt(y, p.out(t) + (fin.over ?? 0)), y] as Pt;
     });
     if (tip) out[0] = tip;
     const inner = rows(innerTop, cuff).map((y) => {
       const t = (y - innerTop) / (cuff - innerTop || 1);
       const e = p.in(t);
-      if (p.free !== undefined && t >= p.free) return [d.armInAt(y, e), y] as Pt;
+      if (fin.front || (p.free !== undefined && t >= p.free)) return [d.armInAt(y, e), y] as Pt;
       return [keep(d.armInAt(y, e), y), y] as Pt;
     });
     return { out, inner };
@@ -1494,32 +1518,34 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
       const joinY = Math.min(d.armpitY + (dolman ? DOLMAN_DEPTH : KIMONO_DEPTH) * (d.waistY - d.armpitY), hemY);
       const loose = dolman ? capE + 14 : capE + 5;
       const end = f.tipLeft;
+      const fin = spec.finish ?? {};
       const walked = rows(end[1], cuff).map((y) => {
         const t = (y - end[1]) / (cuff - end[1] || 1);
         // widest at the top for a dolman, tapering to the wrist; a kimono hangs straight
         const e = dolman
           ? lerp(spec.shoulderEase, loose, Math.min(1, t / 0.15)) - 11 * t
           : lerp(spec.shoulderEase, loose, Math.min(1, t / 0.2));
-        return [d.armOutAt(y, e), y] as Pt;
+        /* with room over a sleeve worn under it, if the garment leaves any, and cut fuller — see `SleeveFinish` */
+        return [d.armOutAt(y, e + (fin.over ?? 0) + (fin.full ?? 0)), y] as Pt;
       });
       walked[0] = end;
       const armTop = Math.min(cuff, dolman ? d.elbowY : joinY + 14);
-      const walkedIn = rows(armTop, cuff).map((y) => [d.armInAt(y, inTop + 3), y] as Pt);
+      const walkedIn = rows(armTop, cuff).map((y) => [d.armInAt(y, inTop + 3 + (fin.full ?? 0)), y] as Pt);
       const side = sideFrom(joinY, inside);
       /*
         A kimono hangs as a tube below its underarm, as a sewn sleeve does; a
         dolman is cut widest at the top and tapering already, and keeps it.
       */
       const gap = seamAt(side);
+      /* one hanging in front of its body has no daylight to keep from it — see `front` */
       const hung = dolman
         ? { out: walked, inner: walkedIn }
-        : hang(walked, walkedIn, (y) => gap(y) - SLEEVE_GAP);
+        : hang(walked, walkedIn, fin.front ? () => Infinity : (y) => gap(y) - SLEEVE_GAP);
       /*
         A dolman's long sleeve narrows to the wrist, so it can be gathered into
         a cuff as a sewn sleeve is: the sleeve stops short of the band and
         curves in to it — see `cuffOn`.
       */
-      const fin = spec.finish ?? {};
       const style = dolman && c.length === "long" && c.cuff && c.cuff !== "none" ? c.cuff : null;
       /* a kimono's short sleeve can take a rib armband, as a sewn one can */
       const ribTop = !dolman && c.length === "short" && fin.armband ? cuff - fin.armband : null;
@@ -1597,8 +1623,9 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
         stitch: [cuffStitch, mirrorLine(cuffStitch), bodyHemStitch(side)].join(" "),
         folds: [...folds, ...folds.map(mirrorLine)],
         underarm: armTop,
-        left: { armhole: [], side, hem: hemAcross(side), sleeve: "" },
+        left: { armhole: [], side, hem: hemAcross(side), sleeve: "", cutOn: { out, hem: hemPts, inner, lower } },
         right: { sleeve: "" },
+        sleeveStitch: [cuffStitch, mirrorLine(cuffStitch)].join(" "),
       };
     }
 
@@ -1616,7 +1643,7 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
     const banded = c.type === "puff" || c.type === "bishop";
     const band = c.type === "bishop" ? CUFF : BAND;
     const bodyEnd = banded ? cuff - band + 3 : cuff;
-    const walked = edges(start[1], under3[1], bodyEnd, p, side, start);
+    const walked = edges(start[1], under3[1], bodyEnd, p, side, start, spec.finish);
     walked.out[0] = start;
 
     const capTop: Pt = [start[0], start[1] - (p.rise ?? SLEEVE_CAP_RISE)];
@@ -1734,12 +1761,14 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
       folds: [...folds, ...folds.map((f2) => mirrorLine(f2))],
       underarm: under3[1],
       raw: { outer: out, hem: rawHem, inner: rawInner, stitch: [hemStitch, puff?.stitch ?? ""].filter(Boolean).join(" ") },
+      sleeveStitch: [...seams, ...hemStitches].join(" "),
       ...(puff ? { puff: puff.shape } : {}),
       left: {
         armhole: seamCurve(start, under3, SLEEVE_SCYE_BOW),
         side,
         hem: hemAcross(side),
         sleeve: left,
+        sewnAlong,
       },
       right: { sleeve: right },
     };
@@ -2049,12 +2078,21 @@ export interface Robe {
   open: OpenFront;
   /** The same fronts closed down the centre — see `ClosedFront`. */
   closed: ClosedFront;
-  sleeveLeft: string;
-  sleeveRight: string;
-  /** Each sleeve's free edges, left then right. */
-  sleeveEdges: readonly [string, string];
-  /** The armholes, as soft lines of shadow. */
+  /** Its sleeves as pieces of their own, left then right — none, cut in one with its body. */
+  sleeves: string[];
+  /**
+   * Each sleeve's free edges, left then right: a sewn one's, all but its seam;
+   * a loose one's, all of it. Cut in one with the body, its fronts' edges are
+   * its own.
+   */
+  sleeveEdges: string[];
+  /** The arm each sleeve lies over, left then right, sewn or cut on: what its light and folds are kept to. */
+  sleeveAreas: string[];
+  /** The sleeves' own folds, as lines: a bell's flare, a kimono's under the arm. A sewn sleeve's hang in `sewnDrape`. */
+  sleeveFolds: string[];
+  /** The armholes of a sewn sleeve, as soft lines of shadow. */
   seams: string[];
+  /** The sleeves' topstitch. */
   stitch: string;
   /** The sleeve cut, for the drape it hangs in — see `sewnDrape`. */
   cut: SleeveCut;
@@ -2105,7 +2143,7 @@ export interface ClosedFront {
  *   down its edge. Closed, they meet down the centre line under a seam, from
  *   the neckline to the hem.
  */
-export function robe(body: BodyType, spec: RobeSpec): Robe {
+export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { type: "set-in", length: "long" }): Robe {
   const { neck, neckRight, hemY, neckDip } = spec;
   const [gapNeck, gapHem] = spec.gap;
 
@@ -2119,12 +2157,35 @@ export function robe(body: BodyType, spec: RobeSpec): Robe {
   });
   const T = top(body, spec);
   /* closed across the neck, as a jacket's panel is: what is worn under it shows in its neckline too */
-  const frame = T.frame(`L${neck[0]} ${neck[1]}`, { type: "set-in", length: "long" });
-  const k = T.cut({ type: "set-in", length: "long" }, frame);
-  const s = k.seamed!;
-  const { armhole, side } = k.left;
+  const frame = T.frame(`L${neck[0]} ${neck[1]}`, sleeve);
+  const k = T.cut(sleeve, frame);
+  const s = k.seamed;
+  const { side, cutOn } = k.left;
   const strapLeft = frame.parts!.strapLeft;
   const strapRight = frame.parts!.strapRight;
+  /*
+    Its body runs on under each sleeve, so the two never merely meet — on a
+    dark robe against the page, a seam the two only met along showed the
+    page through it. A sewn sleeve's does so already. A loose one's, a bell's,
+    runs to just inside the seam it is set along. A sleeve cut in one with
+    the body — a kimono — is drawn as a sewn one is, laid over the body, only
+    with no seam where it leaves the shoulder: the body runs on under it to
+    an armhole hidden there, from the shoulder's end down to where its side
+    begins, below the deep underarm.
+  */
+  const sewnAlong = k.left.sewnAlong;
+  const OVERLAP = 2;
+  const armhole = cutOn
+    ? seamCurve(frame.tipLeft, side[0], SLEEVE_SCYE_BOW)
+    : sewnAlong
+      ? [frame.tipLeft, ...sewnAlong.filter(([, y]) => y > frame.tipLeft[1]).map(([x, y]) => [x - OVERLAP, y] as Pt)]
+      : k.left.armhole;
+  const panelOf = (f: Frame, cut: SleeveCut): string =>
+    cutOn || sewnAlong
+      ? `M${f.tipLeft[0]} ${f.tipLeft[1]} ` +
+        `${run(armhole, side, k.left.hem, mirror(reverse(side)), mirror(reverse(armhole)))} ` +
+        `L${f.tipRight[0]} ${f.tipRight[1]} ${f.edge} Z`
+      : cut.body;
 
   /* the hem as the body draws it, and the point on it each front edge comes down to */
   const hemLeft = side[side.length - 1];
@@ -2168,26 +2229,61 @@ export function robe(body: BodyType, spec: RobeSpec): Robe {
     are fastened under, straight down the centre line from the neckline to
     the hem.
   */
-  const kc = T.cut({ type: "set-in", length: "long" }, T.frame(run(arc), { type: "set-in", length: "long" }));
+  const arcFrame = T.frame(run(arc), sleeve);
+  const kc = T.cut(sleeve, arcFrame);
   const seam = span([CENTER_X, arcAt(arc, CENTER_X)], [CENTER_X, hemAt(kc.left.hem, CENTER_X)], 24);
+  /*
+    Its free edges: a sewn sleeve's body leaves its armholes out, as the top's
+    own; a loose sleeve's body is the same shoulders, sides, hem and neckline,
+    and its sleeves are outlined on their own; cut on, it is all edge.
+  */
+  const closedEdge = kc.seamed
+    ? kc.seamed.edges[0]
+    : `M${side[0][0]} ${side[0][1]} ${run(side, kc.left.hem, mirror(reverse(side)))} ` +
+      `M${arcFrame.tipRight[0]} ${arcFrame.tipRight[1]} ${arcFrame.edge}`;
 
+  /*
+    Its sleeves as pieces, and their free edges, every sleeve drawn as a sewn
+    one is: outlined down the outside, across its hem and up the inside, its
+    seam a soft line rather than an edge. A kimono's piece is its arm's cover,
+    from the shoulder's end down to the hem and back up to the underarm, the
+    right the left's mirror.
+  */
+  const shoulder: Pt[] = cutOn ? [[cutOn.inner[0][0], cutOn.out[0][1] + 20]] : [];
+  const sleeves = cutOn
+    ? [
+        outline(cutOn.out, cutOn.hem, reverse(cutOn.inner), shoulder),
+        outline(mirror(cutOn.out), mirror(cutOn.hem), mirror(reverse(cutOn.inner)), mirror(shoulder)),
+      ]
+    : k.sleeves;
+  const raw = k.raw;
+  const sleeveEdges = s
+    ? [s.edges[1], s.edges[2]]
+    : cutOn
+      ? [line(cutOn.out, cutOn.hem, reverse(cutOn.inner)), line(mirror(cutOn.out), mirror(cutOn.hem), mirror(reverse(cutOn.inner)))]
+      : raw
+        ? [line(raw.outer, raw.hem, reverse(raw.inner)), line(mirror(raw.outer), mirror(raw.hem), mirror(reverse(raw.inner)))]
+        : k.sleeves;
+  /* the cuff's row, and what shows below each sleeve */
+  const cuffRow = s ? s.hem : hemRow(body, sleeve)!;
   return {
     open: { left, right, edges: { left: edgeLeft, right: edgeRight }, frontEdges: [frontEdge, frontEdgeRight] },
-    closed: { body: kc.body, edge: kc.seamed!.edges[0], seam },
-    sleeveLeft: k.sleeves[0],
-    sleeveRight: k.sleeves[1],
-    sleeveEdges: [s.edges[1], s.edges[2]],
-    seams: s.seams,
-    stitch: s.sleeveStitch,
+    closed: { body: panelOf(arcFrame, kc), edge: closedEdge, seam },
+    sleeves,
+    sleeveEdges,
+    sleeveAreas: k.armCover.slice(0, 2),
+    sleeveFolds: s ? [] : k.folds,
+    seams: s ? s.seams : sewnAlong ? [line(sewnAlong), line(mirror(sewnAlong))] : [],
+    stitch: s ? s.sleeveStitch : (k.sleeveStitch ?? ""),
     cut: k,
-    panel: k.body,
+    panel: panelOf(frame, k),
     underarm: under[1],
     encloses: {
       band: [Math.min(neck[1], neckRight[1]), hemY - 1.5],
-      cuff: s.hem,
+      cuff: cuffRow,
       hem: { y: hemY, x: hemLeft[0] },
-      envelope: [k.body, ...k.sleeves],
-      windows: [cuffWindow(k.sleeves[0], s.hem), cuffWindow(k.sleeves[1], s.hem)],
+      envelope: [panelOf(frame, k), ...sleeves],
+      windows: [cuffWindow(sleeves[0], cuffRow), cuffWindow(sleeves[1], cuffRow)],
     },
   };
 }

@@ -504,6 +504,17 @@ export interface Garment {
      * it ends in a plain hem, as every shorter sleeve does.
      */
     cuffs?: CuffId[];
+    /**
+     * The lengths it is cut at, every type it offers — her abaya's, long only,
+     * a kimono's too, which nothing else is cut long. Absent, each type comes
+     * in its own lengths, and sleeveless.
+     */
+    lengths?: SleeveLengthId[];
+    /**
+     * What it calls its sleeves, where that is not what a dress calls them: an
+     * abaya's regular sleeve «عادي» and its wide one «واسع».
+     */
+    names?: Partial<Record<SleeveTypeId, { en: string; ar: string }>>;
   };
   /**
    * The skirts this garment can be cut with — shapes, lengths and, for a
