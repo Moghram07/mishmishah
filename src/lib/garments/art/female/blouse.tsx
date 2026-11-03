@@ -1,7 +1,7 @@
-import { draft, line, mirrorPts, princess, type Pt, type Tuck } from "@/lib/garments/fit";
+import { draft, type Pt, type Tuck } from "@/lib/garments/fit";
 import { blade, type Point } from "@/lib/garments/collar";
 import { PLACKET_BOWS, placketArt } from "../placket";
-import { clothOf, hasArmhole, top } from "@/lib/garments/sleeves";
+import { clothOf, top } from "@/lib/garments/sleeves";
 import type { SleeveChoice } from "@/types";
 import {
   COLLAR_AXIS,
@@ -102,26 +102,6 @@ const BUTTONS = Array.from({ length: 6 }, (_, i) => {
 */
 const WAIST_Y = draft("female").waistY;
 
-/**
- * Princess seams — see `princess`: from each armhole, or from the shoulder
- * on a sleeve cut on with the body, curving over the bust and down past the
- * waist to the hem. A blouse has no waist seam for one to end at, so it runs
- * on to the hem, as a princess-seamed blouse is cut; it is kept to the body
- * panel, so the hem is where it stops.
- */
-const PRINCESS = (["armhole", "shoulder"] as const).map((from) => {
-  const left = princess(draft("female"), {
-    tip: TIP,
-    neck: [NECK_LEFT[0], NECK_LEFT[1]],
-    ease: 4,
-    bust: [BUST.points[0][0], BUST.points[0][1]],
-    waistY: WAIST_Y,
-    to: HEM_Y + TAIL + 8,
-    from,
-  });
-  return [line(left), line(mirrorPts(left))];
-});
-
 const TOP = sleevedTop({
   draft: DRAFT,
   openings: { own: NECKLINE, high: HIGH_NECKLINE },
@@ -138,7 +118,6 @@ const TOP = sleevedTop({
       seed: 23,
     }),
   }),
-  seams: (_, sleeve) => PRINCESS[hasArmhole(sleeve.type) ? 0 : 1],
 });
 
 export const blouseFront: GarmentArt = {

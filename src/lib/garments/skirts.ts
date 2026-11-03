@@ -32,7 +32,8 @@ export interface SkirtFinish {
  *
  * - **A-line** is straight from where it leaves her, 22 units out in every
  *   100 down: from its seam, or, where she widens faster than that below it,
- *   from her high hip — at her own waist, about y 410. It reaches her arms,
+ *   from her high hip — at her own waist, about y 410, and at an empire's,
+ *   which falls close to her as far as her waist first. It reaches her arms,
  *   so a sleeve is drawn in front of it (`wide`).
  * - **Flared** is fitted to the hip and flares from there, 80 units out by
  *   y 760: the dress's own flare.
@@ -107,13 +108,18 @@ export const fallOf = (shape: SkirtShapeId): { from?: number; dip: number; fitte
 };
 
 /**
- * How far below her own waist each waist's seam is sewn: empire under the
- * bust — 50 units up, about 9.5 cm, and 10 below the crease under it at
- * y 290; natural at the waist itself; dropped at the low hip — 70 units,
- * about 13 cm down, between the waist at y 350 and the hip at 454.
+ * How far below her own waist each waist's seam is sewn: empire just under
+ * the bust — 36 units up, about 6.8 cm, which is 2.7 cm below the lower curve
+ * of her bust at y 300, so the bodice covers all of it; natural at the waist
+ * itself; dropped at the low hip — 70 units, about 13 cm down, between the
+ * waist at y 350 and the hip at 454.
+ *
+ * The empire's was 50 up, 10 below the darkest of the shading under her bust
+ * at y 290 — but that is its underside, and the seam crossed the bust's lower
+ * curve, level with a short sleeve's hem.
  */
 export const WAIST_DROP: Record<WaistId, number> = {
-  empire: -50,
+  empire: -36,
   natural: 0,
   dropped: 70,
 };
@@ -123,7 +129,8 @@ export const WAISTS: readonly WaistId[] = ["empire", "natural", "dropped"];
 
 /**
  * Whether a skirt hangs from a seam above her waist — an empire's — rather
- * than resting on her: it falls past her waist, beside her arms.
+ * than resting on her: it falls from the seam past her ribs and her waist,
+ * close to her, beside her arms — see `column`'s `hang`.
  */
 export const hangs = (skirt: SkirtChoice): boolean => WAIST_DROP[skirt.waist ?? "natural"] < 0;
 
@@ -192,8 +199,11 @@ export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck)
     ...(flareFrom !== undefined ? { flareFrom } : {}),
     ...(curve !== undefined ? { curve } : {}),
     ...(taper !== undefined ? { taper } : {}),
-    /* straight from its seam, a dress's — never from under its bodice — or from a skirt's own top edge */
-    ...(straight !== undefined ? { straight: { slope: straight, from: drop + Math.max(0, finish.rise) } } : {}),
+    /*
+      straight from its seam, a dress's — never from under its bodice — or from a skirt's own top edge;
+      and never from above her own waist: hung from an empire's seam, it falls close to her to the waist first
+    */
+    ...(straight !== undefined ? { straight: { slope: straight, from: Math.max(0, drop) + Math.max(0, finish.rise) } } : {}),
     dip: finish.dip * dip,
     ...(finish.band ? { band: finish.band } : {}),
     /* a hem waves where folds reach it, and one that does not flare has none */

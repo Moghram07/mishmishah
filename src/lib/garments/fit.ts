@@ -1579,78 +1579,6 @@ function trouserDetails(
   };
 }
 
-/* ------------------------------------------------------ a princess seam */
-
-/**
- * How far along an armhole, from the shoulder point, a princess seam leaves
- * it: about six centimetres above the underarm, as one is cut.
- */
-const PRINCESS_AT = 0.4;
-/**
- * How far below the bust point the seam has finished turning: it passes over
- * the point still curving a little, and runs straight from just under it.
- */
-const PRINCESS_SETTLE = 8;
-/**
- * How far a princess seam is drafted on past where it leaves the armhole or
- * the shoulder: off the body panel, out over a sleeve. Each garment keeps it
- * to its own body panel, so it starts wherever that panel's edge is — a set-in
- * sleeve's seam, a dropped shoulder's further out, a raglan's diagonal, an
- * off-shoulder's band, a halter's cut-away armhole.
- */
-const PRINCESS_PAST = 36;
-/** How far in toward the centre it has come by the waist, from over the bust point. */
-const PRINCESS_WAIST_IN = 2;
-
-/** The point a share `t` of the way along a run of points, by its length. */
-function atLength(pts: Pt[], t: number): Pt {
-  const lens = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]));
-  let left = t * lens.reduce((a, b) => a + b, 0);
-  for (let i = 0; i < lens.length; i++) {
-    if (left <= lens[i]) {
-      const u = left / (lens[i] || 1);
-      return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * u, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * u];
-    }
-    left -= lens[i];
-  }
-  return pts[pts.length - 1];
-}
-
-/**
- * A princess seam, left side, from its start down: from the armhole — or, on
- * a cut with none, the middle of the shoulder — curving in over the bust point
- * and down to the waist, then on to `to` if that is lower, the hem of a top
- * with no waist seam. It shapes a bodice over the bust as darts do, in one
- * line rather than a wedge, and replaces them.
- *
- * From an armhole it leaves slanting in and down and rounds onto the bust
- * point, arriving straight down; from a shoulder it drops straight and curves
- * in to it.
- * Either way it is drafted on past its start — see `PRINCESS_PAST`.
- */
-export function princess(
-  d: Draft,
-  s: { tip: Pt; neck: Pt; ease: number; bust: Pt; waistY: number; to: number; from: "armhole" | "shoulder" }
-): Pt[] {
-  const [bx, by] = s.bust;
-  const armhole = s.from === "armhole";
-  const start = armhole ? atLength(d.scye(s.tip, s.ease), PRINCESS_AT) : atLength(d.shoulder(s.neck, s.tip, s.ease), 0.5);
-  const settled: Pt = [bx, by + PRINCESS_SETTLE];
-  const drop = settled[1] - start[1];
-  const c1: Pt = armhole ? [start[0] + 0.55 * (bx - start[0]), start[1] + 0.25 * drop] : [start[0], start[1] + 0.4 * drop];
-  const c2: Pt = [bx + (armhole ? 1 : 0), settled[1] - (armhole ? 0.25 : 0.35) * drop];
-  /* on past its start, off the cloth, the way it leaves it */
-  const [tx, ty] = [start[0] - c1[0], start[1] - c1[1]];
-  const len = Math.hypot(tx, ty) || 1;
-  const past: Pt = [start[0] + (tx / len) * PRINCESS_PAST, start[1] + (ty / len) * PRINCESS_PAST];
-  const waist: Pt = [bx - PRINCESS_WAIST_IN, s.waistY];
-  const lower =
-    s.to > s.waistY + 4
-      ? [...span(settled, waist, 6).slice(1), ...span(waist, [bx, s.to], 4).slice(1)]
-      : span(settled, [bx - PRINCESS_WAIST_IN, s.to], 6).slice(1);
-  return [...span(past, start, 4), ...bezier(start, c1, c2, settled, 14).slice(1), ...lower];
-}
-
 /** How much narrower than the knee a trouser's hem may be: it falls nearly straight. */
 const HEM_TAPER = 0.93;
 /** How far below the crotch the hanging leg takes over from the hip's own line. */
@@ -1919,10 +1847,10 @@ export function column(
     inside?: Tuck;
     /**
      * Where it hangs from, if above her waist: how far below it, so negative
-     * — an empire's seam, under the bust. From there to the hip it does not
-     * follow her in at the waist but falls past it, on the line a string
-     * pulled from the seam to the hip takes round the outside of her: see
-     * `taut`. Omitted, it is close from its top edge to the hip.
+     * — an empire's seam, under the bust. From there it does not follow her
+     * in at the waist but falls straight down past her ribs and her waist,
+     * close to her, until her hip takes it out. Omitted, it is close from its
+     * top edge to the hip.
      */
     hang?: number;
   }
@@ -1960,18 +1888,17 @@ export function column(
       : y <= opens ? ease : ease + flare * ((y - opens) / Math.max(1, (spec.flareTo ?? toY) - opens)) ** (spec.curve ?? 1);
 
   /*
-    Hung from above the waist, it is close only from its top edge to the seam
-    it hangs from — under the bodice there — and falls from the seam to the
-    hip on the taut line, at the same ease, so it leaves the seam exactly
-    where the bodice ends and meets the hip where it rests.
+    Hung from above the waist, it is close from its top edge to the seam it
+    hangs from — under the bodice there — and from the seam it falls straight
+    down at the same ease, past her ribs and her waist, until her hip takes it
+    out: soft cloth gathered in under the bust, close to her, so it leaves the
+    seam exactly where the bodice ends and meets the hip where it rests. It
+    used to fall on the taut line from the seam to the hip, which stood 18
+    units off her waist: a cone from her chest.
   */
   const hangY = spec.hang === undefined ? hipY : Math.min(hipY, Math.max(fromY, d.waistY + spec.hang));
-  const hung =
-    hangY < hipY
-      ? taut(d.side({ from: hangY, to: hipY, ease: 0 }))
-          .map(([x, y]) => [x - ease, y] as Pt)
-          .slice(1)
-      : [];
+  const fall = hangY < hipY ? d.side({ from: hangY, to: hipY, ease }) : [];
+  const hung = fall.map(([x, y]) => [Math.min(fall[0][0], x), y] as Pt).slice(1);
 
   const trunkTo = Math.min(d.crotchY, toY);
   const upper =

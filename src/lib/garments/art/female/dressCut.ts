@@ -11,8 +11,8 @@
   of its rules apply to, and that is how the male collars once drifted into a
   trapezoid on a collarbone with every check passing.
 */
-import { draft, line, mirrorPts, outline, princess, reverse, run, setIn, span, type Pt, type Tuck } from "../../fit.ts";
-import { hasArmhole, hemRow, top, type Frame, type PuffShape, type SleeveChoice, type SleeveCut } from "../../sleeves.ts";
+import { draft, line, mirrorPts, outline, reverse, run, setIn, span, type Pt, type Tuck } from "../../fit.ts";
+import { hemRow, top, type Frame, type PuffShape, type SleeveChoice, type SleeveCut } from "../../sleeves.ts";
 import { WAIST_DROP, sameSkirt, skirtCut, skirtKey, type CutSkirt, type SkirtFinish } from "../../skirts.ts";
 import type { SkirtChoice, WaistId } from "@/types";
 import type { GarmentChoice } from "../index.ts";
@@ -26,7 +26,7 @@ import {
   type NecklineId,
   type OffShoulderBand,
 } from "../../necklines.ts";
-import { BUST, NECK_BASE_SEAM, NECK_LEFT, NECK_RIGHT, SHOULDER_EASE, TIP_LEFT } from "./yoke.ts";
+import { NECK_BASE_SEAM, NECK_LEFT, NECK_RIGHT, SHOULDER_EASE, TIP_LEFT } from "./yoke.ts";
 
 /**
  * Where the bodice ends and the skirt is sewn on: **her** waist, as measured.
@@ -127,12 +127,6 @@ export interface Bodice {
    * that those stay off: the arm bands, and an off-shoulder's band.
    */
   puff?: { sleeves: string[]; shapes: PuffShape[]; over: string[] };
-  /**
-   * Its princess seams, left then right — see `princessSeams` — drawn on the
-   * body panel alone, the first of `pieces`: whatever is drawn over it, a
-   * sleeve or a band, is where each starts. Absent on a cut with its own.
-   */
-  princess?: [string, string];
 }
 
 /** The sleeve the dress arrives in. Kept in step with its record by a test. */
@@ -499,28 +493,6 @@ function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Bodice {
   };
 }
 
-/**
- * Her princess seams on a cut, in a sleeve — see `princess` — shaping the
- * bodice over the bust in place of darts: from the armhole wherever the cut
- * has one, and from the shoulder where the sleeve is cut on with the bodice.
- * None on a cut with seams of its own, which do the same work: a
- * sweetheart's, from each curve to the waist.
- */
-function princessSeams(cut: NecklineCut, id: NecklineId, sleeve: SleeveChoice, waist: WaistId): [string, string] | undefined {
-  if (cut.seams) return undefined;
-  const left = princess(draft("female"), {
-    tip: TIP,
-    neck: [NECK_LEFT[0], NECK_LEFT[1]],
-    ease: EASE,
-    bust: [BUST.points[0][0], BUST.points[0][1]],
-    waistY: WAIST_Y,
-    /* into the waist seam, which the skirt is sewn across — her waist's, or a dropped one's below it */
-    to: seamAt(waist) + 2,
-    from: NECKLINE_SLEEVES[id] === "both" && !hasArmhole(sleeve.type) ? "shoulder" : "armhole",
-  });
-  return [line(left), line(mirrorPts(left))];
-}
-
 const cache = new Map<string, Bodice>();
 
 /**
@@ -559,9 +531,7 @@ export function bodiceFor(id: NecklineId, sleeve: SleeveChoice = DEFAULT_SLEEVE,
   const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}`;
   let b = cache.get(key);
   if (!b) {
-    const made = bodice(id, sleeve, waist);
-    const seams = princessSeams(made.cut, id, sleeve, waist);
-    b = seams ? { ...made, princess: seams } : made;
+    b = bodice(id, sleeve, waist);
     cache.set(key, b);
   }
   return b;
@@ -603,8 +573,8 @@ export const cloth = ({ neckline, sleeve, inside, skirt }: GarmentChoice = {}): 
 ];
 
 /**
- * A bodice's details for one cut at one waist — its seams, its buttons, its
- * tie — beside the cloth they must lie on and the seam they must end at, for
+ * A bodice's details for one cut at one waist — its buttons and its tie —
+ * beside the cloth they must lie on and the seam they must end above, for
  * `check:garments` to hold them to it: moved with the waist, every one of
  * them has to move with it.
  */
@@ -613,14 +583,6 @@ export function details(id: NecklineId, waist: WaistId = "natural") {
   return {
     pieces: b.pieces,
     seamY: seamAt(waist),
-    /*
-      Where a seam must lie on the bodice from: under the bust. Above it a
-      princess seam is drafted past its start and clipped where a sleeve or a
-      band is drawn over it; at the bottom it runs a little past the hem, into
-      the waist seam the skirt is sewn across.
-    */
-    seamsFrom: BUST.creaseY,
-    seams: [...(b.princess ?? []), ...(b.cut.seams ?? []).map((pts) => line(pts))],
     buttons: b.cut.buttons ?? null,
     tie: b.cut.wrap?.tie ?? null,
   };

@@ -132,12 +132,6 @@ export interface NecklineCut {
   /** A keyhole's fabric loop round its button: the loop's outer rim, for the light it catches. */
   loopRim?: Pt[];
   /**
-   * Seam lines down the bodice that are the cut's own — a sweetheart's, from
-   * each curve over the bust to the waist — drawn as seams. A bodice shaped by
-   * them has no darts.
-   */
-  seams?: Pt[][];
-  /**
    * The edge in its three parts — right shoulder, opening, left shoulder — for
    * a cut that keeps both shoulders. A raglan sleeve takes the two shoulder
    * seams off the bodice and onto itself, so it needs them apart.
@@ -431,16 +425,12 @@ const HALTER_BAND_DEEP = 13;
  * A sweetheart's top edge — see the cut: how high each curve rises over the
  * bust above the line from the underarm to the notch; how far either side of
  * centre front the notch begins, how far above the underarms, and how deep
- * it dips; and the bust points its seams pass over, which are her yoke's.
+ * it dips.
  */
 const SWEETHEART_CREST = 15;
 const SWEETHEART_NOTCH = 7;
 const SWEETHEART_NOTCH_UP = 10;
 const SWEETHEART_NOTCH_DEPTH = 5;
-const SWEETHEART_BUST: readonly [Pt, Pt] = [
-  [265, 268],
-  [335, 268],
-];
 /**
  * A keyhole's closure — see the cut: how far apart the slit's edges are
  * where they meet at the neck edge; the button's radius and where it sits
@@ -1126,12 +1116,13 @@ const CUTS: Record<NecklineId, (a: Anatomy) => NecklineCut> = {
    * The top corners are the underarms, so the bodice is exactly the panel below
    * the arms and nothing else. Each curve is half an ellipse, rising gently
    * over the bust; where they meet, a short rounded dip, its sides running on
-   * from theirs. The edge is finished — faced, no topstitch — and a seam runs
-   * from the crown of each curve down over the bust to the waist, shaping the
-   * bodice as boning and princess seams do, in place of darts.
+   * from theirs. The edge is finished — faced, no topstitch — and the bodice
+   * below it is plain cloth.
    *
    * The curves rose half as high again and met in a point, a heart drawn
-   * rather than a bodice cut, with a row of topstitch along them.
+   * rather than a bodice cut, with a row of topstitch along them. And a seam
+   * ran from the crown of each curve over the bust to the waist, drawn as a
+   * dark line across the cloth.
    */
   sweetheart: (a) => {
     const tip = a.underarm;
@@ -1149,10 +1140,6 @@ const CUTS: Record<NecklineId, (a: Anatomy) => NecklineCut> = {
     const lobeRight = curve(tipRight, meetRight, SWEETHEART_CREST);
     const notch = arc(meetRight, meetLeft, SWEETHEART_NOTCH_DEPTH, 6);
     const lobeLeft = curve(meetLeft, tip, SWEETHEART_CREST);
-    /* from the crown of each curve, over the bust, to the waist */
-    const crown = (lobe: Pt[]) => lobe.reduce((top, p) => (p[1] < top[1] ? p : top));
-    const seamDown = (from: Pt, bust: Pt): Pt[] => [from, [(from[0] + bust[0]) / 2, (from[1] + bust[1]) / 2], bust, [bust[0] + (bust[0] - from[0]) * 0.15, (bust[1] + a.waistY) / 2], [bust[0], a.waistY]];
-    const [bustLeft, bustRight] = SWEETHEART_BUST;
     return {
       tip,
       edge: run(lobeRight, notch.slice(1), lobeLeft.slice(1)),
@@ -1160,7 +1147,6 @@ const CUTS: Record<NecklineId, (a: Anatomy) => NecklineCut> = {
       stitch: "",
       extras: [],
       folds: [],
-      seams: [seamDown(crown(lobeLeft), bustLeft), seamDown(crown(lobeRight), bustRight)],
     };
   },
 

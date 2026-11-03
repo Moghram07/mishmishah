@@ -257,30 +257,15 @@ describe("every collar still has somewhere to go", () => {
   });
 });
 
-describe("princess seams", () => {
-  it("shapes every cut with princess seams, or with seams of its own — never both, never darts", () => {
-    for (const id of NECKLINE_IDS) {
-      const b = BODICES[id];
-      expect(Boolean(b.princess) !== Boolean(b.cut.seams), id).toBe(true);
-    }
-    // the sweetheart keeps its own, from each curve to the waist
-    expect(BODICES.sweetheart.princess).toBeUndefined();
-  });
-
-  it("starts them at the armhole, or at the shoulder where the sleeve is cut on and leaves none", () => {
-    /* each is drafted on past where it starts, off the cloth: out over the arm from an armhole, up off a shoulder */
-    const start = (sleeve: SleeveChoice) => {
-      const [x, y] = (bodiceFor("round", sleeve).princess![0].match(/-?\d*\.?\d+/g) ?? []).slice(0, 2).map(Number);
-      return { x, y };
-    };
-    for (const type of ["set-in", "drop", "raglan", "puff"] as const) {
-      expect(start({ type, length: "short" }).x, type).toBeLessThan(200);
-    }
-    expect(start({ type: "set-in", length: "sleeveless" }).x).toBeLessThan(200);
-    for (const sleeve of [{ type: "kimono", length: "short" }, { type: "dolman", length: "long" }, { type: "cap", length: "short" }] as SleeveChoice[]) {
-      const s = start(sleeve);
-      expect(s.y, sleeve.type).toBeLessThan(170);
-      expect(s.x, sleeve.type).toBeGreaterThan(225);
+describe("the bodice's cloth", () => {
+  it("draws no seam lines down any cut, at any waist: the fabric shows whole", () => {
+    for (const waist of ["empire", "natural", "dropped"] as const) {
+      for (const id of NECKLINE_IDS) {
+        const b = bodiceFor(id, undefined, waist);
+        /* no princess seams of the dress's, and no cut — a sweetheart — with seams of its own */
+        expect("princess" in b, `${id} ${waist}`).toBe(false);
+        expect("seams" in b.cut, `${id} ${waist}`).toBe(false);
+      }
     }
   });
 });

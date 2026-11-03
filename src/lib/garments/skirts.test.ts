@@ -7,6 +7,7 @@ import { DEFAULT_SKIRT as DRESS_DEFAULT, WAIST_Y, details, seamAt, skirtFor as d
 import { DEFAULT_SKIRT as SKIRT_DEFAULT, cloth, skirtFor } from "./art/female/skirtCut";
 import { BUST } from "./art/female/yoke";
 import { draft } from "./fit";
+import { BODY_CANVAS } from "../mannequin/bodies";
 
 /** A closed outline's leftmost x on a row. */
 const leftAt = (path: string, y: number): number => {
@@ -112,9 +113,12 @@ describe("skirts", () => {
     for (const waist of ["empire", "natural", "dropped"] as const) {
       const sk = dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "aline", length: "maxi", waist });
       const from = sk.leaves!;
-      /* from its seam where she narrows below it; at her own waist, from her high hip, where she widens faster than the line */
-      if (waist === "natural") expect(from, waist).toBeGreaterThan(seamAt(waist) + 30);
-      else expect(Math.abs(from - seamAt(waist)), waist).toBeLessThan(13);
+      /*
+        from its seam where she narrows below it, a dropped one's; at her own waist, from her high hip, where
+        she widens faster than the line — and at an empire's, which falls close to her to the waist first
+      */
+      if (waist === "dropped") expect(Math.abs(from - seamAt(waist)), waist).toBeLessThan(13);
+      else expect(from, waist).toBeGreaterThan(seamAt("natural") + 30);
       /* one straight line from there to the hem, 22 out in every 100 down */
       for (let y = from + 20; y < 880; y += 40) {
         const slope = (leftAt(sk.path, from + 10) - leftAt(sk.path, y)) / (y - from - 10);
@@ -151,14 +155,18 @@ describe("skirts", () => {
     expect(dressSkirt(undefined, DRESS_DEFAULT).waistY).toBe(WAIST_Y - 8);
   });
 
-  it("sews an empire waist's skirt on under the bust, and hangs it past her waist to the hip", () => {
-    expect(seamAt("empire")).toBe(WAIST_Y - 50);
-    expect(seamAt("empire")).toBeGreaterThan(BUST.creaseY);
+  it("sews an empire waist's skirt on just under the bust, and lets it fall close to her past her waist to the hip", () => {
+    /* 2–3 cm under the lower curve of her bust, so the bodice covers all of it */
+    expect(seamAt("empire")).toBe(WAIST_Y - 36);
+    const under = (seamAt("empire") - BUST.underY) * BODY_CANVAS.cmPerUnit;
+    expect(under).toBeGreaterThanOrEqual(2);
+    expect(under).toBeLessThanOrEqual(3);
     const empire = dressSkirt(undefined, { ...DRESS_DEFAULT, waist: "empire" });
     const natural = dressSkirt(undefined, DRESS_DEFAULT);
     expect(empire.waistY).toBe(seamAt("empire") - 8);
-    /* clear of her waist, where a skirt sewn there is on it */
-    expect(leftAt(empire.path, WAIST_Y)).toBeLessThan(leftAt(natural.path, WAIST_Y) - 10);
+    /* straight down from the seam past her waist: no further out there than at the seam, and close to her */
+    expect(leftAt(empire.path, WAIST_Y)).toBeCloseTo(leftAt(empire.path, seamAt("empire") + 1), 1);
+    expect(leftAt(natural.path, WAIST_Y) - leftAt(empire.path, WAIST_Y)).toBeLessThan(6);
     /* never back in toward it, from the seam down to the hip */
     const { hipY } = draft("female");
     for (let y = seamAt("empire") + 6; y <= hipY; y += 6) {
@@ -174,12 +182,11 @@ describe("skirts", () => {
       expect(details("wrap", waist).tie![1], waist).toBe(seam);
       const buttons = details("collared", waist).buttons!;
       expect(Math.max(...buttons.at.map(([, y]) => y)) + buttons.r, waist).toBeLessThan(seam);
-      expect(details("sweetheart", waist).seams.length, waist).toBe(2);
     }
     /* the buttons run down the bodice to its seam: up under the bust, or on down a dropped one */
     const low = (waist: "empire" | "natural" | "dropped") => Math.max(...details("collared", waist).buttons!.at.map(([, y]) => y));
     expect(low("dropped")).toBeGreaterThan(low("natural") + 60);
-    expect(low("empire")).toBeLessThan(low("natural") - 40);
+    expect(low("empire")).toBeLessThan(low("natural") - 25);
   });
 
   it("draws the skirt's band, except under a jacket, which hides it", () => {

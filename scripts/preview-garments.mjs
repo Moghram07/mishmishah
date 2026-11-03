@@ -860,34 +860,22 @@ const MAX_SIDE_SKEW = 2;
 
 /**
  * The line a skirt hung from a seam above her waist falls on, down one side
- * of her: the string pulled taut from the seam to the hip round the outside
- * of the body — on her at the seam and at the hip, clear of her waist between.
+ * of her: straight down from her edge at the seam, past her ribs and her
+ * waist, until her hip is further out — then on her, to the hip. Close to
+ * her, never standing off her chest: soft cloth gathered in under the bust.
  * `edge(y)` is her edge on that side, `out` the way out from it: -1 on the
  * left. Re-derived here from the photograph; `hang` in `garments/fit.ts`
  * drafts the skirt to the same line.
+ *
+ * It was the string pulled taut from the seam to the hip, 18 units off her
+ * waist, and the skirt cut to it stood out from her chest like a cone.
  */
 function hungLine(edge, from, to, out) {
-  const hull = [];
-  for (let y = Math.ceil(from); y <= to; y++) {
-    const x = edge(y);
-    if (x === null) continue;
-    const p = [y, -out * x];
-    while (hull.length >= 2) {
-      const [o, a] = [hull[hull.length - 2], hull[hull.length - 1]];
-      if ((a[0] - o[0]) * (p[1] - o[1]) - (a[1] - o[1]) * (p[0] - o[0]) > 0) break;
-      hull.pop();
-    }
-    hull.push(p);
-  }
+  const at = edge(Math.ceil(from));
   return (y) => {
-    if (y <= hull[0][0]) return -out * hull[0][1];
-    for (let i = 1; i < hull.length; i++) {
-      if (hull[i][0] < y) continue;
-      const [y0, v0] = hull[i - 1];
-      const [y1, v1] = hull[i];
-      return -out * (v0 + ((v1 - v0) * (y - y0)) / (y1 - y0));
-    }
-    return -out * hull[hull.length - 1][1];
+    const x = edge(Math.min(Math.max(y, Math.ceil(from)), to));
+    if (x === null || at === null) return x ?? at;
+    return out < 0 ? Math.min(at, x) : Math.max(at, x);
   };
 }
 
@@ -2795,12 +2783,10 @@ const DETAIL_SLACK = 1;
 const DETAIL_SEAM_SLACK = 4;
 
 /**
- * A bodice's details follow its waist: at every waist, on every cut, its seams
- * (princess or a sweetheart's own) lie on the bodice from under the bust down
- * to the waist's seam, and end at it; its buttons sit on it, the lowest clear
- * above the seam; and a wrap's tie is knotted at the seam. Moved down to a
- * dropped waist, a detail left behind at her own waist would stop short or
- * float on the skirt.
+ * A bodice's details follow its waist: at every waist, on every cut, its
+ * buttons sit on it, the lowest clear above the seam, and a wrap's tie is
+ * knotted at the seam. Moved down to a dropped waist, or up under the bust, a
+ * detail left behind at her own waist would float on the skirt or stop short.
  */
 function checkBodiceDetails(bodyKey, wardrobe) {
   let failed = 0;
@@ -2808,7 +2794,6 @@ function checkBodiceDetails(bodyKey, wardrobe) {
     const mod = CUT_MODULES[garment.asset.front];
     if (!mod?.details || !garment.skirt?.waists) continue;
     for (const waist of garment.skirt.waists) {
-      let seams = 0;
       let buttons = 0;
       let tie = "";
       const bad = [];
@@ -2825,15 +2810,6 @@ function checkBodiceDetails(bodyKey, wardrobe) {
           }
           return false;
         };
-        for (const path of d.seams) {
-          const pts = flatten(path).flat();
-          /* above the bust a seam is clipped where it is drawn; at the bottom it runs into the waist seam */
-          const off = pts.filter(([x, y]) => y >= d.seamsFrom && y <= d.seamY - DETAIL_SEAM_SLACK && !on([x, y])).length;
-          const end = Math.max(...pts.map(([, y]) => y));
-          seams++;
-          if (off > 0) bad.push(`${cutId}: ${off} seam points off the cloth`);
-          if (Math.abs(end - d.seamY) > DETAIL_SEAM_SLACK) bad.push(`${cutId}: a seam ends at y ${end.toFixed(1)}, the waist's seam is ${d.seamY}`);
-        }
         if (d.buttons) {
           buttons += d.buttons.at.length;
           const off = d.buttons.at.filter((p) => !on(p)).length;
@@ -2850,8 +2826,7 @@ function checkBodiceDetails(bodyKey, wardrobe) {
       failed += bad.length;
       console.log(
         `${bad.length ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${garment.id} · ${waist} waist`.padEnd(28)} ` +
-          `details: ${seams} seams on the cloth from the bust to the seam at y ${mod.details(cutsOf(garment.asset.front)[0], waist).seamY}, ` +
-          `${buttons} buttons above it${tie}`
+          `details: ${buttons} buttons on the cloth above its seam at y ${mod.details(cutsOf(garment.asset.front)[0], waist).seamY}${tie}`
       );
       for (const line of bad) console.log(`     ${bodyKey.padEnd(6)} ${line}`);
     }

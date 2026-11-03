@@ -135,12 +135,6 @@ export interface SleevedTopSpec {
    * so a fold hanging down the body never shades the sleeve beside it.
    */
   folds?: (k: SleeveCut, sleeve: SleeveChoice) => { body?: Fold[]; sleeves?: Fold[] };
-  /**
-   * Seams on the body panel for one cut — a blouse's princess seams — each a
-   * soft line of shadow kept to the body, so wherever a sleeve or a band is
-   * drawn over it, that is where the seam starts.
-   */
-  seams?: (k: SleeveCut, sleeve: SleeveChoice) => string[];
   own?: OpeningFinish;
   high?: OpeningFinish;
 }
@@ -197,7 +191,6 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
     const puffs = k.puff ?? [];
     const folds = { body: own.body, sleeves: own.sleeves ?? [...sewnDrape(k), ...puffs.flatMap((s, i) => puffDrape(s, 60 + i))] };
     const hasFolds = Boolean(folds.body?.length || folds.sleeves?.length);
-    const bodySeams = spec.seams?.(k, sleeve) ?? [];
     /** Each set of folds, inside the pieces it belongs to. */
     const drawFolds = (uid: Uid, draw: typeof foldShadows) => (
       <>
@@ -267,14 +260,6 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
             </linearGradient>
           )}
           {(seamed || k.cuff) && horizontal(uid("cuff"), CUFF)}
-          {bodySeams.length > 0 && (
-            <mask id={uid("body-seams")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
-              <path d={k.body} fill="#fff" />
-              {[...k.sleeves, ...k.bands].map((d, i) => (
-                <path key={i} d={d} fill="#000" />
-              ))}
-            </mask>
-          )}
           {puffs.length > 0 && puffLightDefs(uid, puffs)}
           {!hasFolds && k.cuff?.folds.length ? foldDefs(uid) : null}
           {spec.defs?.(uid)}
@@ -330,7 +315,6 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
             </>
           )}
           {k.cuff && cuffMarks(uid, k.cuff)}
-          {bodySeams.length > 0 && <g mask={`url(#${uid("body-seams")})`}>{seamShadows(uid, bodySeams)}</g>}
         </>
       ),
       ...(hasFolds || k.cuff?.folds.length

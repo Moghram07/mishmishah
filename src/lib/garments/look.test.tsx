@@ -2379,3 +2379,149 @@ describe("dress necklines, audit", () => {
     writeFileSync(".preview/wardrobe/necklines-overview.html", page(rows));
   });
 });
+
+/**
+ * The dress's empire waist and its bodice, on a light page and a dark one:
+ * the empire waist at every shape and length, in short and long sleeves, in a
+ * plain cloth and a print; and the bodice at every waist, and the blouse's —
+ * close up, whole, and the sweetheart and the wrap close up, the two cuts
+ * whose seams were drawn their own way.
+ */
+describe("the dress's empire waist and bodice, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = {
+    caption: string;
+    ids: string[];
+    skirt?: Partial<{ shape: SkirtShapeId; length: SkirtLengthId; waist: WaistId }>;
+    sleeve?: SleeveChoice;
+    neckline?: string;
+    cloth: string;
+    zoom: number;
+    focus: [number, number];
+  };
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  const SHORT: SleeveChoice = { type: "set-in", length: "short" };
+  const LONG: SleeveChoice = { type: "set-in", length: "long" };
+  const stage = (tile: Tile) => {
+    let worn: WornGarment[] = [];
+    const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    const first = tile.ids[0];
+    for (const gid of tile.ids) {
+      const g = garmentById(gid)!;
+      /* the garment being shown in the cloth being shown, anything with it in another */
+      const cloth = gid === first ? f(tile.cloth) : f("fb-rose-silk");
+      worn = wear(worn, cutFrom(g, cloth.id));
+      const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+      for (const r of g.fabricRegions) regions[r] = cloth;
+      by[gid] = regions;
+    }
+    if (tile.neckline) worn = setNeckline(worn, first, tile.neckline);
+    if (tile.sleeve) worn = setSleeve(worn, first, tile.sleeve);
+    if (tile.skirt) {
+      worn = worn.map((w) => {
+        const skirt = w.garmentId === first ? skirtOf(w) : undefined;
+        return skirt ? { ...w, skirt: { ...skirt, ...tile.skirt } } : w;
+      });
+    }
+    const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={by} zoom={tile.zoom} focus={tile.focus} />;
+  };
+  const write = (theme: keyof typeof THEMES, rows: Tile[][], name: string) => {
+    const t = THEMES[theme];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/${name}-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  };
+
+  /* every shape at every length it is cut at, a row each for short and long sleeves, plain and print */
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/dress-empire-%s.html", (theme) => {
+    const styles = (["flared", "aline", "pencil", "mermaid"] as const).flatMap((shape) =>
+      shapeLengths(shape, ["knee", "midi", "maxi"]).map((length) => ({ shape, length }))
+    );
+    const kinds = [
+      [SHORT, PLAIN, "short sleeves, plain"],
+      [SHORT, PRINT, "short sleeves, print"],
+      [LONG, PLAIN, "long sleeves, plain"],
+      [LONG, PRINT, "long sleeves, print"],
+    ] as const;
+    const rows = kinds.map(([sleeve, cloth, kind]) =>
+      styles.map(
+        ({ shape, length }): Tile => ({
+          caption: `empire, ${shape}, ${length}, ${kind}`,
+          ids: ["female-dress"],
+          skirt: { shape, length, waist: "empire" },
+          sleeve,
+          cloth,
+          zoom: 1,
+          focus: [300, 500],
+        })
+      )
+    );
+    write(theme, rows, "dress-empire");
+  });
+
+  /* the bodice at every waist, plain and print, and the blouse: close up, whole, and the sweetheart and the wrap close up */
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/dress-bodice-%s.html", (theme) => {
+    const waists = ["empire", "natural", "dropped"] as const;
+    const cloths = [
+      [PLAIN, "plain"],
+      [PRINT, "print"],
+    ] as const;
+    const row = (zoom: number, focus: [number, number], how: string): Tile[] => [
+      ...waists.flatMap((waist) =>
+        cloths.map(([cloth, kind]): Tile => ({ caption: `${waist} waist, ${kind}${how}`, ids: ["female-dress"], skirt: { waist }, cloth, zoom, focus }))
+      ),
+      ...cloths.map(([cloth, kind]): Tile => ({ caption: `blouse, ${kind}${how}`, ids: ["female-blouse"], cloth, zoom, focus })),
+    ];
+    const rows: Tile[][] = [
+      row(2.4, [300, 300], ", the bodice 2.4×"),
+      row(1, [300, 500], ""),
+      [
+        ...waists.flatMap((waist) =>
+          cloths.map(([cloth, kind]): Tile => ({
+            caption: `sweetheart, ${waist} waist, ${kind}, 2.4×`,
+            ids: ["female-dress"],
+            neckline: "female-sweetheart-neckline",
+            skirt: { waist },
+            cloth,
+            zoom: 2.4,
+            focus: [300, 300],
+          }))
+        ),
+        ...cloths.map(([cloth, kind]): Tile => ({
+          caption: `wrap, natural waist, ${kind}, 2.4×`,
+          ids: ["female-dress"],
+          neckline: "female-wrap-neckline",
+          cloth,
+          zoom: 2.4,
+          focus: [300, 300],
+        })),
+      ],
+    ];
+    write(theme, rows, "dress-bodice");
+  });
+});

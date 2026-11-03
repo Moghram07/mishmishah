@@ -18,7 +18,7 @@ import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
 import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, cloth, seamAt, skirtFor } from "./dressCut";
-import { besideArms, fallOf, sameSkirt, skirtKey } from "@/lib/garments/skirts";
+import { besideArms, fallOf, hangs, sameSkirt, skirtKey } from "@/lib/garments/skirts";
 import type { FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { litButtons } from "../buttons";
@@ -80,15 +80,25 @@ const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] =
     does not flare, a pencil, hangs smooth and has none.
   */
   const fall = fallOf(skirt.shape);
+  /*
+    Hung from an empire's seam, every shape is gathered in under it, a
+    little: soft cloth falling close to her from under the bust. At her own
+    waist only a flared skirt is gathered, and more deeply.
+  */
+  const empire = hangs(skirt);
+  const gathered = (count: number) =>
+    gathers({ seam, count, length: empire ? [8, 20] : [12, 34], width: empire ? 2 : 2.4, shadow: 0.3, light: 0.22, seed: 3 });
   if (fall.fitted) {
     const at = Math.max(sk.leaves ?? fall.from ?? draft("female").hipY, inside?.y ?? 0);
     const [l, r] = rowSpan(sk.path, at) ?? [sk.hemLeft[0], 600 - sk.hemLeft[0]];
     const y = seamAt(skirt.waist);
     const darts = (skirt.waist ?? "natural") === "natural" ? [256, 276].map((x) => dart([x, y], [x + 1, y + (x < 266 ? 46 : 38)], 2)) : [];
+    const under = empire ? gathered(12) : [];
     const flare = l - sk.hemLeft[0];
     const open = foldOpen(flare);
-    if (flare <= 0) return [...darts, ...darts.map(mirrorFold)];
+    if (flare <= 0) return [...under, ...darts, ...darts.map(mirrorFold)];
     return [
+      ...under,
       ...darts,
       ...darts.map(mirrorFold),
       ...hangingFolds({
@@ -113,7 +123,7 @@ const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] =
       ]
     : seam;
   return [
-    ...gathers({ seam, count: 12, length: [12, 34], width: 2.4, shadow: 0.3, light: 0.22, seed: 3 }),
+    ...gathered(12),
     ...hangingFolds({
       seam: from,
       hem,
@@ -132,8 +142,9 @@ const SKIRT_FOLDS: Fold[] = skirtFolds();
 /*
   The bodice's: the turn of the cloth under each bust, lit above and in shadow
   below. Every cut keeps it — all of them cover the bust. It had a waist dart
-  under each bust point too; the bodice is shaped by princess seams now, or by
-  a cut's own — see `princessSeams`.
+  under each bust point too, and then princess seams, drawn as dark lines down
+  it; now nothing is drawn across its cloth but its folds, so the fabric shows
+  whole.
 */
 const BODICE_FOLDS: Fold[] = BUST.points.map(([x]) =>
   contour({ centre: [x, BUST.creaseY], half: 26, sag: 9, width: 7, shadow: 0.24, light: 0.16, soft: 6 })
@@ -478,7 +489,7 @@ const BODICE_DRAPE: Stop[] = [
 ];
 
 const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): RegionArt => {
-  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, princess } = bodiceFor(id, sleeve, waist);
+  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff } = bodiceFor(id, sleeve, waist);
   /* a puff is lit round and gathered at both ends — see `PuffShape` */
   const puffFolds = puff ? puff.shapes.flatMap((s, i) => puffDrape(s, 60 + i)) : [];
   const puffed = new Set(puff?.sleeves ?? []);
@@ -578,15 +589,6 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Region
         {foldDefs(uid)}
         {cuff && horizontal(uid("cuff"), CUFF)}
         {cut.halter && horizontal(uid("halter-band"), HALTER_BAND_LIGHT)}
-        {/* the body panel and nothing drawn over it: each princess seam starts where a sleeve or a band does */}
-        {princess && (
-          <mask id={uid("princess")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
-            <path d={pieces[0]} fill="#fff" />
-            {pieces.slice(1).map((d, i) => (
-              <path key={i} d={d} fill="#000" />
-            ))}
-          </mask>
-        )}
         {wrap && (
           <>
             <mask id={uid("wrap-under")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
@@ -651,23 +653,6 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Region
           <g mask={`url(#${uid("puffs")})`}>
             {puffShade(uid, puff.sleeves)}
             {foldShadows(uid, puffFolds)}
-          </g>
-        )}
-        {/* the cut's own seams down the bodice — a sweetheart's, from each curve to the waist */}
-        {cut.seams && seamShadows(uid, cut.seams.map((s) => line(s)))}
-        {/*
-          Or its princess seams, on the body panel. A wrap's top panel crosses
-          from her left over to her right, so the seam on her right is on the
-          panel under it, and goes under it.
-        */}
-        {princess && (
-          <g mask={`url(#${uid("princess")})`}>
-            {seamShadows(uid, [princess[0]])}
-            {wrap ? (
-              <g mask={`url(#${uid("wrap-under")})`}>{seamShadows(uid, [princess[1]])}</g>
-            ) : (
-              seamShadows(uid, [princess[1]])
-            )}
           </g>
         )}
         {/* a halter's neckband, lit round the neck, and the seam the bodice is gathered into */}

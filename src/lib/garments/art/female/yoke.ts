@@ -196,10 +196,13 @@ export const HIGH_DIP = 10;
 
 /**
  * Her bust points, as the photograph shows them: the darkest band of its own
- * shading under the bust runs along y 290, centred at x 268 and x 336. Clothes
- * are cut symmetrically, so the points are taken 35 either side of the centre
- * line, and the apex sits above the crease, about 22 units up — where darts
- * point to and where a fitted bodice turns under.
+ * shading under the bust runs along y 290, centred at x 268 and x 336 — the
+ * underside of the bust. Its lower curve, where that shading ends and the
+ * ribs below are lit again, is y 300: the light climbs back fastest at 297
+ * under both, and is all back by 303–308. Clothes are cut symmetrically, so
+ * the points are taken 35 either side of the centre line, and the apex sits
+ * above the crease, about 22 units up — where darts point to and where a
+ * fitted bodice turns under.
  */
 export const BUST = {
   /** The apex, left and right. */
@@ -209,6 +212,8 @@ export const BUST = {
   ] as const,
   /** The crease under the bust, where cloth turns in toward the ribs. */
   creaseY: 290,
+  /** The lower curve of the bust, where its shading ends: a seam under the bust is sewn below it. */
+  underY: 300,
 };
 export const HIGH_NECKLINE = opening(HIGH_DIP).front;
 
