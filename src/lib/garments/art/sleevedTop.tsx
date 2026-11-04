@@ -3,7 +3,7 @@ import { DRAPE, horizontal, vertical, type Stop, type Uid } from "@/lib/garments
 import type { CuffTrim, SleeveCut, TopDraft } from "@/lib/garments/sleeves";
 import type { SleeveChoice } from "@/types";
 import type { GarmentChoice, RegionArt } from "./index";
-import { puffLightDefs, puffShade, seamShadows, sleeveFoldDefs, sleeveFolds } from "./sleeveFolds";
+import { puffLightDefs, puffShade, seamFolds, seamShadows, sleeveFoldDefs, sleeveFolds } from "./sleeveFolds";
 import { foldDefs, foldLights, foldShadows, puffDrape, sleeveDrape, type Fold } from "@/lib/garments/folds";
 import { litButtons } from "./buttons";
 
@@ -135,6 +135,11 @@ export interface SleevedTopSpec {
    * so a fold hanging down the body never shades the sleeve beside it.
    */
   folds?: (k: SleeveCut, sleeve: SleeveChoice) => { body?: Fold[]; sleeves?: Fold[] };
+  /**
+   * Its seams — armholes and cuffs — drawn as soft folds in its own colour
+   * rather than as lines: see `seamFolds`. The blouse's are.
+   */
+  softSeams?: boolean;
   own?: OpeningFinish;
   high?: OpeningFinish;
 }
@@ -191,6 +196,10 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
     const puffs = k.puff ?? [];
     const folds = { body: own.body, sleeves: own.sleeves ?? [...sewnDrape(k), ...puffs.flatMap((s, i) => puffDrape(s, 60 + i))] };
     const hasFolds = Boolean(folds.body?.length || folds.sleeves?.length);
+    /* its seams as folds, if it asks: a sewn sleeve's armholes and cuffs, or a cuff's on a sleeve cut on */
+    const seamFold = spec.softSeams ? seamFolds(k.seamed?.seams ?? []) : [];
+    const cuffFold = spec.softSeams && !k.seamed && k.cuff ? seamFolds(k.cuff.seams) : [];
+    const softFolds = [...seamFold, ...cuffFold];
     /** Each set of folds, inside the pieces it belongs to. */
     const drawFolds = (uid: Uid, draw: typeof foldShadows) => (
       <>
@@ -261,7 +270,7 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
           )}
           {(seamed || k.cuff) && horizontal(uid("cuff"), CUFF)}
           {puffs.length > 0 && puffLightDefs(uid, puffs)}
-          {!hasFolds && k.cuff?.folds.length ? foldDefs(uid) : null}
+          {!hasFolds && (k.cuff?.folds.length || softFolds.length) ? foldDefs(uid) : null}
           {spec.defs?.(uid)}
           {sleeveFoldDefs(uid)}
           {hasFolds && (
@@ -302,7 +311,7 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
               {k.bands.map((d, i) => (
                 <path key={i} d={d} fill={`url(#${uid("cuff")})`} />
               ))}
-              {seamShadows(uid, seamed.seams)}
+              {spec.softSeams ? foldShadows(uid, seamFold) : seamShadows(uid, seamed.seams)}
             </>
           )}
           {/* a cuff on a sleeve cut in one with the body: its band, and its seam */}
@@ -311,18 +320,19 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
               {k.bands.map((d, i) => (
                 <path key={i} d={d} fill={`url(#${uid("cuff")})`} />
               ))}
-              {seamShadows(uid, k.cuff.seams)}
+              {spec.softSeams ? foldShadows(uid, cuffFold) : seamShadows(uid, k.cuff.seams)}
             </>
           )}
           {k.cuff && cuffMarks(uid, k.cuff)}
         </>
       ),
-      ...(hasFolds || k.cuff?.folds.length
+      ...(hasFolds || k.cuff?.folds.length || softFolds.length
         ? {
             light: (uid: Uid) => (
               <>
                 {hasFolds && drawFolds(uid, foldLights)}
                 {k.cuff?.folds.length ? foldLights(uid, k.cuff.folds) : null}
+                {softFolds.length ? foldLights(uid, softFolds) : null}
               </>
             ),
           }

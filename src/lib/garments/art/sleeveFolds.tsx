@@ -1,4 +1,6 @@
 import type { Uid } from "@/lib/garments/shading";
+import type { Fold } from "@/lib/garments/folds";
+import type { Pt } from "@/lib/garments/fit";
 import type { PuffShape } from "@/lib/garments/sleeves";
 
 /** A puff's bulge, on the canvas: its left edge and width at its widest row, that row, and its height. */
@@ -124,4 +126,46 @@ export function seamShadows(uid: Uid, seams: string[]) {
       ))}
     </g>
   );
+}
+
+/** How wide each side of a seam's fold is, how deep its shadow, how bright its light — faint. */
+const SEAM_FOLD_WIDTH = 2.5;
+const SEAM_FOLD_SHADOW = 0.2;
+const SEAM_FOLD_LIGHT = 0.14;
+
+/** The points a path passes through, in order: its move, and the end of every segment after it. */
+export function pathPoints(d: string): Pt[] {
+  const tokens = d.match(/[MLCQ]|-?\d*\.?\d+(?:e-?\d+)?/g) ?? [];
+  const pts: Pt[] = [];
+  const take: Record<string, number> = { M: 2, L: 2, Q: 4, C: 6 };
+  let cmd = "M";
+  for (let i = 0; i < tokens.length; ) {
+    if (take[tokens[i]]) cmd = tokens[i++];
+    const n = take[cmd];
+    const nums = tokens.slice(i, i + n).map(Number);
+    if (nums.length < n || nums.some((v) => !Number.isFinite(v))) break;
+    pts.push([nums[n - 2], nums[n - 1]]);
+    i += n;
+  }
+  return pts;
+}
+
+/**
+ * Seams drawn as what they are in the cloth: a soft fold. Where two pieces are
+ * sewn the cloth turns a little into the join, so it catches a little light on
+ * one side and falls a little into shadow on the other — in its own colour,
+ * wide and faint, never a line drawn across the fabric. The dress and the
+ * blouse are sewn this way; `seamShadows` is the line the rest still draw.
+ */
+export function seamFolds(seams: string[]): Fold[] {
+  return seams
+    .map(pathPoints)
+    .filter((ridge) => ridge.length > 1)
+    .map((ridge) => ({
+      ridge,
+      width: [SEAM_FOLD_WIDTH, SEAM_FOLD_WIDTH] as const,
+      shadow: SEAM_FOLD_SHADOW,
+      light: SEAM_FOLD_LIGHT,
+      soft: 2,
+    }));
 }

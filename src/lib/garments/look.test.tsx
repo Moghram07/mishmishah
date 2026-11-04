@@ -2525,3 +2525,67 @@ describe("the dress's empire waist and bodice, light and dark", () => {
     write(theme, rows, "dress-bodice");
   });
 });
+
+/**
+ * Every seam the dress and the blouse are sewn with, close up, on a light
+ * page and a dark one, in a plain cloth and a print: the armhole and the
+ * waist seam, a raglan's, a dropped shoulder's, a cuff's, an off-shoulder's
+ * band, a halter's, and the blouse's armhole and cuff.
+ */
+describe("the dress's and the blouse's seams, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; id: string; sleeve: SleeveChoice; neckline?: string; zoom: number; focus: [number, number] };
+  const d = draft("female");
+  const wrist: [number, number] = [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2, d.wristY - 6];
+  const TILES: Tile[] = [
+    { caption: "armhole and waist seam", id: "female-dress", sleeve: { type: "set-in", length: "short" }, zoom: 2.4, focus: [300, 300] },
+    { caption: "the cuff's seam", id: "female-dress", sleeve: { type: "set-in", length: "long", cuff: "plain" }, zoom: 3.4, focus: wrist },
+    { caption: "raglan", id: "female-dress", sleeve: { type: "raglan", length: "short" }, zoom: 2.4, focus: [300, 280] },
+    { caption: "dropped shoulder", id: "female-dress", sleeve: { type: "drop", length: "elbow" }, zoom: 2.4, focus: [300, 290] },
+    { caption: "off-shoulder band", id: "female-dress", sleeve: { type: "off-shoulder", length: "elbow" }, neckline: "female-off-shoulder-neckline", zoom: 2.4, focus: [300, 290] },
+    { caption: "halter", id: "female-dress", sleeve: { type: "set-in", length: "sleeveless" }, neckline: "female-halter-neckline", zoom: 2.4, focus: [300, 260] },
+    { caption: "blouse, armhole", id: "female-blouse", sleeve: { type: "set-in", length: "long", cuff: "formal" }, zoom: 2.4, focus: [300, 300] },
+    { caption: "blouse, the cuff's seam", id: "female-blouse", sleeve: { type: "set-in", length: "long", cuff: "formal" }, zoom: 3.4, focus: wrist },
+  ];
+  const stage = (tile: Tile, clothId: string) => {
+    const g = garmentById(tile.id)!;
+    const cloth = f(clothId);
+    let worn: WornGarment[] = wear([], cutFrom(g, cloth.id));
+    if (tile.neckline) worn = setNeckline(worn, tile.id, tile.neckline);
+    worn = setSleeve(worn, tile.id, tile.sleeve);
+    const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+    for (const r of g.fabricRegions) regions[r] = cloth;
+    const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={{ [tile.id]: regions }} zoom={tile.zoom} focus={tile.focus} />;
+  };
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/dress-seams-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const rows = (["fb-apricot-linen", "fb-midnight-floral"] as const).map((cloth) => ({ cloth, kind: cloth === "fb-apricot-linen" ? "plain" : "print" }));
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map(({ cloth, kind }) => (
+          <div key={cloth} className="row">
+            {TILES.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile, cloth)}
+                <figcaption>{`${tile.caption}, ${kind}`}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/dress-seams-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});

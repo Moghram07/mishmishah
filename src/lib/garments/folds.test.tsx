@@ -8,7 +8,12 @@ import { garmentById } from "@/lib/data/garments";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { cutFrom } from "./outfit";
 import { contour, dart, gathers, hangingFolds, rowSpan, sleeveDrape } from "./folds";
-import type { Fabric, FabricRegionId, Outfit } from "@/types";
+import type { Fabric, FabricRegionId, Outfit, SleeveChoice } from "@/types";
+import type { ReactNode } from "react";
+import { dressFront } from "./art/female/dress";
+import { blouseFront } from "./art/female/blouse";
+import { skirtFor as dressSkirt } from "./art/female/dressCut";
+import { pathPoints } from "./art/sleeveFolds";
 import type { Pt } from "./fit";
 
 /**
@@ -130,5 +135,56 @@ describe("folds change the light, never the print", () => {
       expect(inner).not.toMatch(/url\(#|<image|feDisplacementMap/);
     }
     expect(markup).toMatch(/mix-blend-mode:\s*screen/);
+  });
+});
+
+/**
+ * Where the dress and the blouse are sewn — armholes, a raglan's or a dropped
+ * shoulder's, a band's, a cuff's, a halter's, the waist — the seam is a soft
+ * fold in the cloth's own colour: never a line drawn across the fabric, and
+ * the waist seam, where the skirt is sewn on over the bodice, never outlined.
+ */
+describe("the dress's and the blouse's seams", () => {
+  const uid = (name: string) => name;
+  const html = (node: ReactNode) => renderToStaticMarkup(<>{node}</>);
+  /* a seam drawn as a line: `seamShadows`' grey stroke */
+  const LINE = 'stroke="#6e6e6e"';
+  const DRESS_SKIRT = { shape: "flared", length: "midi" } as const;
+
+  it("draws every seam on them as a fold, never as a line", () => {
+    const sleeves: SleeveChoice[] = [
+      { type: "set-in", length: "short" },
+      { type: "raglan", length: "long", cuff: "plain" },
+      { type: "drop", length: "elbow" },
+      { type: "dolman", length: "long", cuff: "plain" },
+    ];
+    for (const waist of ["empire", "natural", "dropped"] as const) {
+      for (const sleeve of sleeves) {
+        const top = dressFront.cut!({ sleeve, skirt: { ...DRESS_SKIRT, waist } }).top!;
+        const drawn = html(top.shading?.(uid)) + html(top.light?.(uid));
+        expect(drawn, `${waist}, ${sleeve.type}`).not.toContain(LINE);
+        /* and each seam is there, as a fold: a lit flank and a shadowed one */
+        expect(drawn, `${waist}, ${sleeve.type}`).toContain("fold-soft-2");
+      }
+    }
+    const banded = dressFront.cut!({ neckline: "off-shoulder", sleeve: { type: "off-shoulder", length: "elbow" }, skirt: { ...DRESS_SKIRT, waist: "natural" } }).top!;
+    const halter = dressFront.cut!({ neckline: "halter", sleeve: { type: "set-in", length: "sleeveless" }, skirt: { ...DRESS_SKIRT, waist: "natural" } }).top!;
+    for (const [name, top] of [["off-shoulder", banded], ["halter", halter]] as const) expect(html(top.shading?.(uid)), name).not.toContain(LINE);
+    const blouse = blouseFront.cut!({ sleeve: { type: "set-in", length: "long", cuff: "plain" } }).body!;
+    expect(html(blouse.shading?.(uid)) + html(blouse.light?.(uid))).not.toContain(LINE);
+  });
+
+  it("does not outline the waist seam: the skirt's top, sewn on over the bodice, is a fold", () => {
+    for (const waist of ["empire", "natural", "dropped"] as const) {
+      const skirt = { ...DRESS_SKIRT, waist };
+      const regions = dressFront.cut!({ skirt });
+      const bottom = regions.bottom ?? dressFront.regions.bottom!;
+      const top = dressSkirt(undefined, skirt).waistY;
+      const edge = html(bottom.edge?.());
+      const pts = [...edge.matchAll(/ d="([^"]+)"/g)].flatMap(([, d]) => pathPoints(d));
+      const along = pts.filter((p, i) => i > 0 && Math.abs(p[1] - top) < 0.5 && Math.abs(pts[i - 1][1] - top) < 0.5);
+      expect(pts.length, waist).toBeGreaterThan(10);
+      expect(along, waist).toEqual([]);
+    }
   });
 });

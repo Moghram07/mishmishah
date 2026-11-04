@@ -18,11 +18,11 @@ import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
 import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, cloth, seamAt, skirtFor } from "./dressCut";
-import { besideArms, fallOf, hangs, sameSkirt, skirtKey } from "@/lib/garments/skirts";
+import { besideArms, fallOf, hangs, sameSkirt, skirtKey, type CutSkirt } from "@/lib/garments/skirts";
 import type { FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { litButtons } from "../buttons";
-import { puffLightDefs, puffShade, seamShadows, sleeveFoldDefs, sleeveFolds } from "../sleeveFolds";
+import { puffLightDefs, puffShade, seamFolds, sleeveFoldDefs, sleeveFolds } from "../sleeveFolds";
 import { CUFF, CuffHardware, cuffMarks, rowsOf, sewnDrape, shoulderFall } from "../sleevedTop";
 import { horizontal, type Stop } from "@/lib/garments/shading";
 
@@ -488,6 +488,52 @@ const BODICE_DRAPE: Stop[] = [
   [1, "#c6c6c6"],
 ];
 
+/** How near a row a segment's two ends must be for it to lie along that row. */
+const ON_ROW = 0.5;
+
+/**
+ * An outline without the stretches of it that lie along one row — a skirt's
+ * top, sewn on over the bodice's hem: the waist seam, not an edge. What is
+ * left is kept exactly as drawn, so it still lies on the piece's edge; one
+ * with nothing along the row is returned as it was.
+ */
+function offRow(d: string, y: number): string {
+  const tokens = d.match(/[MLCQZ]|-?\d*\.?\d+(?:e-?\d+)?/g) ?? [];
+  const take: Record<string, number> = { M: 2, L: 2, Q: 4, C: 6, Z: 0 };
+  const on = (p: Pt) => Math.abs(p[1] - y) < ON_ROW;
+  const out: string[] = [];
+  let cmd = "M";
+  let cur: Pt = [0, 0];
+  let start: Pt = [0, 0];
+  let at: Pt | null = null;
+  let dropped = false;
+  for (let i = 0; i < tokens.length; ) {
+    if (tokens[i] in take) cmd = tokens[i++];
+    const n = take[cmd];
+    const raw = tokens.slice(i, i + n);
+    i += n;
+    if (cmd === "M") {
+      cur = start = [Number(raw[0]), Number(raw[1])];
+      at = null;
+      cmd = "L";
+      continue;
+    }
+    const end: Pt = cmd === "Z" ? start : [Number(raw[n - 2]), Number(raw[n - 1])];
+    if (on(cur) && on(end)) dropped = true;
+    else {
+      if (!at || at[0] !== cur[0] || at[1] !== cur[1]) out.push(`M${cur[0]} ${cur[1]}`);
+      out.push(cmd === "Z" ? `L${start[0]} ${start[1]}` : `${cmd}${raw.join(" ")}`);
+      at = end;
+    }
+    cur = end;
+    if (cmd === "Z") {
+      cmd = "M";
+      at = null;
+    }
+  }
+  return dropped ? out.join(" ") : d;
+}
+
 const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): RegionArt => {
   const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff } = bodiceFor(id, sleeve, waist);
   /* a puff is lit round and gathered at both ends — see `PuffShape` */
@@ -538,6 +584,16 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Region
         [wrap.edge[0][0] - 160, wrap.edge[0][1] - 40],
       ])
     : "";
+  /*
+    Every seam it is sewn with — its armholes, a raglan's, a band's, a cuff's,
+    a halter's — drawn as a soft fold in its own colour, each where its line
+    used to be, never a line across the cloth. The waist seam is the skirt's,
+    which is sewn on over the bodice's hem: see `bottomRegion`.
+  */
+  const bandSeams = seamFolds(bandSleeves?.seams ?? []);
+  const sleeveSeams = seamFolds(seamed?.seams ?? []);
+  const cuffSeams = seamFolds(cuff && !seamed ? cuff.cut.seams : []);
+  const halterSeam = seamFolds(cut.halter ? [line(cut.halter.seam)] : []);
   const bodiceFolds = [
     ...BODICE_FOLDS,
     ...(cut.band ? (bandSleeves ? raglanBandFolds(cut.band) : bandFolds(cut.band)) : []),
@@ -659,7 +715,7 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Region
         {cut.halter && (
           <>
             <path d={cut.extras[0]} fill={`url(#${uid("halter-band")})`} />
-            {seamShadows(uid, [line(cut.halter.seam)])}
+            {foldShadows(uid, halterSeam)}
           </>
         )}
         {/*
@@ -704,11 +760,11 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Region
         )}
         {bandDrape.length > 0 && <g mask={`url(#${uid("band-sleeves")})`}>{foldShadows(uid, bandDrape)}</g>}
         {/* where each sleeve is sewn to the band: a seam, and the band's gathers end at it */}
-        {bandSleeves && seamShadows(uid, bandSleeves.seams)}
+        {foldShadows(uid, bandSeams)}
         {seamed && (
           <>
             <g mask={`url(#${uid("fold-sleeves")})`}>{foldShadows(uid, drape)}</g>
-            {seamShadows(uid, seamed.seams)}
+            {foldShadows(uid, sleeveSeams)}
           </>
         )}
         {/* the cuffs: each band's light, its seam on a sleeve cut on, and its marks */}
@@ -717,7 +773,7 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Region
             {cuff.bands.map((d, i) => (
               <path key={i} d={d} fill={`url(#${uid("cuff")})`} />
             ))}
-            {!seamed && seamShadows(uid, cuff.cut.seams)}
+            {foldShadows(uid, cuffSeams)}
             {cuffMarks(uid, cuff.cut)}
           </>
         )}
@@ -726,6 +782,7 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Region
     light: (uid) => (
       <>
         {foldLights(uid, bodiceFolds)}
+        {foldLights(uid, [...bandSeams, ...sleeveSeams, ...cuffSeams, ...halterSeam])}
         {/* a keyhole's loop: a rouleau, rounded, catching the light along its rim */}
         {cut.loopRim && <path d={line(cut.loopRim)} fill="none" stroke="#ffffff" strokeWidth={0.7} strokeLinecap="round" opacity={0.45} />}
         {puff && (
@@ -769,14 +826,34 @@ const topFor = (choice: GarmentChoice): RegionArt => {
  * out from under the hem — and, hung from above her waist, behind the sleeves
  * hanging beside it: `under`.
  */
+/**
+ * The waist seam, where the skirt is sewn on over the bodice's hem: its top
+ * edge is a seam, not an edge, so it is not outlined but turns in a little
+ * just below it — lit above, in shadow below, in the cloth's own colour.
+ */
+const waistSeam = (sk: CutSkirt): Fold[] => [
+  {
+    ridge: [
+      [sk.waistLeft[0] + 3, sk.waistY + 3],
+      [600 - sk.waistLeft[0] - 3, sk.waistY + 3],
+    ],
+    width: [3, 3],
+    shadow: 0.2,
+    light: 0.14,
+    soft: 2,
+  },
+];
+
 const bottomRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, under: string[] = []): RegionArt => {
   const sk = skirtFor(inside, skirt);
-  const folds = inside || !sameSkirt(skirt, DEFAULT_SKIRT) ? skirtFolds(inside, skirt) : SKIRT_FOLDS;
+  const folds = [...(inside || !sameSkirt(skirt, DEFAULT_SKIRT) ? skirtFolds(inside, skirt) : SKIRT_FOLDS), ...waistSeam(sk)];
   return {
     ...(under.length ? { under } : {}),
     focus: [300, 580],
     surface: { blur: 16, relief: 5, warp: 5 },
     shape: (fill) => <path d={sk.path} fill={fill} />,
+    /* its outline, but for its top: the waist seam */
+    edge: () => <path d={offRow(sk.path, sk.waistY)} fill="none" />,
     defs: (uid) => (
       <>
         {vertical(uid("drape"), DRAPE)}
