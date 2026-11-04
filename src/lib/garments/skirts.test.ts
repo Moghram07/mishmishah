@@ -199,7 +199,7 @@ describe("skirts", () => {
     for (const id of ["female-dress", "female-skirt"]) {
       expect(skirtShapesFor(garmentById(id)!).map((s) => s.id), id).toEqual(["aline", "flared", "circle", "pencil", "pleated", "mermaid"]);
     }
-    expect(skirtShapes.map((s) => s.name.ar)).toEqual(["A لاين", "كلوش", "كلوش دائري", "قلم", "بليسيه", "سمكة"]);
+    expect(skirtShapes.map((s) => s.name.ar)).toEqual(["A لاين", "نص كلوش", "كلوش", "قلم", "بليسيه", "سمكة"]);
   });
 
   it("hides more of the leg the longer it is", () => {

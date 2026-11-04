@@ -15,8 +15,8 @@ export interface SkirtShape {
 
 const SHAPE_NAMES: Record<SkirtShapeId, { en: string; ar: string }> = {
   aline: { en: "A-line", ar: "A لاين" },
-  flared: { en: "Flared", ar: "كلوش" },
-  circle: { en: "Circle", ar: "كلوش دائري" },
+  flared: { en: "Flared", ar: "نص كلوش" },
+  circle: { en: "Circle", ar: "كلوش" },
   pencil: { en: "Pencil", ar: "قلم" },
   pleated: { en: "Pleated", ar: "بليسيه" },
   mermaid: { en: "Mermaid", ar: "سمكة" },
