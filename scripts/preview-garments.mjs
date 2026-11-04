@@ -499,7 +499,7 @@ const ownCoverage = (garment, skirt = garment.skirt?.default) =>
 const defaultSleeveOf = (assetId) =>
   garments.find((g) => g.asset.front === assetId)?.sleeves?.default;
 
-function artPaths(assetId, body, { behind = false, opening = null, cut = null, sleeve = null, skirt = null, inside = null, front = null } = {}) {
+function artPaths(assetId, body, { behind = false, opening = null, cut = null, sleeve = null, skirt = null, inside = null, front = null, underTop = null } = {}) {
   if (COLLAR_CLOTH[assetId] && !behind) return COLLAR_CLOTH[assetId](cut ?? undefined);
   const generated = CUT_MODULES[assetId];
   if (generated && !behind) {
@@ -509,6 +509,7 @@ function artPaths(assetId, body, { behind = false, opening = null, cut = null, s
       skirt: skirt ?? undefined,
       inside: inside ?? undefined,
       front: front ?? undefined,
+      underTop: underTop ?? undefined,
     });
   }
 
@@ -3417,6 +3418,126 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
   return failed;
 }
 
+/**
+ * How far a skirt may show past a top over it in a row above the top's hem, in
+ * pixels. Their sides lie together at her waist, which rounds to a pixel; and
+ * a skirt's outline rounds its top right corner a unit or two wider than its
+ * left, under its band — `column`'s outline ends on its first point again, so
+ * the two corners take different tangents. That is the skirt as approved, on
+ * its own as much as under a top.
+ */
+const UNDER_TOP_SLACK = 2;
+
+/**
+ * Does a skirt show past a top worn over it?
+ *
+ * A top lies over a skirt as a jacket does — see `tucked`: above the top's
+ * hem the skirt lies inside its side, and it comes out from under the hem no
+ * wider than the top there, flaring from there to its own hem. A circle skirt
+ * cut to its own width stood out beside a fitted blouse's waist.
+ *
+ * Every top that can be worn over a skirt, with each of its sleeves' sides,
+ * over every shape at every length: in each row above the top's hem corner,
+ * how much of the skirt shows past the top, at either side — in the gap under
+ * an arm too, so each side is read with the first sleeve that has it, the
+ * least sleeve there is; and across the hem, no step out in the outline of
+ * the two. A top with no `COVER` would leave the skirt at its own width
+ * under it, and fails.
+ */
+function checkUnderTops(bodyKey, body, wardrobe) {
+  let failed = 0;
+  const solid = (v) => v >= 0.5;
+  const bottoms = wardrobe.filter((g) => g.skirt && g.layer === "bottom" && CUT_MODULES[g.asset.front]);
+  const tops = wardrobe.filter((g) => g.category === "top");
+  for (const bottom of bottoms) {
+    for (const top of tops) {
+      if (conflicts(top, bottom)) continue;
+      const name = `${top.id} over ${bottom.id}`;
+      const table = artTable(top.asset.front, body);
+      const coverFn = table.get("COVER");
+      if (typeof coverFn !== "function") {
+        failed++;
+        console.log(`HOLE ${bodyKey.padEnd(6)} ${name.padEnd(38)} has no COVER: a skirt under it is drawn at its own width`);
+        continue;
+      }
+      /* each side once, with the first sleeve that has it */
+      const covers = new Map();
+      for (const sleeve of sleeveChoicesOf(top, bodyKey)) {
+        const c = coverFn(sleeve);
+        const key = JSON.stringify([c.y, c.x, c.side]);
+        if (!covers.has(key)) covers.set(key, { c, sleeve });
+      }
+      let showing = 0;
+      let step = 0;
+      let drawnIn = 0;
+      let styles = 0;
+      let worst = "";
+      for (const { c, sleeve } of covers.values()) {
+        const topCloth = rasterize(artPaths(top.asset.front, body, { sleeve }));
+        const topBody = rasterize([table.get("CLOTH")(sleeve, false)[0]]);
+        const hemRow = Math.floor(c.y);
+        for (const shape of bottom.skirt.shapes) {
+          for (const length of shapeLengths(shape, bottom.skirt.lengths)) {
+            const style = { ...bottom.skirt.default, shape, length };
+            /* its own outline: its band is shading laid inside it, so the outline is all of it that can show */
+            const mod = CUT_MODULES[bottom.asset.front];
+            const cloth = rasterize([mod.skirtFor(undefined, style, c).path]);
+            const own = rasterize([mod.skirtFor(undefined, style).path]);
+            styles++;
+            const label = `${shape} ${length}, ${sleeve ? `${sleeve.type} ${sleeve.length}` : "as it arrives"}`;
+            /* above the hem: what of it shows past the top, in the worse half of each row */
+            let most = 0;
+            for (let y = 0; y < hemRow; y++) {
+              let l = 0;
+              let r = 0;
+              for (let x = 0; x < W; x++) {
+                const i = y * W + x;
+                if (solid(cloth[i]) && !solid(topCloth[i])) x < W / 2 ? l++ : r++;
+              }
+              most = Math.max(most, l, r);
+            }
+            if (most > showing) worst = label;
+            showing = Math.max(showing, most);
+            /* across the hem: the run through the middle, of the top's body and the skirt, never stepping out */
+            let prev = null;
+            for (let y = hemRow - 8; y <= hemRow + 16; y++) {
+              const on = (x) => solid(topBody[y * W + x]) || solid(cloth[y * W + x]);
+              let [lo, hi] = [W / 2, W / 2];
+              while (lo > 0 && on(lo - 1)) lo--;
+              while (hi < W - 1 && on(hi + 1)) hi++;
+              const run = on(W / 2) ? [lo, hi] : null;
+              if (run && prev) {
+                const st = Math.max(prev[0] - run[0], run[1] - prev[1]);
+                if (st > step) {
+                  step = st;
+                  if (st > HEM_STEP) worst = label;
+                }
+              }
+              prev = run;
+            }
+            /* how far it was drawn in, where it comes out */
+            const edge = (g) => {
+              for (let x = 0; x < W / 2; x++) if (solid(g[(hemRow + 1) * W + x])) return x;
+              return null;
+            };
+            const [a, b] = [edge(own), edge(cloth)];
+            if (a !== null && b !== null) drawnIn = Math.max(drawnIn, b - a);
+          }
+        }
+      }
+      const bad = showing > UNDER_TOP_SLACK || step > HEM_STEP;
+      if (bad) failed++;
+      console.log(
+        `${bad ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${name.padEnd(38)} ` +
+          `${String(styles).padStart(3)} styles over ${covers.size} sides: shows ${showing} px past it in a row above its hem at most, ` +
+          `a ${step} px step at its hem, drawn in up to ${drawnIn} px where it comes out` +
+          (bad ? `  — worst: ${worst}` : "")
+      );
+    }
+  }
+  return failed;
+}
+
 /*
   ------------------------------------------------------------ the base layer
 
@@ -3697,6 +3818,7 @@ for (const bodyKey of Object.keys(bodies)) {
   failures += checkTrouserDetails(bodyKey, body, profile, garmentsFor(bodyKey));
   failures += checkBodiceDetails(bodyKey, garmentsFor(bodyKey));
   failures += checkLayering(bodyKey, body, cover, garmentsFor(bodyKey));
+  failures += checkUnderTops(bodyKey, body, garmentsFor(bodyKey));
   failures += checkBaseLayer(bodyKey, body, cover, garmentsFor(bodyKey));
   const rgba = Buffer.alloc(W * H * 4);
   const holeMap = new Uint8Array(W * H);

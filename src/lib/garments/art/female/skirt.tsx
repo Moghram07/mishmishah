@@ -19,16 +19,19 @@ import { DEFAULT_SKIRT, FINISH, FOLD_AT, HIP_Y, cloth, skirtFor } from "./skirtC
  */
 
 /**
- * The skirt's region, in a style, on its own or under a jacket.
+ * The skirt's region, in a style, on its own, under a jacket, or drawn in
+ * under a top.
  *
  * Darted, not gathered: nothing at the waist but two small darts each side
  * under the band, and soft folds falling to the hem, opening as they go — see
  * `skirtFolds`. They were seven grey wedges fanned from a point. On its own
- * they fall from the hip; under a jacket, from the jacket's hem, where the
- * skirt comes out — so they follow the outline it has there.
+ * they fall from the hip; under a jacket's hem or a top's, from that hem, where
+ * the skirt comes out — so they follow the outline it has there.
  */
-const skirtRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): RegionArt => {
-  const sk = skirtFor(inside, skirt);
+const skirtRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, underTop?: Tuck): RegionArt => {
+  const sk = skirtFor(inside, skirt, underTop);
+  /* the hem it comes out from under, a jacket's or a top's */
+  const out = inside ?? underTop;
   /*
     A fitted shape's folds are released where it starts to flare — a
     mermaid's above the knee — and open as far as it flares; one that does
@@ -42,23 +45,23 @@ const skirtRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): RegionA
     hem — with no darts: a circle's in deep folds where its hem waves, a
     pleated skirt's in its pleats. See `fallOf`.
   */
-  const bandFoot = inside ? inside.y : sk.waistY + (FINISH.band ?? 0);
+  const bandFoot = out ? out.y : sk.waistY + (FINISH.band ?? 0);
   const under = rowSpan(sk.path, bandFoot + 2) ?? [200, 400];
   const released: readonly [Pt, Pt] = [
     [under[0] + 4, bandFoot],
     [under[1] - 4, bandFoot],
   ];
-  const from = Math.max(inside ? inside.y : sk.leaves ?? HIP_Y, fall.from ?? 0);
+  const from = Math.max(out ? out.y : sk.leaves ?? HIP_Y, fall.from ?? 0);
   const across = rowSpan(sk.path, from) ?? [200, 400];
   const flare = across[0] - sk.hemLeft[0];
   const folds = fall.waves
-    ? circleFolds({ seam: released, hem, hemDip, at: fall.waves, start: inside ? 0 : 4, seed: 31 })
+    ? circleFolds({ seam: released, hem, hemDip, at: fall.waves, start: out ? 0 : 4, seed: 31 })
     : fall.pleats
       ? pleatFolds({ top: released, hem, hemDip, lines: fall.pleats })
       : skirtFolds({
           hip: [
-            [across[0] + (inside ? 6 : 4), from],
-            [across[1] - (inside ? 6 : 4), from],
+            [across[0] + (out ? 6 : 4), from],
+            [across[1] - (out ? 6 : 4), from],
           ],
           hem,
           hemDip,
@@ -105,12 +108,19 @@ const styledRegions = new Map<string, RegionArt>();
 
 export const skirtFront: GarmentArt = {
   regions: { body: skirtRegion() },
-  /** Cut to a style, or worn under a jacket, where it comes out from under its hem. */
+  /**
+   * Cut to a style, or worn under a jacket, where it comes out from under its
+   * hem — or under a top it would show past, drawn in under it.
+   */
   cut: (choice) => {
     const { inside, skirt = DEFAULT_SKIRT } = choice;
-    if (!inside && sameSkirt(skirt, DEFAULT_SKIRT)) return {};
-    const key = `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}`;
-    if (!styledRegions.has(key)) styledRegions.set(key, skirtRegion(inside, skirt));
+    /* a top over it only where it changes the skirt: anywhere else it is the skirt it is on its own */
+    const underTop = !inside && choice.underTop && skirtFor(undefined, skirt, choice.underTop) !== skirtFor(undefined, skirt) ? choice.underTop : undefined;
+    if (!inside && !underTop && sameSkirt(skirt, DEFAULT_SKIRT)) return {};
+    const key =
+      `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}` +
+      (underTop ? `|top|${JSON.stringify([underTop.y, underTop.x, underTop.side])}` : "");
+    if (!styledRegions.has(key)) styledRegions.set(key, skirtRegion(inside, skirt, underTop));
     return { body: styledRegions.get(key)! };
   },
   /** The skirt and its band as cut, for the shape picker. */

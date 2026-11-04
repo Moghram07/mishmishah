@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { DRAPE, horizontal, vertical, type Stop, type Uid } from "@/lib/garments/shading";
-import type { CuffTrim, SleeveCut, TopDraft } from "@/lib/garments/sleeves";
+import { coverFrom, type CuffTrim, type SleeveCut, type TopDraft } from "@/lib/garments/sleeves";
+import type { Tuck } from "@/lib/garments/fit";
 import type { SleeveChoice } from "@/types";
 import type { GarmentChoice, RegionArt } from "./index";
 import { puffLightDefs, puffShade, seamFolds, seamShadows, sleeveFoldDefs, sleeveFolds } from "./sleeveFolds";
@@ -146,6 +147,8 @@ export interface SleevedTop {
   armCover(choice: GarmentChoice): string[];
   /** What the cuffs close with, for the choice — see `CuffHardware`. */
   cuffTrim(choice: GarmentChoice): ReactNode;
+  /** What it lets a bottom worn under it show, for the choice — see `coverOf`. */
+  cover(choice: GarmentChoice): Tuck;
 }
 
 /**
@@ -345,5 +348,6 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
       const trim = cutFor(choice).cuff?.trim;
       return trim ? <CuffHardware trims={[trim.left, trim.right]} /> : null;
     },
+    cover: (choice) => coverFrom(cutFor(choice)),
   };
 }

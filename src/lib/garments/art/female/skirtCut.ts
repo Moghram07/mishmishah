@@ -38,8 +38,21 @@ export const HIP_Y = draft("female").hipY;
 const SKIRT = skirtCut(FINISH, DEFAULT_SKIRT);
 const skirts = new Map<string, CutSkirt>();
 
-/** The skirt in a style, on its own or under a jacket's hem — see `tucked`. Each cut once, kept. */
-export function skirtFor(inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): CutSkirt {
+/**
+ * The skirt in a style, on its own, under a jacket's hem, or under a top's —
+ * see `tucked`. Each cut once, kept. Under a top it is no wider than, it is
+ * the very skirt it is on its own: a top changes only what would show past it.
+ */
+export function skirtFor(inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, underTop?: Tuck): CutSkirt {
+  if (!inside && underTop) {
+    const own = skirtFor(undefined, skirt);
+    const key = `${skirtKey(skirt)}|top|${JSON.stringify([underTop.y, underTop.x, underTop.side])}`;
+    if (!skirts.has(key)) {
+      const sk = skirtCut(FINISH, skirt, underTop);
+      skirts.set(key, sk.path === own.path ? own : sk);
+    }
+    return skirts.get(key)!;
+  }
   if (!inside && sameSkirt(skirt, DEFAULT_SKIRT)) return SKIRT;
   const key = `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}`;
   if (!skirts.has(key)) skirts.set(key, skirtCut(FINISH, skirt, inside));
@@ -51,7 +64,7 @@ export function skirtFor(inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Cut
  * or, under a jacket, the skirt alone, its band hidden under the jacket.
  * What `check:garments` rasterises.
  */
-export const cloth = ({ inside, skirt }: GarmentChoice = {}): string[] => {
-  const sk = skirtFor(inside, skirt);
+export const cloth = ({ inside, skirt, underTop }: GarmentChoice = {}): string[] => {
+  const sk = skirtFor(inside, skirt, underTop);
   return inside ? [sk.path] : [sk.path, sk.band];
 };

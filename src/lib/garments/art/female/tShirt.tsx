@@ -1,5 +1,5 @@
 import { draft, necklineShadow, necklineStitch, type Pt, type Tuck } from "@/lib/garments/fit";
-import { clothOf, top } from "@/lib/garments/sleeves";
+import { clothOf, coverOf, top } from "@/lib/garments/sleeves";
 import type { SleeveChoice } from "@/types";
 import {
   HIGH_NECKLINE,
@@ -67,6 +67,9 @@ export const NECK_SEAM_HIGH = `M${NECK_RIGHT[0]} ${NECK_RIGHT[1]} ${HIGH_NECKLIN
 export const CLOTH = (sleeve: SleeveChoice, high: boolean, inside?: Tuck) =>
   clothOf(DRAFT, high ? HIGH_NECKLINE : NECKLINE, sleeve, inside);
 
+/** What it lets a skirt worn under it show, for one sleeve — what the checker asks; see `coverOf`. */
+export const COVER = (sleeve: SleeveChoice) => coverOf(DRAFT, NECKLINE, sleeve);
+
 const NECK_SHADOW_PATH = necklineShadow(NECK);
 
 /*
@@ -104,4 +107,5 @@ export const tShirtFront: GarmentArt = {
   cut: (choice) => ({ body: TOP.region(choice) }),
   armCover: (choice) => TOP.armCover(choice),
   cuffTrim: (choice) => TOP.cuffTrim(choice),
+  cover: (choice) => TOP.cover(choice),
 };

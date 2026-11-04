@@ -1827,6 +1827,83 @@ describe("the circle and the pleated skirt, light and dark", () => {
 });
 
 /**
+ * A top over the skirt, on a light page and a dark one: her blouse and her
+ * t-shirt over it in every shape at midi, and the circle at maxi, in a plain
+ * cloth and a print — and close up at the top's hem, where the skirt comes
+ * out from under it, for the three that reach past a top.
+ */
+describe("a top over the skirt, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; top: string; skirt: { shape: SkirtShapeId; length: SkirtLengthId }; cloth: string; zoom: number; focus: [number, number] };
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/top-over-skirt-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const stage = (tile: Tile) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of [tile.top, "female-skirt"]) {
+        const g = garmentById(gid)!;
+        /* the skirt in the cloth being shown, the top over it in another */
+        const cloth = gid === "female-skirt" ? f(tile.cloth) : f("fb-rose-silk");
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      worn = worn.map((w) => {
+        const skirt = w.garmentId === "female-skirt" ? skirtOf(w) : undefined;
+        return skirt ? { ...w, skirt: { ...skirt, ...tile.skirt } } : w;
+      });
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={tile.zoom} focus={tile.focus} />;
+    };
+    const offer = garmentById("female-skirt")!.skirt!;
+    const rows: Tile[][] = (["female-blouse", "female-t-shirt"] as const).flatMap((top) =>
+      (
+        [
+          ["fb-apricot-linen", "plain"],
+          ["fb-midnight-floral", "print"],
+        ] as const
+      ).map(([cloth, kind]): Tile[] => {
+        const name = top === "female-blouse" ? "blouse" : "t-shirt";
+        return [
+          ...offer.shapes.map((shape): Tile => ({ caption: `${name} over ${shape}, midi, ${kind}`, top, skirt: { shape, length: "midi" }, cloth, zoom: 1, focus: [300, 500] })),
+          { caption: `${name} over circle, maxi, ${kind}`, top, skirt: { shape: "circle", length: "maxi" }, cloth, zoom: 1, focus: [300, 500] },
+          ...(["aline", "circle", "pleated"] as const).map((shape): Tile => ({
+            caption: `${name} over ${shape}, its hem 2.4×`, top, skirt: { shape, length: "midi" }, cloth, zoom: 2.4, focus: [235, 445],
+          })),
+        ];
+      })
+    );
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/top-over-skirt-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});
+
+/**
  * Her abaya, on a light page and a dark one: on its own in black crepe, a
  * plain cloth and a print, with its opening, cuff and hem close up — and over
  * what she wears, each outfit beside the same outfit under the abaya: the

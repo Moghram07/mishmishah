@@ -6,6 +6,8 @@ import { skirtLengthsFor, skirtShapes, skirtShapesFor } from "@/lib/data/skirts"
 import { DEFAULT_SKIRT as DRESS_DEFAULT, WAIST_Y, details, seamAt, skirtFor as dressSkirt } from "./art/female/dressCut";
 import { DEFAULT_SKIRT as SKIRT_DEFAULT, cloth, skirtFor } from "./art/female/skirtCut";
 import { BUST } from "./art/female/yoke";
+import { COVER as BLOUSE_COVER } from "./art/female/blouse";
+import { COVER as TEE_COVER } from "./art/female/tShirt";
 import { draft } from "./fit";
 import { BODY_CANVAS } from "../mannequin/bodies";
 
@@ -193,6 +195,34 @@ describe("skirts", () => {
     });
     for (const step of steps) expect(step).toBeCloseTo(1.6, 0);
     expect(besideArms({ shape: "pleated", length: "midi" })).toBe(true);
+  });
+
+  it("draws a skirt in under a top it would show past, as under a jacket, and leaves one that does not as it is", () => {
+    for (const [name, cover] of [
+      ["blouse", BLOUSE_COVER({ type: "set-in", length: "long", cuff: "formal" })],
+      ["t-shirt", TEE_COVER({ type: "set-in", length: "short" })],
+    ] as const) {
+      const at = (y: number) => {
+        for (let i = 1; i < cover.side.length; i++) {
+          const [[x0, y0], [x1, y1]] = [cover.side[i - 1], cover.side[i]];
+          if (y1 >= y) return x0 + ((x1 - x0) * (y - y0)) / (y1 - y0 || 1);
+        }
+        return cover.x;
+      };
+      /* a skirt that lies within the top already is the very same cut */
+      for (const shape of ["flared", "pencil", "mermaid"] as const) {
+        expect(skirtFor(undefined, { shape, length: "midi" }, cover), `${name} over ${shape}`).toBe(skirtFor(undefined, { shape, length: "midi" }));
+      }
+      for (const length of ["knee", "midi", "maxi"] as const) {
+        const own = skirtFor(undefined, { shape: "circle", length });
+        const under = skirtFor(undefined, { shape: "circle", length }, cover);
+        /* inside the top's side above its hem, and no wider than its corner where it comes out */
+        for (let y = under.waistY + 4; y <= cover.y; y += 4) expect(leftAt(under.path, y), `${name}, ${length}, y ${y}`).toBeGreaterThanOrEqual(at(y) - 0.3);
+        /* then out again, row by row, to its own hem, which stays where it was */
+        for (let y = cover.y + 4; y + 4 < HEM_AT[length]; y += 4) expect(leftAt(under.path, y + 4), `${name}, ${length}, y ${y}`).toBeLessThanOrEqual(leftAt(under.path, y) + 0.05);
+        expect(under.hemLeft, `${name}, ${length}`).toEqual(own.hemLeft);
+      }
+    }
   });
 
   it("offers the shapes by name, in the picker's order, on the dress and the skirt alike", () => {

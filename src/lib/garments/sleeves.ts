@@ -12,6 +12,7 @@ import {
   SLEEVE_UNDERARM_DROP,
   bodySide,
   draft,
+  drawnRun,
   hem,
   line,
   mirrorPts as mirror,
@@ -2430,4 +2431,22 @@ function mirrorLine(d: string): string {
 export function clothOf(draft: TopDraft, opening: string, c: SleeveChoice, inside?: Tuck): string[] {
   const k = draft.cut(c, draft.frame(opening, c), inside);
   return [k.body, ...k.sleeves, ...k.bands];
+}
+
+/**
+ * What a top lets a garment worn under it show — a skirt: the corner its hem
+ * leaves the side seam at, and its side down to there. The skirt comes out
+ * from under the hem there no wider, and stays inside the side above it — see
+ * `tucked`. From a cut, as the renderer has it; or for one sleeve, as
+ * `check:garments` asks for it — the same answer.
+ */
+export const coverFrom = (k: SleeveCut): Required<Tuck> => {
+  /* as it is drawn: at her waist the curve lies inside the straight line between its points */
+  const side = drawnRun(k.left.side);
+  const [x, y] = side[side.length - 1];
+  return { y, x, side };
+};
+
+export function coverOf(draft: TopDraft, opening: string, c: SleeveChoice): Required<Tuck> {
+  return coverFrom(draft.cut(c, draft.frame(opening, c)));
 }

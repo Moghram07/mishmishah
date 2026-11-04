@@ -95,14 +95,44 @@ const n = (v: number) => {
  * also reading as a folded paper doll.
  */
 function through(pts: Pt[], closed: boolean): string {
+  return segments(pts, closed)
+    .map(([, c1, c2, p2]) => `C${n(c1[0])} ${n(c1[1])} ${n(c2[0])} ${n(c2[1])} ${n(p2[0])} ${n(p2[1])}`)
+    .join(" ");
+}
+
+/**
+ * A run of points as it is drawn — see `through` — sampled every `step`
+ * units or so along each curve: where the cloth's edge really is between its
+ * points, which on a curve is not the straight line from one to the next.
+ */
+export function drawnRun(pts: Pt[], step = 2): Pt[] {
+  const segs = segments(pts, false);
+  if (segs.length === 0) return dedupe(pts);
+  const out: Pt[] = [segs[0][0]];
+  for (const [p1, c1, c2, p2] of segs) {
+    const k = Math.max(1, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+    for (let j = 1; j <= k; j++) {
+      const t = j / k;
+      const u = 1 - t;
+      out.push([
+        u * u * u * p1[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * p2[0],
+        u * u * u * p1[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * p2[1],
+      ]);
+    }
+  }
+  return out;
+}
+
+/** Each cubic `through` draws: its start, its two handles and its end. */
+function segments(pts: Pt[], closed: boolean): [Pt, Pt, Pt, Pt][] {
   const p = dedupe(pts);
-  if (p.length < 2) return "";
+  if (p.length < 2) return [];
   const at = (i: number): Pt =>
     closed
       ? p[((i % p.length) + p.length) % p.length]
       : p[Math.min(p.length - 1, Math.max(0, i))];
 
-  const out: string[] = [];
+  const out: [Pt, Pt, Pt, Pt][] = [];
   const last = closed ? p.length : p.length - 1;
   for (let i = 0; i < last; i++) {
     const p0 = at(i - 1);
@@ -131,9 +161,9 @@ function through(pts: Pt[], closed: boolean): string {
       hold(p2[0] - (p3[0] - p1[0]) / 6, p1[0], p2[0]),
       hold(p2[1] - (p3[1] - p1[1]) / 6, p1[1], p2[1]),
     ];
-    out.push(`C${n(c1[0])} ${n(c1[1])} ${n(c2[0])} ${n(c2[1])} ${n(p2[0])} ${n(p2[1])}`);
+    out.push([p1, c1, c2, p2]);
   }
-  return out.join(" ");
+  return out;
 }
 
 /** One closed piece of cloth, from runs of points laid end to end. */
@@ -1787,10 +1817,44 @@ function steppedHem(left: Pt, right: Pt, dip: number, lines: number[], depth: nu
 export interface Tuck {
   y: number;
   x: number;
+  /**
+   * A top's left side down to that corner, for a top worn over it — see
+   * `coverOf`. A jacket is wide enough above its hem that only the last rows
+   * need drawing in; a top is fitted, and what is under it stays inside its
+   * side all the way up.
+   */
+  side?: Pt[];
 }
 
 /** How far above a jacket's hem a garment under it starts to draw in to meet it: under the jacket, unseen. */
 const TUCK_BLEND = 24;
+
+/**
+ * How far past a top's side what is under it may lie before it is drawn in. A
+ * skirt and a fitted top are cut at the same ease, so their sides lie together
+ * at her waist and hip; a few tenths of a unit between them is the two drafts'
+ * rounding, not cloth showing.
+ */
+const TUCK_SLACK = 0.5;
+
+/**
+ * And once drawn in, how far inside the top's side it is kept: the side is a
+ * curve through its points, and between them lies inside the straight line
+ * from one to the next, at her waist by up to a unit and a half.
+ */
+const TUCK_INSET = 1.5;
+
+/** A side's x at a row, between its points; `null` off its rows. */
+const sideX = (side: Pt[], y: number): number | null => {
+  if (y < side[0][1] || y > side[side.length - 1][1]) return null;
+  for (let i = 1; i < side.length; i++) {
+    if (side[i][1] < y) continue;
+    const [x0, y0] = side[i - 1];
+    const [x1, y1] = side[i];
+    return x0 + ((x1 - x0) * (y - y0)) / (y1 - y0 || 1);
+  }
+  return side[side.length - 1][0];
+};
 
 /**
  * A garment's left side as it is worn under a jacket.
@@ -1807,6 +1871,11 @@ const TUCK_BLEND = 24;
  * hem, which stays exactly where it was. The side leaves the jacket's corner
  * running straight down and flares as it falls — no step, no horizontal edge.
  * A garment that is no wider than the jacket's hem there is left as it is.
+ *
+ * Under a top — a blouse over a full skirt — the same, and above the hem it is
+ * kept inside the top's side too (`tuck.side`): a top is fitted, where a
+ * jacket is wide enough above its hem not to need it. One that lies within
+ * `TUCK_SLACK` of it everywhere is left as it is.
  */
 export function tucked(side: Pt[], tuck?: Tuck): Pt[] {
   if (!tuck || side.length < 2) return side;
@@ -1822,9 +1891,20 @@ export function tucked(side: Pt[], tuck?: Tuck): Pt[] {
     }
     return end[0];
   };
-  const over = tuck.x - xAt(tuck.y);
-  if (over <= 0.05) return side;
-  const from = tuck.y - TUCK_BLEND;
+  /* how far in it is drawn, at a row at or above the hem, to stay inside a top worn over it */
+  const cover = tuck.side;
+  const within = (y: number, inset = 0): number => {
+    const x = cover ? sideX(cover, y) : null;
+    return x === null ? 0 : Math.max(0, x + inset - xAt(y));
+  };
+  const slack = cover ? TUCK_SLACK : 0.05;
+  /* from the first of its rows a top's side has to draw it in at — or, as under a jacket, a little above the hem */
+  const first = cover ? side.find(([, y]) => y <= tuck.y && within(y) > slack) : undefined;
+  if (Math.max(tuck.x - xAt(tuck.y), within(tuck.y)) <= slack && !first) return side;
+  const inset = cover ? TUCK_INSET : 0;
+  const over = Math.max(tuck.x + inset - xAt(tuck.y), within(tuck.y, inset));
+  const from = Math.min(tuck.y - TUCK_BLEND, first?.[1] ?? Infinity);
+  const blend = tuck.y - TUCK_BLEND;
   const smooth = (t: number) => {
     const u = Math.max(0, Math.min(1, t));
     return u * u * (3 - 2 * u);
@@ -1835,8 +1915,8 @@ export function tucked(side: Pt[], tuck?: Tuck): Pt[] {
   return [
     ...side.filter(([, y]) => y < from),
     ...rows.map((y) => {
-      const s = y <= tuck.y ? smooth((y - from) / TUCK_BLEND) : 1 - smooth((y - tuck.y) / (end[1] - tuck.y));
-      return [xAt(y) + over * s, y] as Pt;
+      const s = y <= tuck.y ? smooth((y - blend) / TUCK_BLEND) : 1 - smooth((y - tuck.y) / (end[1] - tuck.y));
+      return [xAt(y) + (y <= tuck.y ? Math.max(over * s, within(y, inset)) : over * s), y] as Pt;
     }),
   ];
 }

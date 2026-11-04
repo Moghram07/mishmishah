@@ -143,6 +143,12 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
       /* under a jacket, it comes out from under the jacket's hem no wider */
       const index = visible.findIndex((v) => v.worn === w);
       const inside = index >= 0 ? insideOf(index)[0]?.encloses.hem : undefined;
+      /* a bottom under a top, and no jacket: it comes out from under the top's hem no wider — see `coverOf` */
+      const over =
+        !inside && index >= 0 && visible[index].garment.category === "bottom"
+          ? visible.slice(index + 1).find((v) => garmentArt(v.garment.asset.front)?.cover)
+          : undefined;
+      const underTop = over ? garmentArt(over.garment.asset.front)!.cover!(choiceOf(over.worn)) : undefined;
       const skirt = skirtOf(w);
       const front = frontOf(w);
       return {
@@ -152,6 +158,7 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
         ...(skirt ? { skirt } : {}),
         ...(front ? { front } : {}),
         ...(inside ? { inside } : {}),
+        ...(underTop ? { underTop } : {}),
       };
     };
 

@@ -163,6 +163,12 @@ export interface GarmentChoice {
    * no wider than the jacket — see `tucked` in `garments/fit.ts`.
    */
   inside?: Tuck;
+  /**
+   * The top worn over it, if it is a bottom worn under one: a skirt comes out
+   * from under the top's hem no wider than the top there, and stays inside it
+   * above — see `coverOf`. A jacket over it as well decides instead.
+   */
+  underTop?: Tuck;
 }
 
 export interface GarmentArt {
@@ -243,6 +249,11 @@ export interface GarmentArt {
    * depends on its sleeve, so it is asked of the choice it is worn in.
    */
   encloses?: Encloses | ((choice: GarmentChoice) => Encloses);
+  /**
+   * For a top: what it lets a bottom worn under it show, as it is worn — see
+   * `coverOf` and `GarmentChoice.underTop`.
+   */
+  cover?: (choice: GarmentChoice) => Tuck;
   /**
    * How many buttons close a collar's band on this garment, where the band
    * shows: two on a thobe, one on a shirt. The collar is shared between
