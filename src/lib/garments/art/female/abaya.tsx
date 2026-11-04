@@ -4,7 +4,7 @@ import { draft, hem, line, mirrorPts, type Pt } from "@/lib/garments/fit";
 import type { Robe } from "@/lib/garments/sleeves";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { rowsOf, sewnDrape, shoulderFall } from "../sleevedTop";
-import { seamShadows, sleeveFoldDefs, sleeveFolds } from "../sleeveFolds";
+import { seamFolds, sleeveFoldDefs, sleeveFolds } from "../sleeveFolds";
 import { ABAYA, bodyOf, closedStitch, robeFor } from "./abayaCut";
 
 /**
@@ -162,7 +162,7 @@ function regionsOf(robe: Robe): { open: RegionArt; closed: RegionArt } {
     body: bodyOf("closed", robe),
     edges: [robe.closed.edge],
     folds: [...closedFolds, ...closedFolds.map(mirrorFold), ...ARMS],
-    /* the centre seam it closes under, a soft line like the armholes' */
+    /* the centre seam it closes under, a soft fold like the armholes' */
     seams: [...robe.seams, line(robe.closed.seam)],
     /* the hem's topstitch right across, and the placket's beside the seam */
     stitch: [robe.stitch, line(hemStitch), line(closedStitch(robe))].join(" "),
@@ -171,6 +171,7 @@ function regionsOf(robe: Robe): { open: RegionArt; closed: RegionArt } {
   const region = (front: FrontArt): RegionArt => {
     const pieces = [...front.body, ...sleeves];
     const edges = [...front.edges, ...robe.sleeveEdges];
+    const seams = seamFolds(front.seams);
     return {
       focus: [300, 420],
       surface: { blur: 18, relief: 5, warp: 5, joined: true },
@@ -224,13 +225,14 @@ function regionsOf(robe: Robe): { open: RegionArt; closed: RegionArt } {
           <g mask={`url(#${uid("fold-fronts")})`}>{foldShadows(uid, front.folds)}</g>
           <g mask={`url(#${uid("fold-sleeves")})`}>{foldShadows(uid, drape)}</g>
           {sleeveFolds(uid, robe.sleeveFolds)}
-          {seamShadows(uid, front.seams)}
+          {foldShadows(uid, seams)}
         </>
       ),
       light: (uid) => (
         <>
           <g mask={`url(#${uid("fold-fronts")})`}>{foldLights(uid, front.folds)}</g>
           <g mask={`url(#${uid("fold-sleeves")})`}>{foldLights(uid, drape)}</g>
+          {foldLights(uid, seams)}
         </>
       ),
       stitch: front.stitch,

@@ -4,7 +4,7 @@ import {
 } from "@/lib/garments/shading";
 import { draft, trousers, type LegsSpec, type Tuck } from "@/lib/garments/fit";
 import { foldDefs, foldLights, foldShadows, trouserFolds } from "@/lib/garments/folds";
-import { seamShadows, sleeveFoldDefs } from "../sleeveFolds";
+import { seamFolds, sleeveFoldDefs } from "../sleeveFolds";
 import { beltLoops, detailDefs, detailShading, detailStitch } from "../trouserDetails";
 import type { GarmentArt, RegionArt } from "../index";
 
@@ -96,6 +96,7 @@ const legsRegion = (inside?: Tuck): RegionArt => {
   const folds = inside
     ? trouserFolds({ leg: T.left, bandY: T.bandY, crotchY: draft("male").crotchY, hemY: HEM_Y, seed: SEED })
     : FOLDS;
+  const seam = seamFolds([T.seam]);
   return {
     focus: [300, 620],
     surface: { blur: 18, relief: 5, warp: 5 },
@@ -131,13 +132,13 @@ const legsRegion = (inside?: Tuck): RegionArt => {
         <path d={T.right} fill={`url(#${uid("drape")})`} />
         <path d={T.band} fill={`url(#${uid("band")})`} />
         {foldShadows(uid, folds)}
-        {/* the centre front seam: a soft darker line, as every seam is */}
-        {seamShadows(uid, [T.seam])}
+        {/* the centre front seam: a soft fold, as every seam is */}
+        {foldShadows(uid, seam)}
         {/* the pockets' openings and the fly's front edge, each lying on the cloth behind it */}
         {detailShading(uid, T.details)}
       </>
     ),
-    light: (uid) => foldLights(uid, folds),
+    light: (uid) => foldLights(uid, [...folds, ...seam]),
     stitch: [
       T.bandStitch,
       T.stitch,

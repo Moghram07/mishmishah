@@ -107,8 +107,6 @@ const TOP = sleevedTop({
   openings: { own: NECKLINE, high: HIGH_NECKLINE },
   defaultSleeve: DEFAULT_SLEEVE,
   focus: [300, 340],
-  /* its armholes and cuffs as soft folds in its own colour, never a line across the cloth */
-  softSeams: true,
   folds: (k) => ({
     body: wovenFolds({
       underarm: k.left.side[0],

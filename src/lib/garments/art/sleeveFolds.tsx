@@ -103,11 +103,9 @@ export function sleeveFoldDefs(uid: Uid) {
 }
 
 /**
- * Seams drawn as what they are on a robe: a soft line of shadow where two
- * pieces are sewn and the cloth dips into the join. Not the edge of a piece —
- * that is stroked in the stage's text colour, which turns pale on a dark page,
- * and a pale line round an armhole is what made the sleeve head read as a
- * separate puffed piece.
+ * A soft line of shadow, for a cuff's marks — a French cuff's split and its
+ * turned-back edge, a formal cuff's placket — where the cloth ends or turns
+ * rather than being sewn. Seams are never drawn this way: see `seamFolds`.
  */
 export function seamShadows(uid: Uid, seams: string[]) {
   if (seams.length === 0) return null;
@@ -154,8 +152,8 @@ export function pathPoints(d: string): Pt[] {
  * Seams drawn as what they are in the cloth: a soft fold. Where two pieces are
  * sewn the cloth turns a little into the join, so it catches a little light on
  * one side and falls a little into shadow on the other — in its own colour,
- * wide and faint, never a line drawn across the fabric. The dress and the
- * blouse are sewn this way; `seamShadows` is the line the rest still draw.
+ * wide and faint, never a line drawn across the fabric. Every garment is sewn
+ * this way.
  */
 export function seamFolds(seams: string[]): Fold[] {
   return seams

@@ -4,7 +4,10 @@ import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { BODY_CANVAS } from "@/lib/mannequin/bodies";
 import { fabricArtwork } from "@/lib/fabrics/artwork";
 import { fabrics } from "@/lib/data/fabrics";
-import { garmentById } from "@/lib/data/garments";
+import { garmentById, garments } from "@/lib/data/garments";
+import { collars } from "@/lib/data/collars";
+import { sleeveLengthsFor, sleeveTypesFor } from "@/lib/data/sleeves";
+import { collarArt, garmentArt, type RegionArt } from "./art";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { cutFrom } from "./outfit";
 import { contour, dart, gathers, hangingFolds, rowSpan, sleeveDrape } from "./folds";
@@ -139,12 +142,13 @@ describe("folds change the light, never the print", () => {
 });
 
 /**
- * Where the dress and the blouse are sewn — armholes, a raglan's or a dropped
- * shoulder's, a band's, a cuff's, a halter's, the waist — the seam is a soft
- * fold in the cloth's own colour: never a line drawn across the fabric, and
- * the waist seam, where the skirt is sewn on over the bodice, never outlined.
+ * Wherever a garment is sewn — armholes, a raglan's or a dropped shoulder's, a
+ * band's, a cuff's, a halter's, a collar's band, the trousers' centre front, a
+ * closed abaya's, the dress's waist — the seam is a soft fold in the cloth's
+ * own colour: never a line drawn across the fabric, and the waist seam, where
+ * the skirt is sewn on over the bodice, never outlined.
  */
-describe("the dress's and the blouse's seams", () => {
+describe("seams", () => {
   const uid = (name: string) => name;
   const html = (node: ReactNode) => renderToStaticMarkup(<>{node}</>);
   /* a seam drawn as a line: `seamShadows`' grey stroke */
@@ -172,6 +176,43 @@ describe("the dress's and the blouse's seams", () => {
     for (const [name, top] of [["off-shoulder", banded], ["halter", halter]] as const) expect(html(top.shading?.(uid)), name).not.toContain(LINE);
     const blouse = blouseFront.cut!({ sleeve: { type: "set-in", length: "long", cuff: "plain" } }).body!;
     expect(html(blouse.shading?.(uid)) + html(blouse.light?.(uid))).not.toContain(LINE);
+  });
+
+  /*
+    And every other garment: each sleeve it offers, at each length, with each
+    cuff that is sewn on plain — a formal or French cuff's marks are where the
+    cloth ends or turns, not seams — open and closed, and each collar.
+  */
+  it("draws every other garment's seams as folds, never as lines", () => {
+    const drawn = (regions: Partial<Record<string, RegionArt>>) =>
+      Object.values(regions).map((r) => html(r?.shading?.(uid)) + html(r?.light?.(uid))).join("");
+    let seamed = 0;
+    for (const g of garments) {
+      const art = garmentArt(g.asset.front)!;
+      const sleeves: (SleeveChoice | undefined)[] = g.sleeves
+        ? sleeveTypesFor(g).flatMap((type) =>
+            sleeveLengthsFor(type, undefined, g).flatMap((length) =>
+              [undefined, ...(length === "long" ? (g.sleeves!.cuffs ?? []).filter((c) => c === "plain" || c === "rib") : [])].map(
+                (cuff): SleeveChoice => (cuff ? { type, length, cuff } : { type, length })
+              )
+            )
+          )
+        : [undefined];
+      for (const sleeve of sleeves) {
+        for (const front of g.fronts?.offered ?? [undefined]) {
+          const name = `${g.id}, ${sleeve ? `${sleeve.type} ${sleeve.length} ${sleeve.cuff ?? ""}` : "as cut"}${front ? `, ${front}` : ""}`;
+          const all = drawn({ ...art.regions, ...art.cut?.({ sleeve, front }) });
+          expect(all, name).not.toContain(LINE);
+          if (all.includes("fold-soft-2")) seamed++;
+        }
+      }
+    }
+    for (const c of collars) {
+      const art = collarArt(c.asset.front);
+      if (art) expect(drawn(art.regions), c.id).not.toContain(LINE);
+    }
+    /* and the seams are there, as folds */
+    expect(seamed).toBeGreaterThan(100);
   });
 
   it("does not outline the waist seam: the skirt's top, sewn on over the bodice, is a fold", () => {

@@ -2687,3 +2687,92 @@ describe("the dress's and the blouse's seams, light and dark", () => {
     );
   });
 });
+
+/**
+ * Every other garment's seams, close up, on a light page and a dark one, in a
+ * plain cloth and a print: the tops' armholes and cuffs, a polo's armband,
+ * the shirt collars' band, the jackets' armholes, the trousers' centre seam,
+ * and the abaya's armholes and the centre seam it closes under.
+ */
+describe("every other garment's seams, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; id: string; sleeve?: SleeveChoice; front?: FrontId; zoom: number; focus: [number, number] };
+  /* each body's left armhole, its left wrist, its throat and its centre front at the crotch */
+  const at = (body: BodyType) => {
+    const d = draft(body);
+    const out = d.armOutAt(d.armpitY, 0);
+    return {
+      armhole: [out + 34, (d.shoulderPointY + d.armpitY) / 2 + 6] as [number, number],
+      wrist: [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2, d.wristY - 6] as [number, number],
+      neck: [300, d.shoulderPointY - 30] as [number, number],
+      fly: [300, d.crotchY - 30] as [number, number],
+    };
+  };
+  const her = at("female");
+  const him = at("male");
+  const TILES: Tile[] = [
+    { caption: "her t-shirt, armhole", id: "female-t-shirt", zoom: 2.4, focus: her.armhole },
+    { caption: "her t-shirt, rib cuff", id: "female-t-shirt", sleeve: { type: "set-in", length: "long", cuff: "rib" }, zoom: 3.4, focus: her.wrist },
+    { caption: "her shirt collar's band", id: "female-blouse", zoom: 3.4, focus: her.neck },
+    { caption: "his t-shirt, armhole", id: "male-t-shirt", zoom: 2.4, focus: him.armhole },
+    { caption: "his t-shirt, rib cuff", id: "male-t-shirt", sleeve: { type: "set-in", length: "long", cuff: "rib" }, zoom: 3.4, focus: him.wrist },
+    { caption: "his shirt, armhole", id: "male-shirt", zoom: 2.4, focus: him.armhole },
+    { caption: "his shirt, the cuff's seam", id: "male-shirt", zoom: 3.4, focus: him.wrist },
+    { caption: "his shirt collar's band", id: "male-shirt", zoom: 3.4, focus: him.neck },
+    { caption: "his polo, armhole and armband", id: "male-polo", zoom: 2.4, focus: him.armhole },
+    { caption: "his thobe, armhole", id: "male-thobe", zoom: 2.4, focus: him.armhole },
+    { caption: "his thobe, the cuff's seam", id: "male-thobe", zoom: 3.4, focus: him.wrist },
+    { caption: "her jacket, armhole", id: "female-jacket", zoom: 2.4, focus: her.armhole },
+    { caption: "his jacket, armhole", id: "male-jacket", zoom: 2.4, focus: him.armhole },
+    { caption: "her trousers, centre seam", id: "female-trousers", zoom: 2.4, focus: her.fly },
+    { caption: "his trousers, centre seam", id: "male-trousers", zoom: 2.4, focus: him.fly },
+    { caption: "abaya, regular sleeve", id: "female-abaya", zoom: 2.4, focus: her.armhole },
+    { caption: "abaya, wide sleeve", id: "female-abaya", sleeve: { type: "bell", length: "long" }, zoom: 2.4, focus: her.armhole },
+    { caption: "abaya closed, centre seam", id: "female-abaya", front: "closed", zoom: 1.6, focus: [300, 560] },
+  ];
+  const stage = (tile: Tile, clothId: string) => {
+    const g = garmentById(tile.id)!;
+    const cloth = f(clothId);
+    let worn: WornGarment[] = wear([], cutFrom(g, cloth.id));
+    if (tile.sleeve) worn = setSleeve(worn, tile.id, tile.sleeve);
+    if (tile.front) worn = setFront(worn, tile.id, tile.front);
+    const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+    for (const r of g.fabricRegions) regions[r] = cloth;
+    const body: BodyType = tile.id.startsWith("male-") ? "male" : "female";
+    const outfit: Outfit = { bodyType: body, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={{ [tile.id]: regions }} zoom={tile.zoom} focus={tile.focus} />;
+  };
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/garment-seams-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const rows = (["fb-apricot-linen", "fb-midnight-floral"] as const).map((cloth) => ({ cloth, kind: cloth === "fb-apricot-linen" ? "plain" : "print" }));
+    /* six to a row, so the sheet can be shot a row at a time */
+    const html = renderToStaticMarkup(
+      <>
+        {rows.flatMap(({ cloth, kind }) =>
+          [0, 6, 12].map((from) => (
+            <div key={`${cloth}-${from}`} className="row">
+              {TILES.slice(from, from + 6).map((tile) => (
+                <figure key={tile.caption}>
+                  {stage(tile, cloth)}
+                  <figcaption>{`${tile.caption}, ${kind}`}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ))
+        )}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/garment-seams-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});

@@ -13,7 +13,7 @@ import {
 } from "../yoke";
 import { behindBandArt } from "../../behindBand";
 import { litButtons } from "../../buttons";
-import { seamShadows, sleeveFoldDefs } from "../../sleeveFolds";
+import { seamFolds, sleeveFoldDefs } from "../../sleeveFolds";
 import type { GarmentArt } from "../../index";
 
 /**
@@ -110,6 +110,9 @@ const ROLL_FOLD: Fold = {
   soft: 1,
 };
 
+/** Where the band is sewn to the neckline: a soft fold, seen only in the V between the leaves. */
+const BAND_SEAM = seamFolds([BAND_FOOT]);
+
 /** Each leaf's shadow on the body, under its outer edge. */
 const LEAF_CAST_PATH = `${nudge(LEAF_LEFT_PATH, 1.5, 3)} ${nudge(LEAF_RIGHT_PATH, -1.5, 3)}`;
 
@@ -147,6 +150,12 @@ export const maleShirtCollarFront: GarmentArt = {
           {softShadow(uid("soft"), 3)}
           {foldDefs(uid)}
           {sleeveFoldDefs(uid)}
+          {/* the band's seam is lit only where the band shows: its light is drawn after the leaves */}
+          <mask id={uid("band-seam")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
+            <path d={BAND_PATH} fill="#fff" />
+            <path d={LEAF_LEFT_PATH} fill="#000" />
+            <path d={LEAF_RIGHT_PATH} fill="#000" />
+          </mask>
         </>
       ),
       cast: (uid) => (
@@ -156,13 +165,18 @@ export const maleShirtCollarFront: GarmentArt = {
         <>
           {/* the band, in the shade of the leaves folded over it */}
           <path d={V_SHADE} fill="#c8c8c8" />
-          {seamShadows(uid, [BAND_FOOT])}
+          {foldShadows(uid, BAND_SEAM)}
           <path d={LEAF_LEFT_PATH} fill={`url(#${uid("fall")})`} />
           <path d={LEAF_RIGHT_PATH} fill={`url(#${uid("fall")})`} />
           {foldShadows(uid, [ROLL_FOLD])}
         </>
       ),
-      light: (uid) => foldLights(uid, [ROLL_FOLD]),
+      light: (uid) => (
+        <>
+          {foldLights(uid, [ROLL_FOLD])}
+          <g mask={`url(#${uid("band-seam")})`}>{foldLights(uid, BAND_SEAM)}</g>
+        </>
+      ),
     },
   },
   bandButtons: (count) =>

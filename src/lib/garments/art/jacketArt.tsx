@@ -2,7 +2,7 @@ import { DRAPE, softShadow, vertical } from "@/lib/garments/shading";
 import { foldDefs, foldLights, foldShadows, jacketFolds } from "@/lib/garments/folds";
 import type { Tailored } from "@/lib/garments/sleeves";
 import { rowsOf, sewnDrape, shoulderFall } from "./sleevedTop";
-import { seamShadows, sleeveFoldDefs } from "./sleeveFolds";
+import { seamFolds, sleeveFoldDefs } from "./sleeveFolds";
 import type { GarmentArt } from "./index";
 import { litButtons } from "./buttons";
 
@@ -25,7 +25,7 @@ export interface JacketDetails {
  * `garments/sleeves.ts` for how it is cut.
  *
  * Its sleeves are sewn sleeves and drawn as every top draws them: outlined
- * only along their free edges, the armhole a soft line of shadow, lit with the
+ * only along their free edges, the armhole a soft fold, lit with the
  * fronts as one surface, the shoulder's light carried onto the sleeve head and
  * the shared drape down each sleeve. It holds whatever is worn under it — see
  * `encloses` — and lies over the arms, so a bare forearm is never painted back
@@ -37,6 +37,7 @@ export function jacketArt(J: Tailored, x: JacketDetails): GarmentArt {
   const sleeves = [J.sleeveLeft, J.sleeveRight];
   const [bodyTop, bodyBottom] = rowsOf(J.panel);
   const drape = sewnDrape(J.cut);
+  const seams = seamFolds(J.seams);
   /* the fronts' own: folds pulled toward the button, and darts that follow the body */
   const fronts = jacketFolds({ button: [300, x.buttonY], side: J.cut.left.side, dart: x.dart, seed: 37 });
   return {
@@ -97,13 +98,14 @@ export function jacketArt(J: Tailored, x: JacketDetails): GarmentArt {
             <path d={x.welt} fill="#9a9a9a" opacity="0.55" />
             <g mask={`url(#${uid("fold-fronts")})`}>{foldShadows(uid, fronts)}</g>
             <g mask={`url(#${uid("fold-sleeves")})`}>{foldShadows(uid, drape)}</g>
-            {seamShadows(uid, J.seams)}
+            {foldShadows(uid, seams)}
           </>
         ),
         light: (uid) => (
           <>
             <g mask={`url(#${uid("fold-fronts")})`}>{foldLights(uid, fronts)}</g>
             <g mask={`url(#${uid("fold-sleeves")})`}>{foldLights(uid, drape)}</g>
+            {foldLights(uid, seams)}
           </>
         ),
         stitch: J.stitch,
