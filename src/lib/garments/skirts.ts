@@ -3,7 +3,7 @@
   preview-garments.mjs` imports it and checks the skirts the app draws. See
   `art/female/dressCut.ts` for why that matters.
 */
-import { column, type Tuck } from "./fit.ts";
+import { column, draft, foldPlaces, sideRun, type Tuck } from "./fit.ts";
 import type { BodyZone, SkirtChoice, SkirtLengthId, SkirtShapeId, WaistId } from "@/types";
 
 /**
@@ -43,10 +43,20 @@ export interface SkirtFinish {
  * - **Mermaid** follows her hips and thighs in to just above her knee, y 650,
  *   and opens there as a bell, slowly and then fast: 75 units out by her
  *   ankle, y 890.
+ * - **Circle** is cut as a full circle of cloth, so it stands out from its
+ *   seam at once — 55 units out in every 100 down at her waist — and less
+ *   and less below, until it hangs plumb from her ankle, y 890 (`plumb`):
+ *   full from the seam, falling straight below the knee. Its cloth falls in
+ *   deep folds, and its hem waves deeply where they reach it (`waves`).
+ * - **Pleated** is an A-line pressed into pleats: its outline the A-line's,
+ *   and across it, pleat lines from the seam to the hem — 14 pleats across
+ *   the front — where its hem steps a little at each (`pleats`).
  *
  * And how each falls: `dip` is its share of its garment's hem's sag — a
  * narrow hem sags less at the front. A `fitted` shape is darted to her
  * rather than gathered: a dress's skirt in it is not gathered into the seam.
+ * A circle and a pleated skirt are neither: a circle is cut to fit the waist
+ * as it is, and a pleated skirt's pleats take it in.
  *
  * `lengths` are the lengths a shape is cut at, where not every one: a
  * mermaid's flare opens above the knee, so it is cut at midi and maxi only.
@@ -58,23 +68,40 @@ interface ShapeCut {
   curve?: number;
   taper?: number;
   straight?: number;
+  plumb?: number;
   dip?: number;
   fitted?: boolean;
   wide?: boolean;
+  /** Its folds' count across it, and how deep and how wide its hem waves under each. */
+  waves?: { count: number; depth: number; width: number };
+  /** How many pleats across the front, and how far its hem steps down to each one's fold. */
+  pleats?: { count: number; step: number };
   lengths?: readonly SkirtLengthId[];
 }
 const SHAPES: Record<SkirtShapeId, ShapeCut> = {
   aline: { flare: 0, flareTo: 760, straight: 0.22, fitted: true, wide: true },
   flared: { flare: 80, flareTo: 760 },
+  circle: { flare: 0, flareTo: 760, straight: 0.55, plumb: 890, wide: true, waves: { count: 11, depth: 6, width: 11 } },
   pencil: { flare: 0, flareTo: 760, taper: 0.04, dip: 0.5, fitted: true },
+  pleated: { flare: 0, flareTo: 760, straight: 0.22, wide: true, pleats: { count: 14, step: 1.6 } },
   mermaid: { flare: 75, flareFrom: 650, flareTo: 890, curve: 1.3, dip: 0.75, fitted: true, lengths: ["midi", "maxi"] },
 };
 
 /** The shapes, in the order the picker offers them. */
-export const SKIRT_SHAPES: readonly SkirtShapeId[] = ["aline", "flared", "pencil", "mermaid"];
+export const SKIRT_SHAPES: readonly SkirtShapeId[] = ["aline", "flared", "circle", "pencil", "pleated", "mermaid"];
 
-/** A straight shape's slope — an A-line's — or nothing: see `ShapeCut`. */
-export const straightOf = (shape: SkirtShapeId): number | undefined => SHAPES[shape].straight;
+/** The seed a circle's folds are placed by — see `foldPlaces` — so its hem and its folds agree. */
+const WAVE_SEED = 41;
+
+/**
+ * How far out a straight shape's side comes between two rows — an A-line's
+ * line, a circle's bowed one — or nothing: see `ShapeCut` and `sideRun`.
+ */
+export const fallRun = (shape: SkirtShapeId): ((from: number, to: number) => number) | undefined => {
+  const { straight, plumb } = SHAPES[shape];
+  if (straight === undefined) return undefined;
+  return sideRun(straight, plumb !== undefined ? { top: draft("female").waistY, plumb } : undefined);
+};
 
 /** Of the lengths a garment offers, those a shape is cut at — see `ShapeCut`. */
 export const shapeLengths = (shape: SkirtShapeId, offered: readonly SkirtLengthId[]): SkirtLengthId[] =>
@@ -96,16 +123,25 @@ export function cutAs(skirt: SkirtChoice, offered: readonly SkirtLengthId[]): Sk
  * How a shape's cloth falls, for its folds: the row they are released at, if
  * lower than the hip — where it starts to flare, a mermaid's above the knee —
  * its share of its garment's hem sag, and whether it is fitted rather than
- * gathered. See `ShapeCut`.
+ * gathered. A circle's folds fall from its seam at `waves`, where its hem
+ * waves under them; a pleated skirt has its `pleats`' lines across it, 0 to 1,
+ * where its hem steps. See `ShapeCut`.
  */
-export const fallOf = (shape: SkirtShapeId): { from?: number; dip: number; fitted: boolean } => {
+export const fallOf = (
+  shape: SkirtShapeId
+): { from?: number; dip: number; fitted: boolean; waves?: number[]; pleats?: number[] } => {
   const s = SHAPES[shape];
   return {
     ...(s.flareFrom !== undefined ? { from: s.flareFrom } : {}),
     dip: s.dip ?? 1,
     fitted: s.fitted ?? false,
+    ...(s.waves ? { waves: foldPlaces(s.waves.count, WAVE_SEED) } : {}),
+    ...(s.pleats ? { pleats: pleatLines(s.pleats.count) } : {}),
   };
 };
+
+/** Where `count` pleats fold, across the front from 0 to 1: evenly, so the two halves mirror. */
+const pleatLines = (count: number): number[] => Array.from({ length: count - 1 }, (_, i) => (i + 1) / count);
 
 /**
  * How far below her own waist each waist's seam is sewn: empire just under
@@ -187,7 +223,8 @@ export const sameSkirt = (a: SkirtChoice, b: SkirtChoice): boolean => skirtKey(a
  * from a seam above her waist it hangs — see `column`'s `hang`.
  */
 export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck): CutSkirt {
-  const { flare, flareTo, flareFrom, curve, taper, straight, dip = 1 } = SHAPES[skirt.shape];
+  const { flare, flareTo, flareFrom, curve, taper, straight, plumb, dip = 1, waves, pleats } = SHAPES[skirt.shape];
+  const fall = fallOf(skirt.shape);
   const drop = WAIST_DROP[skirt.waist ?? "natural"];
   return column("female", {
     rise: finish.rise + drop,
@@ -203,11 +240,22 @@ export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck)
       straight from its seam, a dress's — never from under its bodice — or from a skirt's own top edge;
       and never from above her own waist: hung from an empire's seam, it falls close to her to the waist first
     */
-    ...(straight !== undefined ? { straight: { slope: straight, from: Math.max(0, drop) + Math.max(0, finish.rise) } } : {}),
+    ...(straight !== undefined
+      ? { straight: { slope: straight, from: Math.max(0, drop) + Math.max(0, finish.rise), ...(plumb !== undefined ? { plumb } : {}) } }
+      : {}),
     dip: finish.dip * dip,
     ...(finish.band ? { band: finish.band } : {}),
-    /* a hem waves where folds reach it, and one that does not flare has none */
-    ...(finish.wave && (flare > 0 || straight !== undefined) ? { wave: finish.wave } : {}),
+    /*
+      a hem waves where folds reach it, and one that does not flare has none; a circle's waves deeply under its
+      own folds, on any garment, and a pleated skirt's steps at its pleats instead
+    */
+    ...(waves && fall.waves
+      ? { wave: { at: fall.waves, depth: waves.depth, width: waves.width } }
+      : pleats && fall.pleats
+        ? { steps: { at: fall.pleats, depth: pleats.step } }
+        : finish.wave && (flare > 0 || straight !== undefined)
+          ? { wave: finish.wave }
+          : {}),
     ...(inside ? { inside } : {}),
   });
 }

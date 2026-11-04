@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { garmentById } from "@/lib/data/garments";
 import { effectiveCoverage, skirtOf } from "./outfit";
-import { HEM_AT, SKIRT_LENGTHS, SKIRT_SHAPES, besideArms, shapeLengths } from "./skirts";
+import { HEM_AT, SKIRT_LENGTHS, SKIRT_SHAPES, besideArms, fallOf, shapeLengths } from "./skirts";
 import { skirtLengthsFor, skirtShapes, skirtShapesFor } from "@/lib/data/skirts";
 import { DEFAULT_SKIRT as DRESS_DEFAULT, WAIST_Y, details, seamAt, skirtFor as dressSkirt } from "./art/female/dressCut";
 import { DEFAULT_SKIRT as SKIRT_DEFAULT, cloth, skirtFor } from "./art/female/skirtCut";
@@ -18,6 +18,14 @@ const leftAt = (path: string, y: number): number => {
     if ((ay <= y && by > y) || (by <= y && ay > y)) left = Math.min(left, ax + ((y - ay) * (bx - ax)) / (by - ay));
   }
   return left;
+};
+
+/** The points an outline passes through below the knee: its hem's, and the bottom of its sides. */
+const hemPoints = (path: string): [number, number][] => {
+  const n = (path.match(/-?[0-9]*[.]?[0-9]+/g) ?? []).map(Number);
+  const pts: [number, number][] = [];
+  for (let i = 0; i + 1 < n.length; i += 2) if (n[i + 1] > 690) pts.push([n[i], n[i + 1]]);
+  return pts;
 };
 
 describe("skirts", () => {
@@ -132,11 +140,66 @@ describe("skirts", () => {
     expect(besideArms({ shape: "flared", length: "midi" })).toBe(false);
   });
 
+  it("cuts a circle full from its seam, bowing to hang plumb below the knee, its hem waving under its folds", () => {
+    const d = draft("female");
+    const her = (y: number) => (y < d.crotchY ? d.sideAt(y, 0) : d.legOutAt(y, 0));
+    for (const waist of ["natural", "dropped"] as const) {
+      const sk = dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "circle", length: "maxi", waist });
+      /* it leaves her at its seam: no closer to her below it */
+      expect(sk.leaves! - seamAt(waist), waist).toBeLessThan(6);
+      for (let y = sk.leaves!; y < 885; y += 10) expect(her(y) - leftAt(sk.path, y), `${waist} y ${y}`).toBeGreaterThan(3.5);
+    }
+    const sk = dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "circle", length: "maxi" });
+    /* out fast from the waist, less and less below: each 100 rows down it comes out less than the 100 above */
+    const out = (y: number) => 300 - leftAt(sk.path, y);
+    const steps = [400, 500, 600, 700, 800, 880].map((y, i, ys) => (i ? out(y) - out(ys[i - 1]) : 0)).slice(1);
+    for (let i = 1; i < steps.length; i++) expect(steps[i], `from y ${400 + 100 * i}`).toBeLessThan(steps[i - 1]);
+    /* standing well off her hip, and fuller than an A-line at every length */
+    expect(out(d.hipY) - (300 - her(d.hipY))).toBeGreaterThan(20);
+    for (const length of ["knee", "midi", "maxi"] as const) {
+      const hemAt = (shape: "circle" | "aline") => leftAt(dressSkirt(undefined, { ...DRESS_DEFAULT, shape, length }).path, HEM_AT[length] - 1);
+      expect(hemAt("circle"), length).toBeLessThan(hemAt("aline") - 15);
+    }
+    /* its hem dips under each of its folds, and nowhere above its row */
+    const { waves } = fallOf("circle");
+    const hem = dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "circle" });
+    const lowest = (x: number) => Math.max(...hemPoints(hem.path).filter(([px]) => Math.abs(px - x) < 5).map(([, y]) => y));
+    const across = (t: number) => hem.hemLeft[0] + (600 - 2 * hem.hemLeft[0]) * t;
+    for (const t of waves!) expect(lowest(across(t)) - (HEM_AT.midi + 22 * Math.sin(Math.PI * t)), `fold at ${t.toFixed(2)}`).toBeGreaterThan(4);
+    expect(besideArms({ shape: "circle", length: "midi" })).toBe(true);
+  });
+
+  it("cuts a pleated skirt as an A-line, its hem stepped at its pleats and level with the A-line's at the sides", () => {
+    for (const garment of ["dress", "skirt"] as const) {
+      for (const length of ["knee", "midi", "maxi"] as const) {
+        const cut = (shape: "pleated" | "aline") =>
+          garment === "dress" ? dressSkirt(undefined, { ...DRESS_DEFAULT, shape, length }) : skirtFor(undefined, { ...SKIRT_DEFAULT, shape, length });
+        const [pleated, aline] = [cut("pleated"), cut("aline")];
+        /* the same outline down to its hem: the same corners, and the same side above them — but for the last few rows, where the side turns into its own hem */
+        expect(pleated.hemLeft, `${garment} ${length}`).toEqual(aline.hemLeft);
+        for (let y = pleated.waistY + 12; y < HEM_AT[length] - 10; y += 20) expect(leftAt(pleated.path, y), `${garment} ${length} y ${y}`).toBeCloseTo(leftAt(aline.path, y), 1);
+      }
+    }
+    /* a step up at every pleat line, as deep as the drop to the pleat's fold */
+    const { pleats } = fallOf("pleated");
+    expect(pleats).toHaveLength(13);
+    const sk = dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "pleated" });
+    const pts = hemPoints(sk.path);
+    const width = 600 - 2 * sk.hemLeft[0];
+    const steps = pleats!.filter((t) => Math.abs(t - 0.5) > 0.01).map((t) => {
+      const x = sk.hemLeft[0] + width * t;
+      const ys = pts.filter(([px]) => Math.abs(px - x) < 0.11).map(([, y]) => y);
+      return Math.max(...ys) - Math.min(...ys);
+    });
+    for (const step of steps) expect(step).toBeCloseTo(1.6, 0);
+    expect(besideArms({ shape: "pleated", length: "midi" })).toBe(true);
+  });
+
   it("offers the shapes by name, in the picker's order, on the dress and the skirt alike", () => {
     for (const id of ["female-dress", "female-skirt"]) {
-      expect(skirtShapesFor(garmentById(id)!).map((s) => s.id), id).toEqual(["aline", "flared", "pencil", "mermaid"]);
+      expect(skirtShapesFor(garmentById(id)!).map((s) => s.id), id).toEqual(["aline", "flared", "circle", "pencil", "pleated", "mermaid"]);
     }
-    expect(skirtShapes.map((s) => s.name.ar)).toEqual(["A لاين", "كلوش", "قلم", "سمكة"]);
+    expect(skirtShapes.map((s) => s.name.ar)).toEqual(["A لاين", "كلوش", "كلوش دائري", "قلم", "بليسيه", "سمكة"]);
   });
 
   it("hides more of the leg the longer it is", () => {

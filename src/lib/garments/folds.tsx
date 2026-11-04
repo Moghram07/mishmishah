@@ -615,6 +615,43 @@ export function skirtFolds(s: SkirtBodySpec): Fold[] {
   return [...folds, ...darts, ...darts.map(mirrorFold)];
 }
 
+/**
+ * A circle skirt's folds: deep pipe folds falling from where it is released
+ * — its seam, or a jacket's hem — more of them and deeper than a flared
+ * skirt's, each reaching the hem at its own place across it (`at`), where the
+ * hem waves under it.
+ */
+export function circleFolds(s: Omit<HangingSpec, "count" | "width" | "shadow" | "light"> & { at: number[] }): Fold[] {
+  return hangingFolds({ ...s, count: s.at.length, width: [1.5, 18], shadow: 0.75, light: 0.42 });
+}
+
+export interface PleatSpec {
+  /** Where the pleats start, left and right — a seam, or a jacket's hem it comes out from under — and the hem. */
+  top: readonly [Pt, Pt];
+  hem: readonly [Pt, Pt];
+  hemDip: number;
+  /** Where each pleat folds, across it from 0 to 1 — see `fallOf`. */
+  lines: number[];
+}
+
+/**
+ * A pleated skirt's pleats: a line where each one folds, from where they
+ * start to the hem, at its own place across it — spread with the skirt, so
+ * they stay as far apart in step with it all the way down. Pressed, so each
+ * is crisp and narrow: lit on the side toward the light, in shadow on the
+ * other, where it lies over the next. They run a little past the hem, which
+ * the region's mask trims. Light and shadow only: the print under them
+ * stays whole, at its true size.
+ */
+export function pleatFolds(s: PleatSpec): Fold[] {
+  return s.lines.map((t) => {
+    const top = along(s.top[0], s.top[1], t);
+    const foot = along(s.hem[0], s.hem[1], t);
+    const end: Pt = [foot[0], foot[1] + s.hemDip * Math.sin(Math.PI * t) + 6];
+    return { ridge: [top, along(top, end, 0.5), end], width: [1.2, 1.8], shadow: 0.5, light: 0.3, soft: 1 };
+  });
+}
+
 /** How far above a trouser's hem the leg breaks over the foot: about 3.8 cm. */
 const BREAK_ABOVE = 20;
 

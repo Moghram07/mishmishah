@@ -1,6 +1,6 @@
 import { DRAPE, vertical } from "@/lib/garments/shading";
-import { line, type Tuck } from "@/lib/garments/fit";
-import { foldDefs, foldLights, foldOpen, foldShadows, rowSpan, skirtFolds } from "@/lib/garments/folds";
+import { line, type Pt, type Tuck } from "@/lib/garments/fit";
+import { circleFolds, foldDefs, foldLights, foldOpen, foldShadows, pleatFolds, rowSpan, skirtFolds } from "@/lib/garments/folds";
 import { fallOf, sameSkirt, skirtKey } from "@/lib/garments/skirts";
 import type { SkirtChoice } from "@/types";
 import type { GarmentArt, RegionArt } from "../index";
@@ -35,21 +35,38 @@ const skirtRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): RegionA
     not flare, a pencil, hangs smooth below its darts. See `fallOf`.
   */
   const fall = fallOf(skirt.shape);
+  const hem: readonly [Pt, Pt] = [sk.hemLeft, [600 - sk.hemLeft[0], sk.hemLeft[1]]];
+  const hemDip = FINISH.dip * fall.dip;
+  /*
+    A circle's and a pleated skirt's fall from under the band — or a jacket's
+    hem — with no darts: a circle's in deep folds where its hem waves, a
+    pleated skirt's in its pleats. See `fallOf`.
+  */
+  const bandFoot = inside ? inside.y : sk.waistY + (FINISH.band ?? 0);
+  const under = rowSpan(sk.path, bandFoot + 2) ?? [200, 400];
+  const released: readonly [Pt, Pt] = [
+    [under[0] + 4, bandFoot],
+    [under[1] - 4, bandFoot],
+  ];
   const from = Math.max(inside ? inside.y : sk.leaves ?? HIP_Y, fall.from ?? 0);
   const across = rowSpan(sk.path, from) ?? [200, 400];
   const flare = across[0] - sk.hemLeft[0];
-  const folds = skirtFolds({
-    hip: [
-      [across[0] + (inside ? 6 : 4), from],
-      [across[1] - (inside ? 6 : 4), from],
-    ],
-    hem: [sk.hemLeft, [600 - sk.hemLeft[0], sk.hemLeft[1]]],
-    hemDip: FINISH.dip * fall.dip,
-    bandY: sk.waistY + (FINISH.band ?? 0),
-    at: fall.fitted && flare <= 0 ? [] : FOLD_AT,
-    seed: 31,
-    ...(fall.fitted ? { width: [1.4, 15 * foldOpen(flare)] as const } : {}),
-  });
+  const folds = fall.waves
+    ? circleFolds({ seam: released, hem, hemDip, at: fall.waves, start: inside ? 0 : 4, seed: 31 })
+    : fall.pleats
+      ? pleatFolds({ top: released, hem, hemDip, lines: fall.pleats })
+      : skirtFolds({
+          hip: [
+            [across[0] + (inside ? 6 : 4), from],
+            [across[1] - (inside ? 6 : 4), from],
+          ],
+          hem,
+          hemDip,
+          bandY: sk.waistY + (FINISH.band ?? 0),
+          at: fall.fitted && flare <= 0 ? [] : FOLD_AT,
+          seed: 31,
+          ...(fall.fitted ? { width: [1.4, 15 * foldOpen(flare)] as const } : {}),
+        });
   return {
     focus: [300, 520],
     surface: { blur: 20, relief: 5, warp: 5 },

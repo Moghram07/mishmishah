@@ -64,7 +64,7 @@ const FIT_KIT = await import(src("src/lib/garments/fit.ts"));
 */
 const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
-const { HEM_AT, WAIST_DROP, besideArms, hangs, shapeLengths, skirtCoverage, straightOf } = await import(src("src/lib/garments/skirts.ts"));
+const { HEM_AT, WAIST_DROP, besideArms, fallRun, hangs, shapeLengths, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES } = await import(
@@ -880,22 +880,24 @@ function hungLine(edge, from, to, out) {
 }
 
 /**
- * The line a straight skirt falls on, down one side of her — an A-line's: of
- * its slope, touching her from outside at or below `from`, so it clears every
- * row below. `edge(y)` is her edge on that side, `out` the way out from it:
- * -1 on the left. The row it touches at, and the line; above that row the
- * skirt is close to her. Re-derived here from the photograph; `straight` in
- * `garments/fit.ts` cuts the skirt to the same line.
+ * The line a straight skirt falls on, down one side of her — an A-line's, or
+ * a circle's, which bows: `run(a, b)` is how far out it comes from row a to
+ * row b (see `sideRun` in `garments/fit.ts`). Touching her from outside at
+ * or below `from`, so it clears every row below. `edge(y)` is her edge on
+ * that side, `out` the way out from it: -1 on the left. The row it touches
+ * at, and the line; above that row the skirt is close to her. Re-derived here
+ * from the photograph; `straight` in `garments/fit.ts` cuts the skirt to
+ * the same line.
  */
-function straightLine(edge, from, to, slope, out) {
+function straightLine(edge, from, to, run, out) {
   let best = null;
   for (let y = Math.ceil(from); y <= to; y++) {
     const x = edge(y);
     if (x === null) continue;
-    const c = -out * x + slope * y;
+    const c = -out * x + run(0, y);
     if (!best || c < best.c) best = { c, y };
   }
-  return best && { at: best.y, line: (y) => -out * (best.c - slope * y) };
+  return best && { at: best.y, line: (y) => -out * (best.c - run(0, y)) };
 }
 
 /**
@@ -907,7 +909,9 @@ function straightLine(edge, from, to, slope, out) {
  */
 function fallLine(edge, falls, profile, out) {
   const hung = falls.hung ? hungLine(edge, falls.from, profile.hipY, out) : null;
-  const straight = falls.slope !== undefined ? straightLine(edge, falls.from, profile.hipY + 60, falls.slope, out) : null;
+  /* a skirt's own run, an A-line's or a circle's — or a robe's slope, straight */
+  const run = falls.run ?? (falls.slope !== undefined ? (a, b) => falls.slope * (b - a) : undefined);
+  const straight = run ? straightLine(edge, falls.from, profile.hipY + 60, run, out) : null;
   return (y) => {
     const xs = [];
     if (hung && y >= falls.from) xs.push(hung(y));
@@ -1012,7 +1016,7 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = nu
   const problems = [];
   let far = 0;
   let skew = 0;
-  const onto = hung ? (hung.slope !== undefined ? "the line it falls on" : "the line it hangs on") : null;
+  const onto = hung ? (hung.run !== undefined || hung.slope !== undefined ? "the line it falls on" : "the line it hangs on") : null;
   const from = onto ? `${onto} at ` : "";
   for (const [name, y, gl, gr] of reads) {
     far = Math.max(far, gl, gr);
@@ -1284,10 +1288,17 @@ function checkLegGap(bodyKey, id, paint, profile, coverage) {
     and does not. It used to count one row near the hem — and her trousers,
     whose legs met from the calf down, read there as one run and so as a
     column, and were never checked at all.
+
+    The two runs have to be either side of the middle, with daylight at the
+    middle itself. A hem that waves or steps — a circle's, a pleated
+    skirt's — crosses a row in several runs, its lobes beside the cloth
+    hanging lowest at the centre front; but the middle is cloth there, and a
+    column it stays.
   */
   const legRuns = (() => {
     let most = 0;
     for (let y = profile.crotchY + 20; y <= H - 60; y += 4) {
+      if (paint[y * W + W / 2] >= 0.5) continue;
       let runs = 0;
       let on = false;
       for (let x = 0; x < W; x++) {
@@ -3120,7 +3131,19 @@ function jacketOf(outer, body, front = null, sleeve = null) {
     const y = Math.floor(i / W);
     return y < top || y >= bottom || inside[i] >= 0.5 || windows[i] >= 0.5;
   };
-  return { enc, cloth, inside, windows, top, bottom, opening, inOpening, shows, gap };
+  /*
+    Where its envelope and its cloth part by less than a pixel: a pixel on the
+    envelope's own edge — in it, and the next one out is not — with its cloth
+    the next one in. The two are drawn as different outlines of the same edge,
+    and rasterised, one can take a pixel the other leaves: a notch, not
+    something worn under it showing.
+  */
+  const fringe = (x, y) => {
+    const i = y * W + x;
+    const inward = x < W / 2 ? 1 : -1;
+    return inside[i] >= 0.5 && inside[i - inward] < 0.5 && !open(cloth[i + inward]);
+  };
+  return { enc, cloth, inside, windows, top, bottom, opening, inOpening, shows, gap, fringe };
 }
 
 /**
@@ -3207,7 +3230,7 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
     ]
       .filter(Boolean)
       .join(" · ");
-    const { enc, cloth: outerCloth, inside, windows, top, bottom, inOpening } = jacket;
+    const { enc, cloth: outerCloth, inside, windows, top, bottom, inOpening, fringe } = jacket;
     const shoulderTo = top + 40;
 
     /* beside the neck, where what is worn under it shows: as far on one side as on the other, from the throat */
@@ -3307,7 +3330,7 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
             if (!banded || solid(outerCloth[i]) || inOpening(x, y)) continue;
             /* before the mask: a shoulder the jacket does not sit outside of */
             if (y < shoulderTo) s++;
-            if (shown && !solid(windows[i])) l++;
+            if (shown && !solid(windows[i]) && !fringe(x, y)) l++;
           }
         }
         /*
@@ -3773,7 +3796,7 @@ for (const bodyKey of Object.keys(bodies)) {
         alone, and whether the sleeve swings free over it. See the rules it
         changes, in `checkArmGap`, `checkStandOff` and `checkBareShoulders`.
       */
-      const slope = skirt ? straightOf(skirt.shape) : undefined;
+      const run = skirt ? fallRun(skirt.shape) : undefined;
       /*
         Or a robe — her abaya — whose body falls straight from under the arm
         to the ankle, as an A-line does from her waist: read the same way, its
@@ -3783,11 +3806,11 @@ for (const bodyKey of Object.keys(bodies)) {
       */
       const falls = CUT_MODULES[garment.asset.front]?.fallsOf?.({ sleeve: sleeve ?? undefined, front: front ?? undefined });
       const hung =
-        skirt && (hangs(skirt) || slope !== undefined)
+        skirt && (hangs(skirt) || run !== undefined)
           ? {
               from: profile.waistY + WAIST_DROP[skirt.waist ?? "natural"],
               hung: hangs(skirt),
-              ...(slope !== undefined ? { slope } : {}),
+              ...(run !== undefined ? { run } : {}),
               cloth: rasterize([CUT_MODULES[garment.asset.front].skirtFor(undefined, skirt).path]),
               /* a sleeve cut to swing free, or any sleeve beside a skirt wide enough to reach it, hangs in front of the skirt */
               swings:

@@ -1,5 +1,6 @@
 import { DRAPE, softShadow, vertical } from "@/lib/garments/shading";
 import {
+  circleFolds,
   contour,
   dart,
   foldDefs,
@@ -9,6 +10,7 @@ import {
   gathers,
   hangingFolds,
   mirrorFold,
+  pleatFolds,
   puffDrape,
   rowSpan,
   sleeveDrape,
@@ -88,6 +90,39 @@ const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] =
   const empire = hangs(skirt);
   const gathered = (count: number) =>
     gathers({ seam, count, length: empire ? [8, 20] : [12, 34], width: empire ? 2 : 2.4, shadow: 0.3, light: 0.22, seed: 3 });
+  /* where the cloth shows from: its seam, or under a jacket the jacket's hem */
+  const from: readonly [Pt, Pt] = inside
+    ? [
+        [inside.x + 6, inside.y],
+        [600 - inside.x - 6, inside.y],
+      ]
+    : seam;
+  /*
+    A circle is neither gathered nor darted — cut as a circle, it fits the
+    waist as it is — and its cloth falls from the seam in deep folds, more of
+    them and deeper than a flared skirt's, each reaching the hem where it
+    waves (`fall.waves`). Hung from an empire's seam it is gathered in under
+    it a little, as every shape is.
+  */
+  if (fall.waves) {
+    return [
+      ...(empire ? gathered(12) : []),
+      ...circleFolds({ seam: from, hem, hemDip: 22 * fall.dip, at: fall.waves, start: inside ? 0 : 6, seed: 7 }),
+    ];
+  }
+  /* a pleated skirt's pleats run from the seam to the hem, and take it in: no gathers, no darts */
+  if (fall.pleats) {
+    const top = rowSpan(sk.path, from[0][1] + 2) ?? [from[0][0], from[1][0]];
+    return pleatFolds({
+      top: [
+        [top[0] + 3, from[0][1]],
+        [top[1] - 3, from[1][1]],
+      ],
+      hem,
+      hemDip: 22 * fall.dip,
+      lines: fall.pleats,
+    });
+  }
   if (fall.fitted) {
     const at = Math.max(sk.leaves ?? fall.from ?? draft("female").hipY, inside?.y ?? 0);
     const [l, r] = rowSpan(sk.path, at) ?? [sk.hemLeft[0], 600 - sk.hemLeft[0]];
@@ -116,12 +151,6 @@ const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] =
       }),
     ];
   }
-  const from: readonly [Pt, Pt] = inside
-    ? [
-        [inside.x + 6, inside.y],
-        [600 - inside.x - 6, inside.y],
-      ]
-    : seam;
   return [
     ...gathered(12),
     ...hangingFolds({

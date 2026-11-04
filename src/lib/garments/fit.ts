@@ -1737,6 +1737,50 @@ export function foldPlaces(count: number, seed: number): number[] {
 const WAVE_WIDTH = 9;
 
 /**
+ * How far out a straight skirt's side comes between two rows, going down — see
+ * `column`'s `straight`. An A-line's runs `slope` out in every unit down. A
+ * bowed one's — a circle's — runs `slope` out at row `top`, then less and
+ * less, until it hangs plumb from row `plumb`: a full skirt standing out from
+ * her waist and falling straight below.
+ */
+export function sideRun(slope: number, bow?: { top: number; plumb: number }): (from: number, to: number) => number {
+  if (!bow) return (from, to) => slope * (to - from);
+  const span = bow.plumb - bow.top;
+  const at = (y: number) => {
+    const u = Math.min(y, bow.plumb) - bow.top;
+    return u <= 0 ? slope * u : slope * (u - (u * u) / (2 * span));
+  };
+  return (from, to) => at(to) - at(from);
+}
+
+/**
+ * A hem across pleats: each pleat's own run of hem, between the lines where
+ * the pleats fold, drops evenly toward the centre front, where its fold lies
+ * over the next — `depth` lower at its fold — and steps back up at the line.
+ * Nothing drops at the side seams, so the corners stay on the length's row,
+ * and the two halves are mirror images. Only ever down, as a wave is.
+ */
+function steppedHem(left: Pt, right: Pt, dip: number, lines: number[], depth: number): Pt[] {
+  const at = (t: number, drop: number): Pt => [
+    left[0] + (right[0] - left[0]) * t,
+    left[1] + (right[1] - left[1]) * t + Math.sin(Math.PI * t) * dip + drop,
+  ];
+  const breaks = [0, ...lines.filter((t) => t > 0 && t < 1).sort((a, b) => a - b), 1];
+  const pts: Pt[] = [];
+  for (let i = 0; i + 1 < breaks.length; i++) {
+    const [a, b] = [breaks[i], breaks[i + 1]];
+    /* toward the centre: down to its fold at the end nearer the centre, from nothing at the other */
+    const drop = (t: number) =>
+      b <= 0.5 ? (depth * (t - a)) / (b - a) : a >= 0.5 ? (depth * (b - t)) / (b - a) : (depth * Math.min(t - a, b - t)) / ((b - a) / 2);
+    for (const s of [0, 1 / 3, 2 / 3, 1]) {
+      const t = a + (b - a) * s;
+      pts.push(at(t, drop(t)));
+    }
+  }
+  return pts;
+}
+
+/**
  * Where a jacket worn over a garment ends: its hem's row, and its left
  * corner's x there — the right is the left reflected. See `tucked`.
  */
@@ -1832,17 +1876,22 @@ export function column(
      * down. It leaves her at `from` — how far below her own waist, a dress's
      * seam — or lower, where she widens faster than the line would below it:
      * her high hip. Above there it is close to her.
+     *
+     * With `plumb`, a circle's: the line bows, out by `slope` at her waist
+     * and less and less below, hanging plumb from row `plumb` — see `sideRun`.
      */
-    straight?: { slope: number; from: number };
+    straight?: { slope: number; from: number; plumb?: number };
     dip?: number;
     /** A waistband this deep, cut from the column's own edge. */
     band?: number;
     /**
      * A hem that waves where the folds reach it: the folds' places across the
-     * skirt — see `foldPlaces` — and how far it drops at each. Only ever down,
-     * so a wave never uncovers what the hem covered.
+     * skirt — see `foldPlaces` — how far it drops at each, and how wide each
+     * drop is. Only ever down, so a wave never uncovers what the hem covered.
      */
-    wave?: { at: number[]; depth: number };
+    wave?: { at: number[]; depth: number; width?: number };
+    /** A hem stepped at its pleats' lines, across it from 0 to 1 — see `steppedHem`. */
+    steps?: { at: number[]; depth: number };
     /** The hem of a jacket worn over it — see `tucked`. */
     inside?: Tuck;
     /**
@@ -1941,30 +1990,33 @@ export function column(
   let lined = shaped;
   if (straight) {
     const start = d.waistY + straight.from;
+    const out = sideRun(straight.slope, straight.plumb !== undefined ? { top: d.waistY, plumb: straight.plumb } : undefined);
     let k = -1;
     shaped.forEach(([x, y], i) => {
-      if (y >= start - 0.01 && (k < 0 || x + straight.slope * y < shaped[k][0] + straight.slope * shaped[k][1])) k = i;
+      if (y >= start - 0.01 && (k < 0 || x + out(0, y) < shaped[k][0] + out(0, shaped[k][1]))) k = i;
     });
     if (k >= 0) {
       const [kx, ky] = shaped[k];
       leaves = ky;
-      lined = shaped.map(([x, y], i) => (i <= k ? [x, y] : [kx - straight.slope * (y - ky), y]) as Pt);
+      lined = shaped.map(([x, y], i) => (i <= k ? [x, y] : [kx - out(ky, y), y]) as Pt);
     }
   }
   const side = tucked(lined, spec.inside);
   const hemLeft = side[side.length - 1];
   const waistLeft = side[0];
   const hemRight = mirror([hemLeft])[0];
-  const wave = spec.wave;
-  const hemPts = wave
-    ? hem(hemLeft, hemRight, dip, 48).map(([x, y]) => {
-        const drop = wave.at.reduce((sum, t) => {
-          const at = hemLeft[0] + (hemRight[0] - hemLeft[0]) * t;
-          return sum + wave.depth * Math.exp(-(((x - at) / WAVE_WIDTH) ** 2));
-        }, 0);
-        return [x, y + Math.min(wave.depth, drop)] as Pt;
-      })
-    : hem(hemLeft, hemRight, dip);
+  const { wave, steps } = spec;
+  const hemPts = steps
+    ? steppedHem(hemLeft, hemRight, dip, steps.at, steps.depth)
+    : wave
+      ? hem(hemLeft, hemRight, dip, 48).map(([x, y]) => {
+          const drop = wave.at.reduce((sum, t) => {
+            const at = hemLeft[0] + (hemRight[0] - hemLeft[0]) * t;
+            return sum + wave.depth * Math.exp(-(((x - at) / (wave.width ?? WAVE_WIDTH)) ** 2));
+          }, 0);
+          return [x, y + Math.min(wave.depth, drop)] as Pt;
+        })
+      : hem(hemLeft, hemRight, dip);
   const path = outline(
     side,
     hemPts,

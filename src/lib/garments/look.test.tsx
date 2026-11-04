@@ -1725,6 +1725,108 @@ describe("the A-line, light and dark", () => {
 });
 
 /**
+ * The circle and the pleated skirt, on a light page and a dark one, close up
+ * where each is its own: the pleats from the seam and the hem stepped at them,
+ * the circle standing out from its seam and its hem waving under its folds —
+ * on the dress and on the skirt, in a plain cloth and a print. Then her wrist
+ * beside each in three long sleeves, hanging in front of it, and each under
+ * her jacket, whole and with the cuff close up.
+ */
+describe("the circle and the pleated skirt, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; ids: string[]; skirted: string; skirt: Partial<{ shape: SkirtShapeId; length: SkirtLengthId; waist: WaistId }>; sleeve?: SleeveChoice; cloth: string; zoom: number; focus: [number, number] };
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  const DRESS = ["female-dress"];
+  const SKIRT = ["female-blouse", "female-skirt"];
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles8-circle-pleated-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const d = draft("female");
+    const wrist: [number, number] = [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2 + 10, d.wristY];
+    const stage = (tile: Tile) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of tile.ids) {
+        const g = garmentById(gid)!;
+        /* the skirted garment in the cloth being shown, anything over or under it in others */
+        const cloth = gid === tile.skirted ? f(tile.cloth) : gid.endsWith("jacket") ? f("fb-indigo-plaid") : f("fb-rose-silk");
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      if (tile.sleeve) worn = setSleeve(worn, tile.ids[0], tile.sleeve);
+      worn = worn.map((w) => {
+        const skirt = w.garmentId === tile.skirted ? skirtOf(w) : undefined;
+        return skirt ? { ...w, skirt: { ...skirt, ...tile.skirt } } : w;
+      });
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={tile.zoom} focus={tile.focus} />;
+    };
+    /* one shape, on the dress and on the skirt: whole, where it starts, and its hem, each close up */
+    const closeUps = (shape: SkirtShapeId, cloth: string, kind: string): Tile[] =>
+      [
+        ["dress", DRESS, "female-dress", 380] as const,
+        ["skirt", SKIRT, "female-skirt", 400] as const,
+      ].flatMap(([name, ids, skirted, top]) => [
+        { caption: `${name}, ${shape}, midi, ${kind}`, ids, skirted, skirt: { shape, length: "midi" }, cloth, zoom: 1, focus: [300, 500] },
+        { caption: `${name}, ${shape}, from the ${name === "dress" ? "seam" : "band"} 2.4×`, ids, skirted, skirt: { shape, length: "midi" }, cloth, zoom: 2.4, focus: [300, top] },
+        { caption: `${name}, ${shape}, the hem 2.4×`, ids, skirted, skirt: { shape, length: "midi" }, cloth, zoom: 2.4, focus: [shape === "circle" ? 180 : 220, 745] },
+      ]);
+    const LONG: SleeveChoice[] = [
+      { type: "set-in", length: "long" },
+      { type: "bell", length: "long" },
+      { type: "dolman", length: "long" },
+    ];
+    const UNDER = ["female-jacket"];
+    const rows: Tile[][] = [
+      closeUps("pleated", PLAIN, "plain"),
+      closeUps("pleated", PRINT, "print"),
+      closeUps("circle", PLAIN, "plain"),
+      closeUps("circle", PRINT, "print"),
+      /* her wrist beside each, in three long sleeves, hanging in front of it */
+      (["circle", "pleated"] as const).flatMap((shape) =>
+        LONG.map((sleeve): Tile => ({
+          caption: `${shape}, ${sleeve.type} long, plain, the wrist 2.4×`, ids: DRESS, skirted: "female-dress", skirt: { shape }, sleeve, cloth: PLAIN, zoom: 2.4, focus: wrist,
+        }))
+      ),
+      /* under her jacket: whole, and the cuff close up */
+      (["circle", "pleated"] as const).flatMap((shape): Tile[] => [
+        { caption: `dress under the jacket, ${shape}, plain`, ids: [...DRESS, ...UNDER], skirted: "female-dress", skirt: { shape }, sleeve: { type: "set-in", length: "long" }, cloth: PLAIN, zoom: 1, focus: [300, 500] },
+        { caption: `skirt under the jacket, ${shape}, midi, print`, ids: [...SKIRT, ...UNDER], skirted: "female-skirt", skirt: { shape, length: "midi" }, sleeve: { type: "set-in", length: "long" }, cloth: PRINT, zoom: 1, focus: [300, 500] },
+        { caption: `dress under the jacket, ${shape}, the cuff 2.4×`, ids: [...DRESS, ...UNDER], skirted: "female-dress", skirt: { shape }, sleeve: { type: "set-in", length: "long" }, cloth: PLAIN, zoom: 2.4, focus: wrist },
+      ]),
+    ];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles8-circle-pleated-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});
+
+/**
  * Her abaya, on a light page and a dark one: on its own in black crepe, a
  * plain cloth and a print, with its opening, cuff and hem close up — and over
  * what she wears, each outfit beside the same outfit under the abaya: the
