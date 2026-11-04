@@ -277,7 +277,9 @@ export type SleeveTypeId =
   | "flutter"
   | "cap"
   /* the top of the sleeve is an off-shoulder cut's band — drafted by that cut */
-  | "off-shoulder";
+  | "off-shoulder"
+  /* a robe's alone: its wings cut in one with the body from the shoulder to the hem */
+  | "butterfly";
 
 /** Where a sleeve ends, measured on the arm it is worn on. */
 export type SleeveLengthId = "sleeveless" | "short" | "elbow" | "three-quarter" | "long";
@@ -512,7 +514,8 @@ export interface Garment {
     lengths?: SleeveLengthId[];
     /**
      * What it calls its sleeves, where that is not what a dress calls them: an
-     * abaya's regular sleeve «عادي» and its wide one «واسع».
+     * abaya's regular sleeve «عادي», its wide one «واسع» and its butterfly
+     * «فراشة».
      */
     names?: Partial<Record<SleeveTypeId, { en: string; ar: string }>>;
   };

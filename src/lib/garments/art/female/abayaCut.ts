@@ -28,7 +28,11 @@ const CM = 1 / BODY_CANVAS.cmPerUnit;
  *   worn under them does not show; each with four units of room over it,
  *   hanging in front of the robe's own side. The regular sleeve «عادي»
  *   follows her arm; the wide «واسع» is the bell, flaring from the elbow; the
- *   kimono «كيمونو» is cut in one with the body, from a deep underarm.
+ *   kimono «كيمونو» is cut in one with the body, from a deep underarm. The
+ *   butterfly «فراشة» has no underarm: its wings are the body, and with her
+ *   arms down they hang as a cape, from the foot of the shoulder past her
+ *   arms to the hem, 10 units out in every 100 down — a little steeper than
+ *   the body falls under the other sleeves, so it is fuller at the hem.
  * - **Its fronts** almost meet under the neck, 5 cm apart, and fall a little
  *   apart as they hang: 15 cm at the hem. Or it is closed on hidden snaps:
  *   the fronts meet down the centre under a plain seam, topstitched five
@@ -38,6 +42,8 @@ export const ABAYA = {
   hemY: FEMALE_ANCHORS.ankleY,
   ease: 8,
   slope: 0.12,
+  /* a butterfly's wings, from the arm */
+  wing: 0.1,
   neckDip: 20,
   gap: [5 * CM, 15 * CM] as const,
 };
@@ -53,14 +59,14 @@ const SPEC: RobeSpec = {
   straight: ABAYA.slope,
   sleeve: [6, 8],
   inner: [3, 4],
-  /* its kimono cut wide, as an abaya's is: ten units fuller each side than a dress's */
-  finish: { over: 4, front: true, full: 10 },
+  /* its kimono cut wide, as an abaya's is: ten units fuller each side than a dress's; its butterfly's wings */
+  finish: { over: 4, front: true, full: 10, wing: ABAYA.wing },
   neckDip: ABAYA.neckDip,
   gap: ABAYA.gap,
 };
 
-/** The sleeves it is cut with, all long: regular, wide and kimono. */
-export const SLEEVE_TYPES: SleeveTypeId[] = ["set-in", "bell", "kimono"];
+/** The sleeves it is cut with, all long: regular, wide, kimono and butterfly. */
+export const SLEEVE_TYPES: SleeveTypeId[] = ["set-in", "bell", "kimono", "butterfly"];
 
 /** It, cut with each of them. */
 const ROBES = new Map<SleeveTypeId, Robe>(SLEEVE_TYPES.map((type) => [type, robe("female", SPEC, { type, length: "long" })]));
@@ -108,6 +114,9 @@ export const enclosesFor = (choice: GarmentChoice = {}) => robeFor(choice).enclo
  * Where it falls clear of her, for `check:garments`: straight from where its
  * body leaves her under the arm — under a kimono's, lower — at its slope; and
  * wide enough that its sleeve hangs in front of it, as a sleeve does in front
- * of an A-line.
+ * of an A-line. A butterfly's falls from her arms instead, at its wings' slope.
  */
-export const fallsOf = (choice: GarmentChoice = {}) => ({ from: robeFor(choice).underarm, slope: ABAYA.slope, front: true });
+export const fallsOf = (choice: GarmentChoice = {}) =>
+  choice.sleeve?.type === "butterfly"
+    ? { from: robeFor(choice).underarm, slope: ABAYA.wing, front: true, arms: true }
+    : { from: robeFor(choice).underarm, slope: ABAYA.slope, front: true };

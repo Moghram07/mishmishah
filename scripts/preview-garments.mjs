@@ -941,9 +941,28 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = nu
     hanging, further off is not.
   */
   const trunkEdge = (k) => (y) => runAt(cover, y, W / 2, solid)?.[k] ?? null;
+  /*
+    A robe whose wings hang from her arms — a butterfly — falls on a line
+    past the arms, not past her side: read from the outside of her, arm and
+    hand and all. Cut the same both sides, as every garment is, it has to
+    clear the wider of her two arms on each — her right shoulder is a few
+    units narrower than her left — so the two are read folded together.
+  */
+  const outside = (y) => {
+    let l = null;
+    let r = null;
+    for (let x = 0; x < W / 2 && l === null; x++) if (solid(cover[y * W + x])) l = x;
+    for (let x = W - 1; x >= W / 2 && r === null; x--) if (solid(cover[y * W + x])) r = W - 1 - x;
+    return l === null ? r : r === null ? l : Math.min(l, r);
+  };
+  const armsEdge = (k) => (y) => {
+    const x = outside(y);
+    return x === null ? null : k === 0 ? x : W - 1 - x;
+  };
+  const edgeOf = hung?.arms ? armsEdge : trunkEdge;
   const lines = hung && {
-    left: fallLine(trunkEdge(0), hung, profile, -1),
-    right: fallLine(trunkEdge(1), hung, profile, 1),
+    left: fallLine(edgeOf(0), hung, profile, -1),
+    right: fallLine(edgeOf(1), hung, profile, 1),
   };
   const worn = hung ? hung.cloth : cloth;
 
@@ -1687,8 +1706,8 @@ function checkUnderarm(bodyKey, label, paint, cover, profile, loud) {
  * rasterising and the curve of the hem, no more.
  */
 const SLEEVE_GROWTH = 2;
-/** Loose on purpose, and allowed their shape: they are the sleeves that billow. */
-const LOOSE_SLEEVES = ["puff", "bishop", "bell", "flutter"];
+/** Loose on purpose, and allowed their shape: they are the sleeves that billow — and a butterfly's wing, which is no tube at all. */
+const LOOSE_SLEEVES = ["puff", "bishop", "bell", "flutter", "butterfly"];
 
 /** Where a set of outlines crosses one row, sorted, per outline. */
 function crossingsAt(polys, y) {
@@ -2699,6 +2718,51 @@ function checkRobeWhole(bodyKey, label, paths) {
         : `its cloth whole: nothing open inside its outline but what reaches the page`)
   );
   return holes ? 1 : 0;
+}
+
+/* ------------------------------------------------- a robe's arm behind it */
+
+/** How many rows above its cuff a robe's arm cover is held to: below them, its hem or its lip may curve. */
+const CUFF_ROWS = 2;
+
+/**
+ * Does a robe keep her arm behind it, down to its cuff?
+ *
+ * The stage paints her forearm and hand back over the clothes — see
+ * `checkArmsInFront` — except under what a garment says lies over the arm:
+ * its arm cover. A robe's sleeve is its cover; a butterfly has no sleeve, so
+ * its cover is the stretch of its body over each arm, from the shoulder down
+ * to the lip its hand comes out under. Any of her arm under its cloth, above
+ * the cuff, that its cover leaves out is painted over the cloth: her arm,
+ * seen through the robe.
+ */
+function checkArmCovered(bodyKey, body, cover, label, cloth, covers, cuff) {
+  const under = rasterize(covers);
+  const overlay = new Float32Array(W * H);
+  for (const zone of body.overlay) {
+    const m = zoneMask(body, zone);
+    for (let i = 0; i < overlay.length; i++) overlay[i] = Math.max(overlay[i], m[i]);
+  }
+  let shows = 0;
+  const box = [Infinity, Infinity, -Infinity, -Infinity];
+  for (let y = 0; y < cuff - CUFF_ROWS; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (overlay[i] < 0.5 || cover[i] < 0.5 || cloth[i] < 0.5 || under[i] >= 0.5) continue;
+      shows++;
+      box[0] = Math.min(box[0], x);
+      box[1] = Math.min(box[1], y);
+      box[2] = Math.max(box[2], x);
+      box[3] = Math.max(box[3], y);
+    }
+  }
+  console.log(
+    `${shows ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${label.padEnd(26)} ` +
+      (shows
+        ? `${shows} px of her arm under its cloth, above its cuff at y ${cuff}, left out of its arm cover at x ${box[0]}–${box[2]}, y ${box[1]}–${box[3]}: painted over it`
+        : `her arm behind it down to its cuff at y ${cuff}: its arm cover holds all of it`)
+  );
+  return shows ? 1 : 0;
 }
 
 /* ------------------------------------------------------- a robe's fastening */
@@ -3713,8 +3777,9 @@ for (const bodyKey of Object.keys(bodies)) {
       /*
         Or a robe — her abaya — whose body falls straight from under the arm
         to the ankle, as an A-line does from her waist: read the same way, its
-        body alone, and its sleeve hanging in front of that body. See `FALLS`
-        in its cut.
+        body alone, and its sleeve hanging in front of that body. A
+        butterfly's falls from her arms instead, its wings being its body.
+        See `fallsOf` in its cut.
       */
       const falls = CUT_MODULES[garment.asset.front]?.fallsOf?.({ sleeve: sleeve ?? undefined, front: front ?? undefined });
       const hung =
@@ -3730,7 +3795,7 @@ for (const bodyKey of Object.keys(bodies)) {
                 besideArms({ shape: skirt.shape, length: skirt.length }),
             }
           : falls
-            ? { from: falls.from, hung: false, slope: falls.slope, cloth: rasterize(CUT_MODULES[garment.asset.front].bodyFor({ front: front ?? undefined, sleeve: sleeve ?? undefined })), swings: falls.front }
+            ? { from: falls.from, hung: false, slope: falls.slope, cloth: rasterize(CUT_MODULES[garment.asset.front].bodyFor({ front: front ?? undefined, sleeve: sleeve ?? undefined })), swings: falls.front, arms: falls.arms ?? false }
             : null;
       if (!loose) failed += checkArmGap(bodyKey, label, cloth, profile, coverage, hung);
       failed += checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung);
@@ -3774,7 +3839,14 @@ for (const bodyKey of Object.keys(bodies)) {
               sleeve && sleeve.type !== garment.sleeves.default.type ? (garment.sleeves.names?.[sleeve.type]?.en ?? sleeve.type).toLowerCase() : null,
             ].filter(Boolean);
             const label = [name, ...named].join(" · ");
-            failures += checkRobeWhole(bodyKey, label, artPaths(garment.asset.front, body, { front, sleeve }));
+            const paths = artPaths(garment.asset.front, body, { front, sleeve });
+            failures += checkRobeWhole(bodyKey, label, paths);
+            /* and her arm behind it, under whatever lies over the arm */
+            const mod = CUT_MODULES[garment.asset.front];
+            if (mod.sleevesOf && mod.enclosesFor) {
+              const choice = { front, sleeve: sleeve ?? undefined };
+              failures += checkArmCovered(bodyKey, body, cover, label, rasterize(paths), mod.sleevesOf(choice), mod.enclosesFor(choice).cuff);
+            }
           }
         }
       }

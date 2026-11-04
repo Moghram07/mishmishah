@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { garmentById } from "@/lib/data/garments";
+import { garmentById, garments } from "@/lib/data/garments";
 import { frontsFor } from "@/lib/data/fronts";
 import { sleeveLengthsFor, sleeveTypeName, sleeveTypesFor } from "@/lib/data/sleeves";
 import { effectiveCoverage, frontOf, setFront, sleeveOf } from "./outfit";
 import { CLOSED_STITCH, ROBE, cloth, enclosesFor, robeFor } from "./art/female/abayaCut";
+import { draft } from "./fit";
+import { ROBE_TYPES } from "./sleeves";
 import type { WornGarment } from "@/types";
 
 const worn = (garmentId: string, extra: Partial<WornGarment> = {}): WornGarment => ({
@@ -52,34 +54,71 @@ describe("her abaya, open and closed", () => {
     expect(ROBE.sleeves).toHaveLength(2);
   });
 
-  it("is cut with a regular, a wide and a kimono sleeve, all long, named as an abaya's are", () => {
+  it("is cut with a regular, a wide, a kimono and a butterfly sleeve, all long, named as an abaya's are", () => {
     const abaya = garmentById("female-abaya")!;
-    expect(sleeveTypesFor(abaya)).toEqual(["set-in", "bell", "kimono"]);
-    expect(sleeveTypesFor(abaya).map((t) => sleeveTypeName(abaya, t).ar)).toEqual(["عادي", "واسع", "كيمونو"]);
+    expect(sleeveTypesFor(abaya)).toEqual(["set-in", "bell", "kimono", "butterfly"]);
+    expect(sleeveTypesFor(abaya).map((t) => sleeveTypeName(abaya, t).ar)).toEqual(["عادي", "واسع", "كيمونو", "فراشة"]);
+    expect(sleeveTypesFor(abaya).map((t) => sleeveTypeName(abaya, t).en)).toEqual(["Regular", "Wide", "Kimono", "Butterfly"]);
     for (const type of sleeveTypesFor(abaya)) expect(sleeveLengthsFor(type, undefined, abaya), type).toEqual(["long"]);
     /* a kimono is long on the abaya alone: the dress still cuts it short or to the elbow, and names its sleeves its own way */
     const dress = garmentById("female-dress")!;
     expect(sleeveLengthsFor("kimono", undefined, dress)).toEqual(["sleeveless", "short", "elbow"]);
     expect(sleeveTypeName(dress, "set-in").ar).toBe("مركّب");
     expect(sleeveTypeName(dress, "bell").ar).toBe("جرسي");
+    /* the butterfly is a robe's alone: nothing else offers it */
+    expect(ROBE_TYPES).toEqual(["butterfly"]);
+    expect(garments.filter((g) => g.sleeves?.types.includes("butterfly")).map((g) => g.id)).toEqual(["female-abaya"]);
   });
 
-  it("resolves its sleeve to a long one of the three, and arrives in the regular one", () => {
+  it("resolves its sleeve to a long one of the four, and arrives in the regular one", () => {
     expect(sleeveOf(worn("female-abaya"))).toEqual({ type: "set-in", length: "long" });
     expect(sleeveOf(worn("female-abaya", { sleeve: { type: "kimono", length: "short" } }))).toEqual({ type: "kimono", length: "long" });
+    expect(sleeveOf(worn("female-abaya", { sleeve: { type: "butterfly", length: "long" } }))).toEqual({ type: "butterfly", length: "long" });
     expect(sleeveOf(worn("female-abaya", { sleeve: { type: "puff", length: "elbow" } }))).toEqual({ type: "set-in", length: "long" });
   });
 
   it("holds what is under it to the sleeve it is worn with: its cuffs where that sleeve ends", () => {
-    for (const type of ["set-in", "bell", "kimono"] as const) {
+    for (const type of ["set-in", "bell", "kimono", "butterfly"] as const) {
       const r = robeFor({ sleeve: { type, length: "long" } });
-      expect(r.sleeves, type).toHaveLength(2);
+      /* a butterfly has no sleeve piece: its wings are its body — but it lies over both arms all the same */
+      expect(r.sleeves, type).toHaveLength(type === "butterfly" ? 0 : 2);
+      expect(r.sleeveAreas, type).toHaveLength(2);
       expect(r.encloses.cuff, type).toBe(480);
       expect(r.encloses.windows, type).toHaveLength(2);
       expect(enclosesFor({ sleeve: { type, length: "long" } })).toBe(r.encloses);
     }
     /* a kimono's body leaves its side from a deeper underarm */
     expect(robeFor({ sleeve: { type: "kimono", length: "long" } }).underarm).toBeGreaterThan(ROBE.underarm);
+  });
+
+  it("hangs its butterfly's wings from her arms to the hem, as a cape", () => {
+    const sleeve = { type: "butterfly", length: "long" } as const;
+    const r = robeFor({ sleeve });
+    const side = r.cut.left.side;
+    /* its body and its wings are one: nothing but its fronts, open, or its one panel, closed */
+    expect(cloth({ sleeve })).toEqual([r.open.right, r.open.left]);
+    expect(cloth({ sleeve, front: "closed" })).toEqual([r.closed.body]);
+    /* its side runs from the shoulder's end — where its kimono leaves the shoulder too — round the arm to the hem */
+    expect(side[0]).toEqual(robeFor({ sleeve: { type: "kimono", length: "long" } }).cut.left.cutOn!.out[0]);
+    expect(side[side.length - 1][1]).toBe(906);
+    /* below where it leaves the arm, one straight line at its wings' slope, 10 out in every 100 down */
+    const below = side.filter(([, y]) => y >= r.underarm);
+    for (const [x, y] of below) expect(x + 0.1 * y).toBeCloseTo(below[0][0] + 0.1 * below[0][1], 6);
+    /* clear of her arm and her hand all the way down, by the sleeve's room over a sleeve worn under it */
+    const arm = draft("female");
+    for (let y = Math.ceil(r.underarm); y <= arm.armEndY; y++) {
+      const [x0, y0] = below[0];
+      expect(arm.armOutAt(y, 0) - (x0 - 0.1 * (y - y0)), `y ${y}`).toBeGreaterThan(9.5);
+    }
+    /* so it is fuller at the hem than the robe cut with a sleeve */
+    expect(r.encloses.hem.x).toBeLessThan(ROBE.encloses.hem.x - 25);
+    /* and its hand comes out under a lip across the wrist, dipping under it */
+    const wrist = r.cut.left.wrist!;
+    expect(wrist[0][1]).toBe(478);
+    expect(Math.max(...wrist.map(([, y]) => y))).toBeGreaterThan(482);
+    expect(wrist[0][0]).toBeLessThan(arm.armOutAt(480, 0));
+    expect(wrist[wrist.length - 1][0]).toBeGreaterThan(arm.armInAt(480, 0));
+    expect(r.sleeveEdges).toHaveLength(2);
   });
 
   it("fastens closed under a seam down the centre line, topstitched beside it on the front that laps over", () => {

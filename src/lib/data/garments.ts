@@ -201,17 +201,19 @@ export const garments: Garment[] = [
     fronts: { offered: ["open", "closed"], default: "open" },
     /**
      * Its own sleeves, every one long, and named as an abaya's are: the regular
-     * one «عادي»; the wide one «واسع», a bell; and the kimono, cut in one
-     * with the body — long on the abaya alone.
+     * one «عادي»; the wide one «واسع», a bell; the kimono, cut in one with the
+     * body — long on the abaya alone; and the butterfly «فراشة», whose wings
+     * are the body, from the shoulder to the hem.
      */
     sleeves: {
-      types: ["set-in", "bell", "kimono"],
+      types: ["set-in", "bell", "kimono", "butterfly"],
       default: { type: "set-in", length: "long" },
       lengths: ["long"],
       names: {
         "set-in": { en: "Regular", ar: "عادي" },
         bell: { en: "Wide", ar: "واسع" },
         kimono: { en: "Kimono", ar: "كيمونو" },
+        butterfly: { en: "Butterfly", ar: "فراشة" },
       },
     },
     asset: { front: "female-abaya-front" },

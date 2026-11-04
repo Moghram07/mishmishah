@@ -1,6 +1,6 @@
 import { DRAPE, vertical } from "@/lib/garments/shading";
 import { foldDefs, foldLights, foldShadows, hangingFolds, mirrorFold, rowSpan, type Fold } from "@/lib/garments/folds";
-import { hem, line, mirrorPts, type Pt } from "@/lib/garments/fit";
+import { draft, hem, line, mirrorPts, type Pt } from "@/lib/garments/fit";
 import type { Robe } from "@/lib/garments/sleeves";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { rowsOf, sewnDrape, shoulderFall } from "../sleevedTop";
@@ -9,8 +9,9 @@ import { ABAYA, bodyOf, closedStitch, robeFor } from "./abayaCut";
 
 /**
  * Abaya, front: a loose robe over whatever she wears, open down the front or
- * closed, with a regular, a wide or a kimono sleeve — see `robe` in
- * `garments/sleeves.ts` for how it is cut, and `abayaCut.ts` for its numbers.
+ * closed, with a regular, a wide, a kimono or a butterfly sleeve — see `robe`
+ * in `garments/sleeves.ts` for how it is cut, and `abayaCut.ts` for its
+ * numbers.
  *
  * One fabric, the whole of it. Its sleeves are drawn as every top draws them —
  * the shoulder's light carried down onto each — and they hang in front of its
@@ -18,11 +19,14 @@ import { ABAYA, bodyOf, closedStitch, robeFor } from "./abayaCut";
  * outlined only along its free edges, its armhole a soft line of shadow, the
  * shared drape down it. A wide one is the bell, outlined all round and folded
  * as it flares. A kimono's is cut in one with the body, laid over it with no
- * seam where it leaves the shoulder, and folded under the arm. A few long
- * folds fall from under each arm to the hem, opening as the robe widens. It
- * holds what is worn under it: from the shoulders to the hem that shows only
- * between the fronts, in its neckline, at the cuffs and below the hem — see
- * `encloses`.
+ * seam where it leaves the shoulder, and folded under the arm. A butterfly
+ * has no sleeve to draw: its wings are its body, hung as a cape from her
+ * arms, which show under the cloth only as its light along them and its
+ * shadow beside them; its hand comes out under a lip at the wrist. A few long
+ * folds fall from under each arm to the hem, opening as the robe widens — and
+ * more of them from a butterfly's arms. It holds what is worn under it: from
+ * the shoulders to the hem that shows only between the fronts, in its
+ * neckline, at the cuffs and below the hem — see `encloses`.
  *
  * Closed, the fronts meet down the centre on hidden snaps: one panel with a
  * plain seam down the middle, topstitched beside it on the front that laps
@@ -52,8 +56,12 @@ function regionsOf(robe: Robe): { open: RegionArt; closed: RegionArt } {
   /*
     The long folds down each front: released under the arm, where the robe
     leaves her, and falling to the hem, opening as it widens — three to a
-    front, between its side and its edge.
+    front, between its side and its edge. A butterfly has no sleeve of its
+    own: its wings are its body, hung from her arms with all the cloth a
+    farasha has to spare, so its folds fall from where they leave the arm
+    and there are more of them.
   */
+  const cape = sleeves.length === 0;
   const FROM = robe.underarm + 30;
   const [frontEdge] = robe.open.frontEdges;
   const edgeAt = (y: number): number => {
@@ -75,13 +83,38 @@ function regionsOf(robe: Robe): { open: RegionArt; closed: RegionArt } {
       [hemLeft + 8, ABAYA.hemY],
       [foot[0] - 10, foot[1]],
     ],
-    count: 3,
-    width: [2, 16],
+    count: cape ? 5 : 3,
+    width: [2, cape ? 20 : 16],
     shadow: 0.45,
     light: 0.26,
     seed: 53,
   });
-  const FOLDS = [...folds, ...folds.map(mirrorFold)];
+  /*
+    A butterfly over her arms: its cloth lies on each arm from the shoulder
+    to the wrist and falls away from the arm's inner side, toward her — lit
+    along the arm, in shadow beside it — and is in shadow just inside the
+    opening its hand comes out of.
+  */
+  const arm = draft("female");
+  const wrist = robe.cut.left.wrist;
+  const onArms: Fold[] = wrist
+    ? [
+        {
+          ridge: Array.from({ length: 9 }, (_, i) => {
+            const y = robe.underarm + 4 + ((arm.wristY - robe.underarm - 4) * i) / 8;
+            return [arm.armInAt(y, 0), y] as Pt;
+          }),
+          width: [6, 9],
+          shadow: 0.4,
+          light: 0.22,
+          soft: 6,
+          shadowToward: [1, 0],
+        },
+        { ridge: wrist.map(([x, y]) => [x, y + 1] as Pt), width: [5, 5], shadow: 0.5, light: 0, soft: 4, shadowToward: [0, 1] },
+      ]
+    : [];
+  const ARMS = [...onArms, ...onArms.map(mirrorFold)];
+  const FOLDS = [...folds, ...folds.map(mirrorFold), ...ARMS];
 
   /* the hem's topstitch, eight units up, and each front edge's, set in along it */
   const hemStitch = hem([hemLeft + 6, ABAYA.hemY - 8], [600 - hemLeft - 6, ABAYA.hemY - 8], 12, 24);
@@ -118,8 +151,8 @@ function regionsOf(robe: Robe): { open: RegionArt; closed: RegionArt } {
       [hemLeft + 8, ABAYA.hemY],
       [seamFoot[0] - 10, seamFoot[1]],
     ],
-    count: 4,
-    width: [2, 16],
+    count: cape ? 6 : 4,
+    width: [2, cape ? 20 : 16],
     shadow: 0.45,
     light: 0.26,
     seed: 53,
@@ -128,7 +161,7 @@ function regionsOf(robe: Robe): { open: RegionArt; closed: RegionArt } {
   const CLOSED: FrontArt = {
     body: bodyOf("closed", robe),
     edges: [robe.closed.edge],
-    folds: [...closedFolds, ...closedFolds.map(mirrorFold)],
+    folds: [...closedFolds, ...closedFolds.map(mirrorFold), ...ARMS],
     /* the centre seam it closes under, a soft line like the armholes' */
     seams: [...robe.seams, line(robe.closed.seam)],
     /* the hem's topstitch right across, and the placket's beside the seam */

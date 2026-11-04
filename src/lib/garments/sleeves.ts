@@ -58,7 +58,9 @@ export type { CuffId, SleeveChoice, SleeveLengthId, SleeveTypeId };
  *     sleeve carries the shoulder with it.
  *   • **cut-on** — kimono and dolman: cut in one with the body, no armhole at
  *     all, and an underarm dropped well below the arm's own — moderately for a
- *     kimono's T, nearly to the waist for a dolman.
+ *     kimono's T, nearly to the waist for a dolman. And a robe's butterfly,
+ *     which has no underarm at all: its wing is the body, from the shoulder
+ *     to the hem.
  *   • **cap** — no sleeve piece: the body's shoulder carried a little way down
  *     the arm and finished there.
  *
@@ -79,6 +81,7 @@ export const SLEEVE_TYPES: readonly SleeveTypeId[] = [
   "flutter",
   "cap",
   "off-shoulder",
+  "butterfly",
 ];
 
 export const SLEEVE_LENGTHS: readonly SleeveLengthId[] = [
@@ -116,13 +119,21 @@ export const SLEEVE_KINDS: Record<SleeveTypeId, SleeveKind> = {
   cap: { construction: "cap", lengths: ["short"], bodies: ["female"] },
   /* short is the band alone */
   "off-shoulder": { construction: "band", lengths: ["short", "elbow", "three-quarter", "long"], bodies: ["female"] },
+  butterfly: { construction: "cut-on", lengths: ["long"], bodies: ["female"] },
 };
 
 /**
  * The types that rebuild the shoulder itself, and so need a garment that has
  * both of its shoulders — not a one-shoulder cut, and not a strapless one.
  */
-export const SHOULDER_TYPES: SleeveTypeId[] = ["drop", "raglan", "kimono", "dolman", "cap"];
+export const SHOULDER_TYPES: SleeveTypeId[] = ["drop", "raglan", "kimono", "dolman", "cap", "butterfly"];
+
+/**
+ * The types only a robe is cut with — her abaya's butterfly, whose wings hang
+ * from the arms to its hem. No top is long enough to take one, and none
+ * offers it.
+ */
+export const ROBE_TYPES: readonly SleeveTypeId[] = ["butterfly"];
 
 /**
  * Whether a sleeve leaves its bodice an armhole seam. One cut on with the
@@ -189,6 +200,8 @@ export function underarmRow(body: BodyType, c: SleeveChoice): number | null {
   if (cuff === null || kind === "cap") return null;
   /* an off-shoulder's sleeve leaves its band at the band's hem */
   if (kind === "band") return hemRow(body, { type: c.type, length: "short" });
+  /* a butterfly has none: its wing never leaves the body — it is the body, to the hem */
+  if (c.type === "butterfly") return cuff;
   const d = draft(body);
   if (kind === "cut-on") {
     const dolman = c.type === "dolman";
@@ -316,6 +329,10 @@ const DROP_UNDER = 14;
 /** How far down the trunk a cut-on sleeve's underarm reaches, armpit to waist. */
 const KIMONO_DEPTH = 0.35;
 const DOLMAN_DEPTH = 0.85;
+/** How far down from the shoulder's end a butterfly's cloth takes to settle to its room over the arm: the deltoid. */
+const WING_SETTLE = 48;
+/** How far the lip of a butterfly's wrist opening dips under the wrist. */
+const WRIST_DIP = 5;
 
 /** The most a sewn sleeve's outer edge stands off the arm where it is widest. */
 const SEWN_EASE = 5;
@@ -476,6 +493,12 @@ export interface SleeveCut {
     cutOn?: { out: Pt[]; hem: Pt[]; inner: Pt[]; lower: Pt[] };
     /** A loose sleeve's seam, from the top of its cap to the underarm: what it is sewn along. */
     sewnAlong?: Pt[];
+    /**
+     * A butterfly's wrist: the lip of the opening its hand comes out of,
+     * across the arm — where the cloth over the forearm ends, and its wing
+     * hangs on behind the hand.
+     */
+    wrist?: Pt[];
   };
   right: { sleeve: string };
   /** The topstitch of the sleeves alone, without the body's hem: a loose or cut-on sleeve's — a sewn one's is `seamed.sleeveStitch`. */
@@ -612,6 +635,12 @@ export interface SleeveFinish {
    * kimono is cut as close as a dress's.
    */
   full?: number;
+  /**
+   * A butterfly's wing: how far out it falls for every unit down, from where
+   * it leaves the arm to the hem — an abaya's, as its body does. Absent, it
+   * falls plumb.
+   */
+  wing?: number;
 }
 
 export interface TopDraftSpec extends TopSpec {
@@ -1511,6 +1540,67 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
       };
     }
 
+    /*
+      -------------------------------------------------- a butterfly's wings
+
+      Cut in one with the body from the shoulder to the hem, as a farasha is:
+      one wide piece, closed down each side from the hem to an opening at the
+      wrist. With her arms down it hangs as a cape. Its cloth lies on the
+      shoulder and settles to its room over the arm — the sleeve's ease, and
+      the room over a sleeve worn under it — leaves the arm where a line of
+      the wing's slope first touches it from outside, at the foot of the
+      deltoid, and falls on that line, clear of the arm and the hand, to the
+      hem. No armhole, no underarm, no daylight under the arm: the wing is
+      the body. The hand comes out at the wrist, under the lip of its
+      opening, and the wing hangs on behind it.
+    */
+    if (c.type === "butterfly") {
+      const end = f.tipLeft;
+      const fin = spec.finish ?? {};
+      const slope = fin.wing ?? 0;
+      const room = capE + (fin.over ?? 0);
+      /* down the arm and the hand, so its line clears both */
+      const hug = rows(end[1], d.armEndY).map((y) => {
+        const t = Math.min(1, (y - end[1]) / WING_SETTLE);
+        return [d.armOutAt(y, lerp(spec.shoulderEase, room, t)), y] as Pt;
+      });
+      hug[0] = end;
+      let k = 0;
+      hug.forEach(([x, y], i) => {
+        if (x + slope * y < hug[k][0] + slope * hug[k][1]) k = i;
+      });
+      const [kx, ky] = hug[k];
+      const falls = rows(ky, hemY).slice(1, -1).concat(hemY);
+      const side: Pt[] = [...hug.slice(0, k + 1), ...falls.map((y) => [kx - slope * (y - ky), y] as Pt)];
+      /* the lip across the wrist: the near half of the opening, dipping as the cloth hangs round it */
+      const [lo, li] = [d.armOutAt(cuff, 3), d.armInAt(cuff, 3)];
+      const lip: Pt[] = Array.from({ length: 7 }, (_, i) => {
+        const t = i / 6;
+        return [lo + (li - lo) * t, cuff - 2 + WRIST_DIP * Math.sin(Math.PI * t)] as Pt;
+      });
+      /* the arm it lies over, down to the lip: what keeps the arm behind it */
+      const inner = rows(d.armpitY, cuff).map((y) => [d.armInAt(y, inTop + 3), y] as Pt);
+      const over: Pt[] = [
+        ...side.filter(([, y]) => y < cuff - 2),
+        [xOnRun(side, cuff - 2), cuff - 2],
+        ...lip,
+        ...reverse(inner),
+        [inner[0][0], end[1] + 20],
+      ];
+      return {
+        body: armholeBody(f, [end], side),
+        sleeves: [],
+        bands: [],
+        armCover: [outline(over), outline(mirror(over))],
+        stitch: bodyHemStitch(side),
+        folds: [],
+        underarm: ky,
+        left: { armhole: [end], side, hem: hemAcross(side), sleeve: "", wrist: lip },
+        right: { sleeve: "" },
+        sleeveStitch: "",
+      };
+    }
+
     /* ---------------------------------------- cut in one with the body */
     if (kind === "cut-on") {
       const dolman = c.type === "dolman";
@@ -2083,7 +2173,7 @@ export interface Robe {
   /**
    * Each sleeve's free edges, left then right: a sewn one's, all but its seam;
    * a loose one's, all of it. Cut in one with the body, its fronts' edges are
-   * its own.
+   * its own — and a butterfly's are only the lip its hand comes out under.
    */
   sleeveEdges: string[];
   /** The arm each sleeve lies over, left then right, sewn or cut on: what its light and folds are kept to. */
@@ -2098,7 +2188,7 @@ export interface Robe {
   cut: SleeveCut;
   /** The closed panel the fronts are cut from, closed across the neck too, for the light's rows. */
   panel: string;
-  /** The row its body leaves the underarm at. */
+  /** The row its body leaves the underarm at — a butterfly's, the row its wing leaves the arm. */
   underarm: number;
   /** What it holds inside it — see `Encloses`. Open or closed, the same robe holds the same. */
   encloses: Encloses;
@@ -2137,7 +2227,8 @@ export interface ClosedFront {
  *   thobe's is, and straight from where it leaves her below the underarm —
  *   see `straight`.
  * - **The sleeve** is the shared long sleeve, with room over a sleeve worn
- *   under it, in front of the robe's own side — see `front`.
+ *   under it, in front of the robe's own side — see `front`. Or a butterfly,
+ *   the body itself, hanging from the arm to the hem — see `wing`.
  * - **The fronts** are the panel's two halves, cut along an opening that is
  *   narrow under the neck and wider at the hem — `gap` — each hanging free
  *   down its edge. Closed, they meet down the centre line under a seam, from
@@ -2257,15 +2348,20 @@ export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { ty
       ]
     : k.sleeves;
   const raw = k.raw;
+  /* a butterfly's sleeve is its wing, all edge with its body: only the lip its hand comes out under */
+  const wrist = k.left.wrist;
   const sleeveEdges = s
     ? [s.edges[1], s.edges[2]]
     : cutOn
       ? [line(cutOn.out, cutOn.hem, reverse(cutOn.inner)), line(mirror(cutOn.out), mirror(cutOn.hem), mirror(reverse(cutOn.inner)))]
-      : raw
-        ? [line(raw.outer, raw.hem, reverse(raw.inner)), line(mirror(raw.outer), mirror(raw.hem), mirror(reverse(raw.inner)))]
-        : k.sleeves;
-  /* the cuff's row, and what shows below each sleeve */
+      : wrist
+        ? [line(wrist), line(mirror(wrist))]
+        : raw
+          ? [line(raw.outer, raw.hem, reverse(raw.inner)), line(mirror(raw.outer), mirror(raw.hem), mirror(reverse(raw.inner)))]
+          : k.sleeves;
+  /* the cuff's row, and what shows below each sleeve — a butterfly's, below the arm its wing lies over */
   const cuffRow = s ? s.hem : hemRow(body, sleeve)!;
+  const cuffs = sleeves.length ? sleeves : k.armCover;
   return {
     open: { left, right, edges: { left: edgeLeft, right: edgeRight }, frontEdges: [frontEdge, frontEdgeRight] },
     closed: { body: panelOf(arcFrame, kc), edge: closedEdge, seam },
@@ -2277,13 +2373,14 @@ export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { ty
     stitch: s ? s.sleeveStitch : (k.sleeveStitch ?? ""),
     cut: k,
     panel: panelOf(frame, k),
-    underarm: under[1],
+    /* a butterfly's body never leaves her under the arm: its wing leaves the arm itself, at the deltoid */
+    underarm: wrist ? k.underarm! : under[1],
     encloses: {
       band: [Math.min(neck[1], neckRight[1]), hemY - 1.5],
       cuff: cuffRow,
       hem: { y: hemY, x: hemLeft[0] },
       envelope: [panelOf(frame, k), ...sleeves],
-      windows: [cuffWindow(sleeves[0], cuffRow), cuffWindow(sleeves[1], cuffRow)],
+      windows: [cuffWindow(cuffs[0], cuffRow), cuffWindow(cuffs[1], cuffRow)],
     },
   };
 }

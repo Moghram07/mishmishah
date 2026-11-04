@@ -59,6 +59,8 @@ const TYPE_NAMES: Record<SleeveTypeId, { en: string; ar: string }> = {
   cap: { en: "Cap", ar: "كاب" },
   /* an off-shoulder's own sleeve: the band alone when short, a fitted sleeve below it when longer */
   "off-shoulder": { en: "Fitted", ar: "ضيّق" },
+  /* a robe's alone — her abaya's */
+  butterfly: { en: "Butterfly", ar: "فراشة" },
 };
 
 const LENGTH_NAMES: Record<SleeveLengthId, { en: string; ar: string }> = {

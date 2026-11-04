@@ -6,7 +6,7 @@ import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
 import { collarOf, cutFrom, setCollar, setFront, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
-import { SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
+import { ROBE_TYPES, SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
 import { collars, collarsForGarment } from "@/lib/data/collars";
 import { sleeveLengthsFor, sleeveTypesFor } from "@/lib/data/sleeves";
@@ -256,12 +256,12 @@ describe("the necklines, to look at", () => {
 describe("sleeves", () => {
   it.each(["female", "male"] as const)("writes .preview/sleeves-%s.html", (body) => {
     const tee = `${body}-t-shirt`;
-    const tiles = SLEEVE_TYPES.filter((t) => SLEEVE_KINDS[t].bodies.includes(body) && SLEEVE_KINDS[t].construction !== "band").flatMap((type) =>
+    const tiles = SLEEVE_TYPES.filter((t) => SLEEVE_KINDS[t].bodies.includes(body) && SLEEVE_KINDS[t].construction !== "band" && !ROBE_TYPES.includes(t)).flatMap((type) =>
       SLEEVE_KINDS[type].lengths.map((length) =>
         tile(`${type} · ${length}`, body, [tee], "fb-apricot-linen", 1.5, [300, 340], undefined, undefined, { type, length })
       )
     );
-    const close = SLEEVE_TYPES.filter((t) => SLEEVE_KINDS[t].bodies.includes(body) && SLEEVE_KINDS[t].construction !== "band").map((type) =>
+    const close = SLEEVE_TYPES.filter((t) => SLEEVE_KINDS[t].bodies.includes(body) && SLEEVE_KINDS[t].construction !== "band" && !ROBE_TYPES.includes(t)).map((type) =>
       tile(`${type} · shoulder`, body, [tee], "fb-apricot-linen", 3.4, [228, 260], undefined, undefined, {
         type,
         length: SLEEVE_KINDS[type].lengths[0],
@@ -271,7 +271,7 @@ describe("sleeves", () => {
   });
 
   it("writes .preview/sleeves-dress.html", () => {
-    const tiles = SLEEVE_TYPES.filter((type) => SLEEVE_KINDS[type].construction !== "band").map((type) => {
+    const tiles = SLEEVE_TYPES.filter((type) => SLEEVE_KINDS[type].construction !== "band" && !ROBE_TYPES.includes(type)).map((type) => {
       const length = SLEEVE_KINDS[type].lengths[SLEEVE_KINDS[type].lengths.length - 1];
       return tile(`dress · ${type} ${length}`, "female", ["female-dress"], "fb-apricot-linen", 1.5, [300, 340], undefined, undefined, { type, length });
     });
@@ -2003,6 +2003,104 @@ describe("abaya, light and dark", () => {
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
     writeFileSync(
       `.preview/wardrobe/abaya-a3-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+
+  /*
+    Round A4, the abaya's butterfly: whole, open and closed in black crepe, a
+    plain cloth and a print, beside the regular and kimono sleeves; close up
+    at the shoulder, the hand coming out at the wrist and the hem's side, on
+    its own and over a print dress in long sleeves; and over the outfits.
+  */
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/abaya-a4-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const BUTTERFLY: SleeveChoice = { type: "butterfly", length: "long" };
+    const stage = (look: Look, front: FrontId, sleeve: SleeveChoice, zoom = 1, focus: [number, number] = [300, 500], abaya = ABAYA_CLOTH) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const [gid, clothId] of [...look.wear, ["female-abaya", abaya] as [string, string]]) {
+        const g = garmentById(gid)!;
+        const cloth = f(clothId);
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      if (look.sleeve) worn = setSleeve(worn, look.sleeve[0], look.sleeve[1]);
+      if (look.skirt) {
+        const [sid, choice] = look.skirt;
+        worn = worn.map((w) => {
+          const skirt = w.garmentId === sid ? skirtOf(w) : undefined;
+          return skirt ? { ...w, skirt: { ...skirt, ...choice } } : w;
+        });
+      }
+      worn = setSleeve(setFront(worn, "female-abaya", front), "female-abaya", sleeve);
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={zoom} focus={focus} />;
+    };
+    const d = draft("female");
+    const hand: [number, number] = [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2, d.wristY + 30];
+    const shoulder: [number, number] = [215, 300];
+    const hemSide: [number, number] = [170, 850];
+    const alone: Look = { name: "the abaya", wear: [] };
+    const plain = "fb-apricot-linen";
+    const rows: { caption: string; node: React.ReactNode }[][] = [
+      /* whole: open and closed in three cloths; and beside it, the regular and kimono sleeves */
+      [
+        ...(["open", "closed"] as const).flatMap((front) =>
+          ([[ABAYA_CLOTH, "black crepe"], [plain, "plain"], ["fb-midnight-floral", "print"]] as const).map(([cloth, kind]) => ({
+            caption: `butterfly, ${front}, ${kind}`,
+            node: stage(alone, front, BUTTERFLY, 1, [300, 500], cloth),
+          }))
+        ),
+        { caption: "regular, open, black crepe", node: stage(alone, "open", { type: "set-in", length: "long" }) },
+        { caption: "kimono, open, black crepe", node: stage(alone, "open", { type: "kimono", length: "long" }) },
+      ],
+      /* close up: the shoulder, the hand at the wrist and the hem's side; over a print dress in long sleeves; closed over a blouse */
+      [
+        { caption: "the shoulder, plain, 2.4×", node: stage(alone, "open", BUTTERFLY, 2.4, shoulder, plain) },
+        { caption: "the hand at the wrist, plain, 2.4×", node: stage(alone, "open", BUTTERFLY, 2.4, hand, plain) },
+        { caption: "the hand at the wrist, black crepe, 2.4×", node: stage(alone, "open", BUTTERFLY, 2.4, hand) },
+        { caption: "the hem's side, plain, 2.4×", node: stage(alone, "open", BUTTERFLY, 2.4, hemSide, plain) },
+        { caption: "over the dress, long sleeves, the wrist, 2.4×", node: stage(OUTFITS[1], "open", BUTTERFLY, 2.4, hand) },
+        { caption: "closed, the shoulder, black crepe, 2.4×", node: stage(alone, "closed", BUTTERFLY, 2.4, shoulder) },
+        { caption: "closed over a blouse and trousers", node: stage(OUTFITS[5], "closed", BUTTERFLY) },
+        { caption: "closed over a blouse, the neckline, 2.4×", node: stage(OUTFITS[5], "closed", BUTTERFLY, 2.4, [300, 250]) },
+      ],
+      /* over what she wears */
+      [
+        { caption: "the dress as it arrives, open", node: stage(OUTFITS[0], "open", BUTTERFLY) },
+        { caption: "the dress, long sleeves, print, open", node: stage(OUTFITS[1], "open", BUTTERFLY) },
+        { caption: "empire A-line maxi, open", node: stage(OUTFITS[2], "open", BUTTERFLY) },
+        { caption: "mermaid maxi, closed", node: stage(OUTFITS[3], "closed", BUTTERFLY) },
+        { caption: "blouse, A-line maxi skirt, open", node: stage(OUTFITS[4], "open", BUTTERFLY) },
+        { caption: "blouse, trousers, open", node: stage(OUTFITS[5], "open", BUTTERFLY) },
+        { caption: "t-shirt, skirt, open", node: stage(OUTFITS[6], "open", BUTTERFLY) },
+        { caption: "nothing under it, open", node: stage(OUTFITS[7], "open", BUTTERFLY) },
+      ],
+    ];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {tile.node}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/abaya-a4-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
   });
