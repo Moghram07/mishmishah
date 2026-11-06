@@ -22,6 +22,30 @@ const leftAt = (path: string, y: number): number => {
   return left;
 };
 
+/**
+ * A closed outline's leftmost x on a row, through the points it passes
+ * through and not its curves' handles — which stand off the side wherever it
+ * turns, as a tiered skirt's does at each seam.
+ */
+const throughAt = (path: string, y: number): number => leftAt(`M${onCurve(path).map((p) => p.join(" ")).join(" L")}`, y);
+
+/** The points a path passes through, in order, without its curves' handles. */
+const onCurve = (path: string): [number, number][] => {
+  const pts: [number, number][] = [];
+  for (const [, cmd, args] of path.matchAll(/([MLCQ])([^MLCQZ]*)/g)) {
+    const n = (args.match(/-?[0-9]*[.]?[0-9]+/g) ?? []).map(Number);
+    const per = cmd === "C" ? 6 : cmd === "Q" ? 4 : 2;
+    for (let i = per - 2; i + 1 < n.length; i += per) pts.push([n[i], n[i + 1]]);
+  }
+  return pts;
+};
+
+/** A skirt's left side as it is cut: the points its outline passes through, from its top edge down to its hem's corner. */
+const leftSide = (path: string, hemY: number): [number, number][] => {
+  const pts = onCurve(path);
+  return pts.slice(0, pts.findIndex(([, y]) => y >= hemY - 0.01) + 1);
+};
+
 /** The points an outline passes through below the knee: its hem's, and the bottom of its sides. */
 const hemPoints = (path: string): [number, number][] => {
   const n = (path.match(/-?[0-9]*[.]?[0-9]+/g) ?? []).map(Number);
@@ -197,6 +221,54 @@ describe("skirts", () => {
     expect(besideArms({ shape: "pleated", length: "midi" })).toBe(true);
   });
 
+  it("cuts a tiered skirt on the A-line's line in three tiers, kinking out under half a centimetre at each seam, its hem waving under its lowest folds", () => {
+    for (const garment of ["dress", "skirt"] as const) {
+      for (const waist of garment === "dress" ? (["empire", "natural", "dropped"] as const) : (["natural"] as const)) {
+        for (const length of ["knee", "midi", "maxi"] as const) {
+          const name = `${garment}, ${waist}, ${length}`;
+          const cut = (shape: "tiered" | "aline") =>
+            garment === "dress" ? dressSkirt(undefined, { ...DRESS_DEFAULT, shape, length, waist }) : skirtFor(undefined, { ...SKIRT_DEFAULT, shape, length });
+          const [sk, aline] = [cut("tiered"), cut("aline")];
+          /* sewn on at a dress's seam, or at the foot of a skirt's band: three tiers, each longer than the one above */
+          const sewn = garment === "dress" ? seamAt(waist) : sk.waistY + 18;
+          expect(sk.tiers?.at, name).toHaveLength(2);
+          const [a, b] = sk.tiers!.at;
+          expect(a - sewn, name).toBeGreaterThan(0);
+          expect(b - a, name).toBeGreaterThan(a - sewn);
+          expect(HEM_AT[length] - b, name).toBeGreaterThan(b - a);
+          /* how far out of the A-line's line it stands, point by point down its side — the two are cut on the same rows: nothing above its first seam, never less lower down */
+          const [own, line] = [leftSide(sk.path, HEM_AT[length]), leftSide(aline.path, HEM_AT[length])];
+          expect(own.map(([, y]) => y), name).toEqual(line.map(([, y]) => y));
+          let last = 0;
+          own.forEach(([x, y], i) => {
+            const out = line[i][0] - x;
+            if (y <= a) expect(Math.abs(out), `${name}, y ${y}`).toBeLessThanOrEqual(0.05);
+            else expect(out, `${name}, y ${y}`).toBeGreaterThanOrEqual(last - 0.05);
+            last = out;
+          });
+          const off = (y: number) => throughAt(aline.path, y) - throughAt(sk.path, y);
+          /* and at each seam a kink, not a step: out by more than a millimetre and no more than half a centimetre */
+          for (const seam of [a, b]) {
+            const kink = (off(seam + 12) - off(seam - 2)) * BODY_CANVAS.cmPerUnit;
+            expect(kink, `${name}, seam at y ${seam}`).toBeGreaterThan(0.1);
+            expect(kink, `${name}, seam at y ${seam}`).toBeLessThanOrEqual(0.5);
+          }
+        }
+      }
+    }
+    /* its hem dips under each of its lowest tier's folds, softly */
+    const { waves } = fallOf("tiered");
+    const hem = dressSkirt(undefined, { ...DRESS_DEFAULT, shape: "tiered" });
+    const lowest = (x: number) => Math.max(...hemPoints(hem.path).filter(([px]) => Math.abs(px - x) < 5).map(([, y]) => y));
+    const across = (t: number) => hem.hemLeft[0] + (600 - 2 * hem.hemLeft[0]) * t;
+    for (const t of waves!) {
+      const dips = lowest(across(t)) - (HEM_AT.midi + 22 * Math.sin(Math.PI * t));
+      expect(dips, `fold at ${t.toFixed(2)}`).toBeGreaterThan(1.5);
+      expect(dips, `fold at ${t.toFixed(2)}`).toBeLessThan(3);
+    }
+    expect(besideArms({ shape: "tiered", length: "midi" })).toBe(true);
+  });
+
   it("draws a skirt in under a top it would show past, as under a jacket, and leaves one that does not as it is", () => {
     for (const [name, cover] of [
       ["blouse", BLOUSE_COVER({ type: "set-in", length: "long", cuff: "formal" })],
@@ -227,9 +299,9 @@ describe("skirts", () => {
 
   it("offers the shapes by name, in the picker's order, on the dress and the skirt alike", () => {
     for (const id of ["female-dress", "female-skirt"]) {
-      expect(skirtShapesFor(garmentById(id)!).map((s) => s.id), id).toEqual(["aline", "flared", "circle", "pencil", "pleated", "mermaid"]);
+      expect(skirtShapesFor(garmentById(id)!).map((s) => s.id), id).toEqual(["aline", "flared", "circle", "pencil", "pleated", "tiered", "mermaid"]);
     }
-    expect(skirtShapes.map((s) => s.name.ar)).toEqual(["A لاين", "نص كلوش", "كلوش", "قلم", "بليسيه", "سمكة"]);
+    expect(skirtShapes.map((s) => s.name.ar)).toEqual(["A لاين", "نص كلوش", "كلوش", "قلم", "بليسيه", "طبقات", "سمكة"]);
   });
 
   it("hides more of the leg the longer it is", () => {

@@ -906,19 +906,22 @@ function straightLine(edge, from, to, run, out) {
  * row — or `null` where it is close to her: hung from a seam above her waist,
  * the string from the seam to the hip (see `hungLine`); cut straight, an
  * A-line's line from where it leaves her (see `straightLine`); both,
- * whichever is further out.
+ * whichever is further out. A tiered skirt's tiers then stand out from that
+ * line below each of its seams, as `tiers` in `column` cuts them — see
+ * `tierOut` in `garments/fit.ts`.
  */
 function fallLine(edge, falls, profile, out) {
   const hung = falls.hung ? hungLine(edge, falls.from, profile.hipY, out) : null;
   /* a skirt's own run, an A-line's or a circle's — or a robe's slope, straight */
   const run = falls.run ?? (falls.slope !== undefined ? (a, b) => falls.slope * (b - a) : undefined);
   const straight = run ? straightLine(edge, falls.from, profile.hipY + 60, run, out) : null;
+  const step = falls.tiers ? FIT_KIT.tierOut(falls.tiers) : () => 0;
   return (y) => {
     const xs = [];
     if (hung && y >= falls.from) xs.push(hung(y));
     if (straight && y >= straight.at) xs.push(straight.line(y));
     if (xs.length === 0) return null;
-    return out < 0 ? Math.min(...xs) : Math.max(...xs);
+    return (out < 0 ? Math.min(...xs) : Math.max(...xs)) + out * step(y);
   };
 }
 
@@ -3919,6 +3922,7 @@ for (const bodyKey of Object.keys(bodies)) {
         changes, in `checkArmGap`, `checkStandOff` and `checkBareShoulders`.
       */
       const run = skirt ? fallRun(skirt.shape) : undefined;
+      const ownSkirt = skirt ? CUT_MODULES[garment.asset.front].skirtFor(undefined, skirt) : undefined;
       /*
         Or a robe — her abaya — whose body falls straight from under the arm
         to the ankle, as an A-line does from her waist: read the same way, its
@@ -3933,7 +3937,9 @@ for (const bodyKey of Object.keys(bodies)) {
               from: profile.waistY + WAIST_DROP[skirt.waist ?? "natural"],
               hung: hangs(skirt),
               ...(run !== undefined ? { run } : {}),
-              cloth: rasterize([CUT_MODULES[garment.asset.front].skirtFor(undefined, skirt).path]),
+              /* a tiered skirt's tiers, as its own cut sews them — see `fallLine` */
+              ...(ownSkirt.tiers ? { tiers: ownSkirt.tiers } : {}),
+              cloth: rasterize([ownSkirt.path]),
               /* a sleeve cut to swing free, or any sleeve beside a skirt wide enough to reach it, hangs in front of the skirt */
               swings:
                 LOOSE_SLEEVES.includes((sleeve ?? garment.sleeves?.default)?.type) ||

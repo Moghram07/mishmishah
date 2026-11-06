@@ -308,7 +308,7 @@ export interface SleeveChoice {
  * shapes for the skirt and for a dress's skirt alike: the two cut theirs from
  * the same parts.
  */
-export type SkirtShapeId = "aline" | "flared" | "circle" | "pencil" | "pleated" | "mermaid";
+export type SkirtShapeId = "aline" | "flared" | "circle" | "pencil" | "pleated" | "tiered" | "mermaid";
 
 /** Where a skirt's hem falls, measured on the leg. */
 export type SkirtLengthId = "knee" | "midi" | "maxi";

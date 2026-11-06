@@ -233,6 +233,13 @@ export const clothSurface = (
  * a cowl's, say. Raised, blurred and laid on the piece's own height, they bow
  * the weave a little along each fold, as cloth foreshortens over a crest and
  * into a trough. The repeat is moved, never resized.
+ *
+ * `gathers` are fine folds close together — a tiered skirt's, under each
+ * seam: shapes too, a narrow band round each. Blurred by `RIDGE_SOFT` they
+ * would melt into one band, and read across the piece's own long step they
+ * would cancel out, so they are a height field of their own — hardly blurred,
+ * its slope read across a step shorter than the space between them — added
+ * to the piece's slope, so the print bends a little along each gather.
  */
 /** How high a fold stands in the warp's height field, against the piece's own full height of 1. */
 const RIDGE_HEIGHT = 0.15;
@@ -242,6 +249,19 @@ const RIDGE_HEIGHT = 0.15;
  * apart, and a print tore into fragments along each crest.
  */
 const RIDGE_SOFT = 8;
+
+/** How soft a gather's sides are in its own height field, and across how short a step its slope is read. */
+const GATHER_SOFT = 1.2;
+const GATHER_STEP = 2;
+/**
+ * How much of the gathers' slope is added to the piece's: at a warp of 5,
+ * the weave moves half a unit to 0.7 — about a millimetre — each way across a
+ * gather, and nowhere 0.7 units further than a unit beside it (a test follows
+ * it across a row of gathers). Gathers 1 to 1.5 cm apart allow no more: at 1.5
+ * units each way the print turned back on itself between two of them, and its
+ * motifs tore into strips along every gather.
+ */
+const GATHER_GAIN = 0.25;
 
 /**
  * Fold shapes as an image a filter can read: white on nothing, at canvas size.
@@ -261,8 +281,9 @@ export const clothWarp = (
     scale = 5,
     gain = 3,
     ridges,
+    gathers,
     canvas = [600, 1000],
-  }: { blur?: number; scale?: number; gain?: number; ridges?: string; canvas?: readonly [number, number] } = {}
+  }: { blur?: number; scale?: number; gain?: number; ridges?: string; gathers?: string; canvas?: readonly [number, number] } = {}
 ): ReactNode => {
   // How far apart the height field is sampled to measure its slope. It has to
   // be of the same order as the blur: a 3×3 kernel across a field blurred by
@@ -318,12 +339,39 @@ export const clothWarp = (
       {/* (h − h shifted) is the slope, biased to 0.5 so the negative half lives */}
       <feComposite
         in="hrgb" in2="hx" operator="arithmetic"
-        k1="0" k2={ridges ? gain / (1 - RIDGE_HEIGHT) : gain} k3={ridges ? -gain / (1 - RIDGE_HEIGHT) : -gain} k4="0.5" result="gx"
+        k1="0" k2={ridges ? gain / (1 - RIDGE_HEIGHT) : gain} k3={ridges ? -gain / (1 - RIDGE_HEIGHT) : -gain} k4="0.5" result={gathers ? "own-gx" : "gx"}
       />
       <feComposite
         in="hrgb" in2="hy" operator="arithmetic"
-        k1="0" k2={ridges ? gain / (1 - RIDGE_HEIGHT) : gain} k3={ridges ? -gain / (1 - RIDGE_HEIGHT) : -gain} k4="0.5" result="gy"
+        k1="0" k2={ridges ? gain / (1 - RIDGE_HEIGHT) : gain} k3={ridges ? -gain / (1 - RIDGE_HEIGHT) : -gain} k4="0.5" result={gathers ? "own-gy" : "gy"}
       />
+      {gathers && (
+        <>
+          {/* the gathers' own height and slope, the same way, finer — then the two slopes added, about the one 0.5 bias */}
+          <feImage
+            href={ridgeImage(gathers, canvas)}
+            x="0"
+            y="0"
+            width={canvas[0]}
+            height={canvas[1]}
+            preserveAspectRatio="none"
+            result="gathers"
+          />
+          <feGaussianBlur in="gathers" stdDeviation={GATHER_SOFT} result="soft-gathers" />
+          <feColorMatrix
+            in="soft-gathers"
+            type="matrix"
+            values="0 0 0 1 0  0 0 0 1 0  0 0 0 1 0  0 0 0 0 1"
+            result="grgb"
+          />
+          <feOffset in="grgb" dx={-GATHER_STEP} dy="0" result="gax" />
+          <feOffset in="grgb" dx="0" dy={-GATHER_STEP} result="gay" />
+          <feComposite in="grgb" in2="gax" operator="arithmetic" k1="0" k2={GATHER_GAIN} k3={-GATHER_GAIN} k4="0.5" result="gather-gx" />
+          <feComposite in="grgb" in2="gay" operator="arithmetic" k1="0" k2={GATHER_GAIN} k3={-GATHER_GAIN} k4="0.5" result="gather-gy" />
+          <feComposite in="own-gx" in2="gather-gx" operator="arithmetic" k1="0" k2="1" k3="1" k4="-0.5" result="gx" />
+          <feComposite in="own-gy" in2="gather-gy" operator="arithmetic" k1="0" k2="1" k3="1" k4="-0.5" result="gy" />
+        </>
+      )}
       {/* across-slope into red, down-slope into green */}
       <feColorMatrix
         in="gx" type="matrix"

@@ -19,6 +19,7 @@ const SHAPE_NAMES: Record<SkirtShapeId, { en: string; ar: string }> = {
   circle: { en: "Circle", ar: "كلوش" },
   pencil: { en: "Pencil", ar: "قلم" },
   pleated: { en: "Pleated", ar: "بليسيه" },
+  tiered: { en: "Tiered", ar: "طبقات" },
   mermaid: { en: "Mermaid", ar: "سمكة" },
 };
 

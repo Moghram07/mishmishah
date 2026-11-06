@@ -1,6 +1,6 @@
 import { DRAPE, vertical } from "@/lib/garments/shading";
 import { line, type Pt, type Tuck } from "@/lib/garments/fit";
-import { circleFolds, foldDefs, foldLights, foldOpen, foldShadows, pleatFolds, rowSpan, skirtFolds } from "@/lib/garments/folds";
+import { circleFolds, foldDefs, foldLights, foldOpen, foldShadows, pleatFolds, rowSpan, skirtFolds, tierFolds, tierRidges, type TierSpec } from "@/lib/garments/folds";
 import { fallOf, sameSkirt, skirtKey } from "@/lib/garments/skirts";
 import type { SkirtChoice } from "@/types";
 import type { GarmentArt, RegionArt } from "../index";
@@ -54,25 +54,30 @@ const skirtRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, underTop
   const from = Math.max(out ? out.y : sk.leaves ?? HIP_Y, fall.from ?? 0);
   const across = rowSpan(sk.path, from) ?? [200, 400];
   const flare = across[0] - sk.hemLeft[0];
-  const folds = fall.waves
-    ? circleFolds({ seam: released, hem, hemDip, at: fall.waves, start: out ? 0 : 4, seed: 31 })
-    : fall.pleats
-      ? pleatFolds({ top: released, hem, hemDip, lines: fall.pleats })
-      : skirtFolds({
-          hip: [
-            [across[0] + (out ? 6 : 4), from],
-            [across[1] - (out ? 6 : 4), from],
-          ],
-          hem,
-          hemDip,
-          bandY: sk.waistY + (FINISH.band ?? 0),
-          at: fall.fitted && flare <= 0 ? [] : FOLD_AT,
-          seed: 31,
-          ...(fall.fitted ? { width: [1.4, 15 * foldOpen(flare)] as const } : {}),
-        });
+  /* a tiered skirt's tiers, each gathered into the seam above it — the first into its band, unless a hem hides that */
+  const tiers: TierSpec | undefined = sk.tiers && { path: sk.path, top: bandFoot, gathered: !out, seams: sk.tiers.at, hem, hemDip, at: fall.waves ?? [], seed: 31 };
+  const folds = tiers
+    ? tierFolds(tiers)
+    : fall.waves
+      ? circleFolds({ seam: released, hem, hemDip, at: fall.waves, start: out ? 0 : 4, seed: 31 })
+      : fall.pleats
+        ? pleatFolds({ top: released, hem, hemDip, lines: fall.pleats })
+        : skirtFolds({
+            hip: [
+              [across[0] + (out ? 6 : 4), from],
+              [across[1] - (out ? 6 : 4), from],
+            ],
+            hem,
+            hemDip,
+            bandY: sk.waistY + (FINISH.band ?? 0),
+            at: fall.fitted && flare <= 0 ? [] : FOLD_AT,
+            seed: 31,
+            ...(fall.fitted ? { width: [1.4, 15 * foldOpen(flare)] as const } : {}),
+          });
   return {
     focus: [300, 520],
-    surface: { blur: 20, relief: 5, warp: 5 },
+    /* a tiered skirt's print bends a little along its gathers */
+    surface: { blur: 20, relief: 5, warp: 5, ...(tiers ? { gathers: tierRidges(tiers) } : {}) },
     shape: (fill) => <path d={sk.path} fill={fill} />,
     defs: (uid) => (
       <>

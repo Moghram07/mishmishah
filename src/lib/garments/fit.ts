@@ -1783,6 +1783,32 @@ export function sideRun(slope: number, bow?: { top: number; plumb: number }): (f
   return (from, to) => at(to) - at(from);
 }
 
+/** A tiered skirt's tiers: the rows they are sewn together at, and how far out each stands from the one above. */
+export interface Tiers {
+  at: number[];
+  out: number;
+}
+
+/**
+ * Over how many rows below its seam a gathered tier stands out to its full
+ * step: about 1.1 cm, so the side kinks a little at each seam rather than
+ * stepping out.
+ */
+const TIER_RAMP = 6;
+
+/**
+ * How far out a tiered skirt's side has stepped by a row: nothing above its
+ * first seam, and below each seam one more `out`, reached smoothly over
+ * `TIER_RAMP` rows — the lower tier is cut fuller and gathered into the seam,
+ * so it is no wider than the tier above where they are sewn, and stands out
+ * as the gathers release below it.
+ */
+export const tierOut = (tiers: Tiers) => (y: number): number =>
+  tiers.at.reduce((sum, seam) => {
+    const u = Math.max(0, Math.min(1, (y - seam) / TIER_RAMP));
+    return sum + tiers.out * u * u * (3 - 2 * u);
+  }, 0);
+
 /**
  * A hem across pleats: each pleat's own run of hem, between the lines where
  * the pleats fold, drops evenly toward the centre front, where its fold lies
@@ -1961,6 +1987,11 @@ export function column(
      * and less and less below, hanging plumb from row `plumb` — see `sideRun`.
      */
     straight?: { slope: number; from: number; plumb?: number };
+    /**
+     * A tiered skirt's: the rows its tiers are sewn together at, and how far
+     * out each tier below one stands from the tier above it — see `tierOut`.
+     */
+    tiers?: Tiers;
     dip?: number;
     /** A waistband this deep, cut from the column's own edge. */
     band?: number;
@@ -1992,6 +2023,8 @@ export function column(
   bandStitch: string;
   /** Where a straight shape leaves her — see `straight` — for its folds to be released at. */
   leaves?: number;
+  /** A tiered skirt's tiers, as cut — see `tiers`. */
+  tiers?: Tiers;
 } {
   const d = draft(body);
   const { toY, ease, flare = 0, dip = 14 } = spec;
@@ -2081,6 +2114,12 @@ export function column(
       lined = shaped.map(([x, y], i) => (i <= k ? [x, y] : [kx - out(ky, y), y]) as Pt);
     }
   }
+  /* a tiered skirt's side, stepping out below each seam its tiers are sewn at */
+  const { tiers } = spec;
+  if (tiers) {
+    const step = tierOut(tiers);
+    lined = lined.map(([x, y]) => [x - step(y), y] as Pt);
+  }
   const side = tucked(lined, spec.inside);
   const hemLeft = side[side.length - 1];
   const waistLeft = side[0];
@@ -2106,7 +2145,7 @@ export function column(
   const { band, bandStitch } = spec.band
     ? waistband(side, fromY + spec.band)
     : { band: "", bandStitch: "" };
-  return { path, hemLeft, waistLeft, waistY: fromY, band, bandStitch, ...(leaves !== undefined ? { leaves } : {}) };
+  return { path, hemLeft, waistLeft, waistY: fromY, band, bandStitch, ...(leaves !== undefined ? { leaves } : {}), ...(tiers ? { tiers } : {}) };
 }
 
 /* --------------------------------------------------------- the neck opening */

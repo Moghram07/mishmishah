@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Pt } from "./fit";
 import type { Uid } from "./shading";
 import type { PuffShape } from "./sleeves";
+import { BODY_CANVAS } from "@/lib/mannequin/bodies";
 
 /**
  * Folds: the one way every garment here draws drape, gathers and darts.
@@ -623,6 +624,177 @@ export function skirtFolds(s: SkirtBodySpec): Fold[] {
  */
 export function circleFolds(s: Omit<HangingSpec, "count" | "width" | "shadow" | "light"> & { at: number[] }): Fold[] {
   return hangingFolds({ ...s, count: s.at.length, width: [1.5, 18], shadow: 0.75, light: 0.42 });
+}
+
+export interface TierSpec {
+  /** The skirt's outline, as cut. */
+  path: string;
+  /** The row it shows from — its seam, its band's foot, or a jacket's or a top's hem — and whether that is a seam it is gathered into. */
+  top: number;
+  gathered: boolean;
+  /** The rows its tiers are sewn together at, at the sides. */
+  seams: number[];
+  /** The hem, left and right, and how far it sags at the centre front. */
+  hem: readonly [Pt, Pt];
+  hemDip: number;
+  /** Where its lowest tier's folds reach the hem, across it from 0 to 1: where the hem waves — see `fallOf`. */
+  at: number[];
+  seed: number;
+}
+
+/*
+  A row across a tiered skirt, side to side, sagging at the centre front as its
+  hem does, in proportion to how far down the skirt it is: its point `t` of the
+  way across, `inset` in from each side.
+*/
+const tierRow = (s: TierSpec) => {
+  const hemY = s.hem[0][1];
+  return (y: number) => {
+    const [l, r] = rowSpan(s.path, y + 0.5) ?? [s.hem[0][0], s.hem[1][0]];
+    const sag = (s.hemDip * (y - s.top)) / Math.max(1, hemY - s.top);
+    return (t: number, inset = 0): Pt => [l + inset + (r - l - 2 * inset) * t, y + sag * Math.sin(Math.PI * t)];
+  };
+};
+
+/** A tiered skirt's seams, each right across it and sagging at the centre front as its hem does, the lower more. */
+export const tierSeams = (s: TierSpec): Pt[][] => {
+  const row = tierRow(s);
+  return s.seams.map((y) => {
+    const at = row(y);
+    return Array.from({ length: 13 }, (_, i) => at(i / 12, 1));
+  });
+};
+
+/**
+ * How far apart a tier's gathers are at its seam, in centimetres: 1.5 on the
+ * first, closer on each fuller tier below it, 1 on the third.
+ */
+const GATHER_APART = [1.5, 1.25, 1];
+/** How far down from its seam a gather runs before it relaxes into the tier's folds, in centimetres. */
+const GATHER_RUN = [5, 8];
+/** The seam's shadow, just under it where the tier below hangs from it: about 5 mm. */
+const TIER_SEAM_SHADOW = 2.6;
+
+/**
+ * A tiered skirt's gathers, tier by tier: many small ones close together
+ * right under each seam — under the first only where it is gathered into its
+ * seam or band, not under a hem that hides that — standing out for their
+ * first 5 to 8 cm and narrowing as they relax into the tier's folds. A lower
+ * tier is cut fuller, so it is wider and its gathers closer: more of them.
+ */
+export function tierGathers(s: TierSpec): Fold[][] {
+  const rnd = seeded(s.seed + 1);
+  const row = tierRow(s);
+  return [s.top, ...s.seams].map((top, k) => {
+    if (k === 0 && !s.gathered) return [];
+    const [l, r] = rowSpan(s.path, top + 0.5) ?? [s.hem[0][0], s.hem[1][0]];
+    const apart = GATHER_APART[Math.min(k, GATHER_APART.length - 1)] / BODY_CANVAS.cmPerUnit;
+    const count = Math.max(3, Math.round((r - l - 4) / apart));
+    const from = row(top);
+    return Array.from({ length: count }, (_, i): Fold => {
+      const t = (i + 0.5 + (rnd() - 0.5) * 0.5) / count;
+      const [x, y] = from(t, 2);
+      const run = lerp(GATHER_RUN[0], GATHER_RUN[1], rnd()) / BODY_CANVAS.cmPerUnit;
+      /* each its own: leaning a little either way, bowed, some deeper than others */
+      const lean = (rnd() - 0.5) * 2.4;
+      const bow = (rnd() - 0.5) * 1.6;
+      const strength = 0.6 + rnd() * 0.6;
+      return {
+        ridge: [[x, y], [x + lean * 0.4 + bow, y + run * 0.4], [x + lean, y + run]],
+        width: [1.5 + rnd(), 0.4],
+        shadow: 0.34 * strength,
+        light: 0.22 * strength,
+        soft: 1,
+      };
+    });
+  });
+}
+
+/**
+ * A tiered skirt's gathers as shapes a print bends along — see `clothWarp`'s
+ * `gathers`: a narrow band round each, narrowing as the gather relaxes. The
+ * print is moved, never resized.
+ */
+export const tierRidges = (s: TierSpec): string =>
+  tierGathers(s)
+    .flat()
+    .map(({ ridge, width }) => {
+      const n = ridge.length - 1;
+      const half = (i: number) => lerp(width[0], width[1], i / n) * 0.7;
+      const side = (k: number) => ridge.map(([x, y], i) => [x + k * half(i), y] as Pt);
+      return `M${[...side(-1), ...side(1).reverse()].map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(" L")} Z`;
+    })
+    .join(" ");
+
+/**
+ * A tiered skirt's folds, lit as one piece of cloth from its seam to its hem.
+ * Each tier is gathered into the seam above it — see `tierGathers` — and its
+ * gathers relax into fewer, longer, softer folds that open within the tier's
+ * first quarter and run on, hardly narrowing, to just short of the seam below:
+ * so no tier darkens toward its foot, or lightens, and starts again below it.
+ * The lower the tier, the more folds it has; the lowest's fall to the hem,
+ * where it waves (`at`). Each seam reads as a seam from across the room: a
+ * thin lit line, and a narrow soft shadow just under it, where the gathered
+ * tier hangs from it — see `tierSeams`.
+ *
+ * They were the same stiff pipe folds in every tier, widest at its foot, with
+ * a band of gathers and a seam fold under each seam: a stack of dark-footed
+ * bands rather than one skirt. Then, lit evenly, its seams and gathers were too
+ * fine to see on the whole figure, and it read as a plain A-line.
+ */
+export function tierFolds(s: TierSpec): Fold[] {
+  const rnd = seeded(s.seed);
+  const row = tierRow(s);
+  const tops = [s.top, ...s.seams];
+  const feet = [...s.seams, s.hem[0][1]];
+  const gathers = tierGathers(s);
+  const folds: Fold[] = gathers.flat();
+  tops.forEach((top, k) => {
+    const from = row(top);
+    const to = row(feet[k]);
+    const lowest = k === tops.length - 1;
+    const gathered = gathers[k].length > 0;
+    /* below the gathers, fewer, longer and softer folds, rising among their lower half where they relax into them */
+    const n = 7 + 2 * k;
+    const places = lowest ? s.at : Array.from({ length: n }, (_, i) => (i + 0.5 + (rnd() - 0.5) * 0.5) / n);
+    for (const t of places) {
+      const at = from(t, 5);
+      const begin: Pt = [at[0], at[1] + (gathered ? lerp(18, 30, rnd()) : 2)];
+      const sway = (rnd() - 0.5) * 5;
+      const w = (6 + 1.5 * k) * (0.7 + rnd() * 0.5);
+      const strength = 0.7 + rnd() * 0.4;
+      const soft = Math.max(2, w * 0.5);
+      if (lowest) {
+        /* the lowest tier's open to the hem, reaching it where it waves — past it, which the region trims */
+        const foot = along(s.hem[0], s.hem[1], t);
+        const end: Pt = [foot[0], foot[1] + s.hemDip * Math.sin(Math.PI * t) + 12];
+        folds.push({
+          ridge: [0, 0.33, 0.66, 1].map((u) => [lerp(begin[0], end[0], u) + sway * Math.sin(Math.PI * u), lerp(begin[1], end[1], u)] as Pt),
+          width: [0.8, w * 1.4],
+          shadow: 0.36 * strength,
+          light: 0.22 * strength,
+          soft,
+        });
+        continue;
+      }
+      /* any other tier's open within its first quarter, and run on, hardly narrowing, to just short of the seam below */
+      const foot = to(t, 4);
+      const end: Pt = [foot[0], foot[1] - 2 - rnd() * 3];
+      const p = (u: number): Pt => [lerp(begin[0], end[0], u) + sway * Math.sin(Math.PI * u), lerp(begin[1], end[1], u)];
+      folds.push(
+        { ridge: [p(0), p(0.12), p(0.25)], width: [0.5, w], shadow: 0.32 * strength, light: 0.2 * strength, soft },
+        { ridge: [p(0.25), p(0.62), p(1)], width: [w, w * 0.8], shadow: 0.32 * strength, light: 0.2 * strength, soft }
+      );
+    }
+  });
+  /* the seams: a thin lit line right across, and a narrow soft shadow just under it */
+  for (const seam of tierSeams(s)) {
+    folds.push(
+      { ridge: seam, width: [1, 1], shadow: 0, light: 0.4, soft: 1 },
+      { ridge: seam, width: [TIER_SEAM_SHADOW, TIER_SEAM_SHADOW], shadow: 0.5, light: 0, soft: 1 }
+    );
+  }
+  return folds;
 }
 
 export interface PleatSpec {

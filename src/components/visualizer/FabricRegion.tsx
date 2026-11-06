@@ -79,9 +79,10 @@ export interface RegionDrawing {
    * the edge of a cushion. Below the underarm a sleeve hangs clear of the body,
    * so it still turns as its own tube there.
    *
-   * `ridges` are folds the weave is bent along — see `clothWarp`.
+   * `ridges` are folds the weave is bent along — see `clothWarp` — and
+   * `gathers` fine folds close together, which it bends along each.
    */
-  surface?: { blur?: number; relief?: number; warp?: number; joined?: boolean; ridges?: string };
+  surface?: { blur?: number; relief?: number; warp?: number; joined?: boolean; ridges?: string; gathers?: string };
   /**
    * The outline drawn round each piece, when it is not the whole outline: one
    * element per piece, in the order `shape` draws them, each an open line along
@@ -340,6 +341,7 @@ export function FabricRegion({
             blur: drawing.surface.blur,
             scale: drawing.surface.warp,
             ridges: drawing.surface.ridges,
+            gathers: drawing.surface.gathers,
             canvas,
           })}
         {(beneath || over) && (

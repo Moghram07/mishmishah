@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { describe, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -1822,6 +1822,177 @@ describe("the circle and the pleated skirt, light and dark", () => {
     writeFileSync(
       `.preview/wardrobe/styles8-circle-pleated-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});
+
+/**
+ * The tiered skirt, on a light page and a dark one, close up where it is its
+ * own: gathered into its seam or its band, each tier gathered into the seam
+ * above it and stepping out at the side there, and its hem — on the dress and
+ * on the skirt, in a plain cloth and a print. Then her wrist beside it in
+ * three long sleeves, hanging in front of it; under her jacket, whole and
+ * with the cuff close up; under a blouse; and at an empire waist, maxi.
+ */
+describe("the tiered skirt, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; ids: string[]; skirted: string; skirt: Partial<{ shape: SkirtShapeId; length: SkirtLengthId; waist: WaistId }>; sleeve?: SleeveChoice; cloth: string; zoom: number; focus: [number, number] };
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  const DRESS = ["female-dress"];
+  const SKIRT = ["female-blouse", "female-skirt"];
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles9-tiered-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const d = draft("female");
+    const wrist: [number, number] = [(d.armOutAt(d.wristY, 0) + d.armInAt(d.wristY, 0)) / 2 + 10, d.wristY];
+    const stage = (tile: Tile) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of tile.ids) {
+        const g = garmentById(gid)!;
+        /* the skirted garment in the cloth being shown, anything over or under it in others */
+        const cloth = gid === tile.skirted ? f(tile.cloth) : gid.endsWith("jacket") ? f("fb-indigo-plaid") : f("fb-rose-silk");
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      if (tile.sleeve) worn = setSleeve(worn, tile.ids[0], tile.sleeve);
+      worn = worn.map((w) => {
+        const skirt = w.garmentId === tile.skirted ? skirtOf(w) : undefined;
+        return skirt ? { ...w, skirt: { ...skirt, ...tile.skirt } } : w;
+      });
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={tile.zoom} focus={tile.focus} />;
+    };
+    const TIERED = { shape: "tiered", length: "midi" } as const;
+    /* on the dress and on the skirt: whole, where it is sewn on, its first tier's seam at the side, and its hem, each close up */
+    const closeUps = (cloth: string, kind: string): Tile[] =>
+      [
+        ["dress", DRESS, "female-dress", 380, 476] as const,
+        ["skirt", SKIRT, "female-skirt", 400, 495] as const,
+      ].flatMap(([name, ids, skirted, top, seam]) => [
+        { caption: `${name}, tiered, midi, ${kind}`, ids, skirted, skirt: TIERED, cloth, zoom: 1, focus: [300, 500] },
+        { caption: `${name}, tiered, from the ${name === "dress" ? "seam" : "band"} 2.4×`, ids, skirted, skirt: TIERED, cloth, zoom: 2.4, focus: [300, top] },
+        { caption: `${name}, tiered, a tier's seam 2.4×`, ids, skirted, skirt: TIERED, cloth, zoom: 2.4, focus: [200, seam] },
+        { caption: `${name}, tiered, the hem 2.4×`, ids, skirted, skirt: TIERED, cloth, zoom: 2.4, focus: [220, 745] },
+      ]);
+    const LONG: SleeveChoice[] = [
+      { type: "set-in", length: "long" },
+      { type: "bell", length: "long" },
+      { type: "dolman", length: "long" },
+    ];
+    const UNDER = ["female-jacket"];
+    const rows: Tile[][] = [
+      closeUps(PLAIN, "plain"),
+      closeUps(PRINT, "print"),
+      [
+        /* her wrist beside it, in three long sleeves, hanging in front of it */
+        ...LONG.map((sleeve): Tile => ({
+          caption: `tiered, ${sleeve.type} long, plain, the wrist 2.4×`, ids: DRESS, skirted: "female-dress", skirt: { shape: "tiered" }, sleeve, cloth: PLAIN, zoom: 2.4, focus: wrist,
+        })),
+        /* under her jacket: whole, and the cuff close up */
+        { caption: "dress under the jacket, tiered, plain", ids: [...DRESS, ...UNDER], skirted: "female-dress", skirt: { shape: "tiered" }, sleeve: { type: "set-in", length: "long" }, cloth: PLAIN, zoom: 1, focus: [300, 500] },
+        { caption: "skirt under the jacket, tiered, midi, print", ids: [...SKIRT, ...UNDER], skirted: "female-skirt", skirt: TIERED, sleeve: { type: "set-in", length: "long" }, cloth: PRINT, zoom: 1, focus: [300, 500] },
+        { caption: "dress under the jacket, tiered, the cuff 2.4×", ids: [...DRESS, ...UNDER], skirted: "female-dress", skirt: { shape: "tiered" }, sleeve: { type: "set-in", length: "long" }, cloth: PLAIN, zoom: 2.4, focus: wrist },
+        /* a blouse over it, at maxi; and the dress at an empire waist, maxi, in long sleeves */
+        { caption: "blouse over tiered, maxi, print", ids: SKIRT, skirted: "female-skirt", skirt: { shape: "tiered", length: "maxi" }, cloth: PRINT, zoom: 1, focus: [300, 500] },
+        { caption: "dress, empire waist, tiered, maxi, long sleeves, print", ids: DRESS, skirted: "female-dress", skirt: { shape: "tiered", length: "maxi", waist: "empire" }, sleeve: { type: "set-in", length: "long" }, cloth: PRINT, zoom: 1, focus: [300, 500] },
+      ],
+    ];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles9-tiered-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+
+  /*
+    Every waist and every length, on the dress and on the skirt under a
+    blouse, in a plain cloth in the sleeve it arrives in and in a print in
+    long sleeves: one row each, its three lengths whole, then a tier's seam
+    and the hem close up at midi.
+  */
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles9-tiered-all-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const LONG: SleeveChoice = { type: "set-in", length: "long" };
+    const stage = (ids: string[], skirted: string, skirt: Partial<{ shape: SkirtShapeId; length: SkirtLengthId; waist: WaistId }>, cloth: string, sleeve: SleeveChoice | null, zoom: number, focus: [number, number]) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of ids) {
+        const g = garmentById(gid)!;
+        const c = gid === skirted ? f(cloth) : f("fb-rose-silk");
+        worn = wear(worn, cutFrom(g, c.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: c };
+        for (const r of g.fabricRegions) regions[r] = c;
+        by[gid] = regions;
+      }
+      if (sleeve) worn = setSleeve(worn, ids[0], sleeve);
+      worn = worn.map((w) => {
+        const own = w.garmentId === skirted ? skirtOf(w) : undefined;
+        return own ? { ...w, skirt: { ...own, ...skirt } } : w;
+      });
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={zoom} focus={focus} />;
+    };
+    const looks = [
+      ...(["empire", "natural", "dropped"] as const).map((waist) => ({ name: `dress, ${waist} waist`, ids: DRESS, skirted: "female-dress", waist: waist as WaistId | undefined, seam: 476 })),
+      { name: "skirt", ids: SKIRT, skirted: "female-skirt", waist: undefined, seam: 495 },
+    ];
+    const rows = looks.flatMap((look) =>
+      (
+        [
+          [PLAIN, "plain", null],
+          [PRINT, "print, long sleeves", LONG],
+        ] as const
+      ).map(([cloth, kind, sleeve]) => {
+        const skirt = (length: SkirtLengthId) => ({ shape: "tiered" as const, length, ...(look.waist ? { waist: look.waist } : {}) });
+        const tiles: [string, ReactNode][] = [
+          ...(["knee", "midi", "maxi"] as const).map((length): [string, ReactNode] => [`${look.name}, tiered, ${length}, ${kind}`, stage(look.ids, look.skirted, skirt(length), cloth, sleeve, 1, [300, 500])]),
+          [`${look.name}, tiered, midi, ${kind}, a tier's seam 2.4×`, stage(look.ids, look.skirted, skirt("midi"), cloth, sleeve, 2.4, [235, look.seam])],
+          [`${look.name}, tiered, midi, ${kind}, the hem 2.4×`, stage(look.ids, look.skirted, skirt("midi"), cloth, sleeve, 2.4, [235, 745])],
+        ];
+        return (
+          <div key={`${look.name}-${kind}`} className="row">
+            {tiles.map(([caption, node]) => (
+              <figure key={caption}>
+                {node}
+                <figcaption>{caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        );
+      })
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles9-tiered-all-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
     );
   });
 });

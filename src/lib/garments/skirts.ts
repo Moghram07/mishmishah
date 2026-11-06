@@ -51,12 +51,22 @@ export interface SkirtFinish {
  * - **Pleated** is an A-line pressed into pleats: its outline the A-line's,
  *   and across it, pleat lines from the seam to the hem — 14 pleats across
  *   the front — where its hem steps a little at each (`pleats`).
+ * - **Tiered** is three tiers sewn one under another, each cut fuller than
+ *   the one above and gathered into the seam: one flowing line from where it
+ *   leaves her to its hem, the A-line's, kinking out only a little at each
+ *   seam — 2.4 units, under half a centimetre — as the tier under it is
+ *   gathered fuller (`tiers`). It was a 10-unit step at each, which read as
+ *   a stack of steps rather than a dress. The seams are 30 and 62 in every
+ *   100 of the way from its seam to its hem, so it has three tiers at every
+ *   length, each a little longer than the one above. Its hem waves softly
+ *   where its lowest tier's folds reach it (`waves`).
  *
  * And how each falls: `dip` is its share of its garment's hem's sag — a
  * narrow hem sags less at the front. A `fitted` shape is darted to her
  * rather than gathered: a dress's skirt in it is not gathered into the seam.
  * A circle and a pleated skirt are neither: a circle is cut to fit the waist
- * as it is, and a pleated skirt's pleats take it in.
+ * as it is, and a pleated skirt's pleats take it in. A tiered skirt is
+ * gathered, at its seam and at each of its tiers'.
  *
  * `lengths` are the lengths a shape is cut at, where not every one: a
  * mermaid's flare opens above the knee, so it is cut at midi and maxi only.
@@ -72,10 +82,12 @@ interface ShapeCut {
   dip?: number;
   fitted?: boolean;
   wide?: boolean;
-  /** Its folds' count across it, and how deep and how wide its hem waves under each. */
+  /** Its folds' count across it — a tiered skirt's lowest tier's — and how deep and how wide its hem waves under each. */
   waves?: { count: number; depth: number; width: number };
   /** How many pleats across the front, and how far its hem steps down to each one's fold. */
   pleats?: { count: number; step: number };
+  /** Where its tiers are sewn together, as shares of the way from its seam to its hem, and how far out each steps. */
+  tiers?: { at: readonly number[]; out: number };
   lengths?: readonly SkirtLengthId[];
 }
 const SHAPES: Record<SkirtShapeId, ShapeCut> = {
@@ -84,11 +96,12 @@ const SHAPES: Record<SkirtShapeId, ShapeCut> = {
   circle: { flare: 0, flareTo: 760, straight: 0.55, plumb: 890, wide: true, waves: { count: 11, depth: 6, width: 11 } },
   pencil: { flare: 0, flareTo: 760, taper: 0.04, dip: 0.5, fitted: true },
   pleated: { flare: 0, flareTo: 760, straight: 0.22, wide: true, pleats: { count: 14, step: 1.6 } },
+  tiered: { flare: 0, flareTo: 760, straight: 0.22, wide: true, tiers: { at: [0.3, 0.62], out: 2.4 }, waves: { count: 13, depth: 2.5, width: 9 } },
   mermaid: { flare: 75, flareFrom: 650, flareTo: 890, curve: 1.3, dip: 0.75, fitted: true, lengths: ["midi", "maxi"] },
 };
 
 /** The shapes, in the order the picker offers them. */
-export const SKIRT_SHAPES: readonly SkirtShapeId[] = ["aline", "flared", "circle", "pencil", "pleated", "mermaid"];
+export const SKIRT_SHAPES: readonly SkirtShapeId[] = ["aline", "flared", "circle", "pencil", "pleated", "tiered", "mermaid"];
 
 /** The seed a circle's folds are placed by — see `foldPlaces` — so its hem and its folds agree. */
 const WAVE_SEED = 41;
@@ -124,8 +137,9 @@ export function cutAs(skirt: SkirtChoice, offered: readonly SkirtLengthId[]): Sk
  * lower than the hip — where it starts to flare, a mermaid's above the knee —
  * its share of its garment's hem sag, and whether it is fitted rather than
  * gathered. A circle's folds fall from its seam at `waves`, where its hem
- * waves under them; a pleated skirt has its `pleats`' lines across it, 0 to 1,
- * where its hem steps. See `ShapeCut`.
+ * waves under them, and so do a tiered skirt's lowest tier's, from the seam
+ * above it; a pleated skirt has its `pleats`' lines across it, 0 to 1, where
+ * its hem steps. See `ShapeCut`.
  */
 export const fallOf = (
   shape: SkirtShapeId
@@ -223,13 +237,16 @@ export const sameSkirt = (a: SkirtChoice, b: SkirtChoice): boolean => skirtKey(a
  * from a seam above her waist it hangs — see `column`'s `hang`.
  */
 export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck): CutSkirt {
-  const { flare, flareTo, flareFrom, curve, taper, straight, plumb, dip = 1, waves, pleats } = SHAPES[skirt.shape];
+  const { flare, flareTo, flareFrom, curve, taper, straight, plumb, dip = 1, waves, pleats, tiers } = SHAPES[skirt.shape];
   const fall = fallOf(skirt.shape);
   const drop = WAIST_DROP[skirt.waist ?? "natural"];
+  /* a tiered skirt's seams, on its own rows: shares of the way from where it is sewn on — a dress's seam, a skirt's band — to its hem */
+  const sewn = draft("female").waistY + drop + Math.max(0, finish.rise) + (finish.band ?? 0);
+  const toY = HEM_AT[skirt.length];
   return column("female", {
     rise: finish.rise + drop,
     ...(hangs(skirt) ? { hang: drop } : {}),
-    toY: HEM_AT[skirt.length],
+    toY,
     ease: finish.ease,
     flare,
     flareTo,
@@ -243,6 +260,7 @@ export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck)
     ...(straight !== undefined
       ? { straight: { slope: straight, from: Math.max(0, drop) + Math.max(0, finish.rise), ...(plumb !== undefined ? { plumb } : {}) } }
       : {}),
+    ...(tiers ? { tiers: { at: tiers.at.map((t) => sewn + (toY - sewn) * t), out: tiers.out } } : {}),
     dip: finish.dip * dip,
     ...(finish.band ? { band: finish.band } : {}),
     /*

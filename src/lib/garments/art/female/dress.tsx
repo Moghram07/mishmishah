@@ -14,7 +14,10 @@ import {
   puffDrape,
   rowSpan,
   sleeveDrape,
+  tierFolds,
+  tierRidges,
   type Fold,
+  type TierSpec,
 } from "@/lib/garments/folds";
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
@@ -66,6 +69,27 @@ const seamOf = (skirt: SkirtChoice): readonly [Pt, Pt] => {
   ];
 };
 /**
+ * A tiered skirt's tiers, as its folds and its print's bend along its gathers
+ * read them: from its seam, or from a jacket's hem it comes out under, where
+ * it is not gathered — see `tierFolds`.
+ */
+const tiersOf = (inside: Tuck | undefined, skirt: SkirtChoice): TierSpec | undefined => {
+  const sk = skirtFor(inside, skirt);
+  if (!sk.tiers) return undefined;
+  const fall = fallOf(skirt.shape);
+  return {
+    path: sk.path,
+    top: inside ? inside.y : seamAt(skirt.waist),
+    gathered: !inside,
+    seams: sk.tiers.at,
+    hem: [sk.hemLeft, [600 - sk.hemLeft[0], sk.hemLeft[1]]],
+    hemDip: 22 * fall.dip,
+    at: fall.waves ?? [],
+    seed: 7,
+  };
+};
+
+/**
  * The skirt's folds, from the waist — or, under a jacket, from the jacket's
  * hem, where the skirt comes out, so they follow the outline it has there.
  */
@@ -97,6 +121,13 @@ const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] =
         [600 - inside.x - 6, inside.y],
       ]
     : seam;
+  /*
+    A tiered skirt is gathered into its seam, and each tier into the seam
+    above it, its lowest tier's folds falling to the hem where it waves —
+    see `tierFolds`.
+  */
+  const tiers = tiersOf(inside, skirt);
+  if (tiers) return tierFolds(tiers);
   /*
     A circle is neither gathered nor darted — cut as a circle, it fits the
     waist as it is — and its cloth falls from the seam in deep folds, more of
@@ -876,10 +907,17 @@ const waistSeam = (sk: CutSkirt): Fold[] => [
 const bottomRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, under: string[] = []): RegionArt => {
   const sk = skirtFor(inside, skirt);
   const folds = [...(inside || !sameSkirt(skirt, DEFAULT_SKIRT) ? skirtFolds(inside, skirt) : SKIRT_FOLDS), ...waistSeam(sk)];
+  const tiers = tiersOf(inside, skirt);
   return {
     ...(under.length ? { under } : {}),
     focus: [300, 580],
-    surface: { blur: 16, relief: 5, warp: 5 },
+    surface: {
+      blur: 16,
+      relief: 5,
+      warp: 5,
+      /* a tiered skirt's print bends a little along its gathers */
+      ...(tiers ? { gathers: tierRidges(tiers) } : {}),
+    },
     shape: (fill) => <path d={sk.path} fill={fill} />,
     /* its outline, but for its top: the waist seam */
     edge: () => <path d={offRow(sk.path, sk.waistY)} fill="none" />,

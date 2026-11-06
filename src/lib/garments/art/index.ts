@@ -123,7 +123,7 @@ export interface RegionArt {
    * Replaces the bounding-box gradients, which could not describe a surface.
    * `joined` lights the pieces as one surface — see `RegionDrawing`.
    */
-  surface?: { blur?: number; relief?: number; warp?: number; joined?: boolean; ridges?: string };
+  surface?: { blur?: number; relief?: number; warp?: number; joined?: boolean; ridges?: string; gathers?: string };
   /**
    * Cloth of this region that lies over the garment's other regions — a wrap
    * bodice's tie, hanging over the skirt. Drawn in the same fabric, after
