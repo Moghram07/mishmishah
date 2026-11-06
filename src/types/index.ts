@@ -324,6 +324,9 @@ export interface SkirtChoice {
   waist?: WaistId;
 }
 
+/** How a trouser leg is cut below the hip — see `lib/garments/legs.ts`. */
+export type LegId = "straight" | "slim" | "wide";
+
 /** How a robe is worn at the front — her abaya: hanging open, or closed down the centre. */
 export type FrontId = "open" | "closed";
 
@@ -535,6 +538,8 @@ export interface Garment {
    * arrives. Absent, its front is part of its drawing.
    */
   fronts?: { offered: FrontId[]; default: FrontId };
+  /** The legs a pair of trousers can be cut with, and the one it arrives in. Absent, it has no choice of leg. */
+  legs?: { offered: LegId[]; default: LegId };
   /** Which drawing to use, per view. Ids resolved by `lib/garments/art`. */
   asset: ViewAssets;
 }
@@ -720,6 +725,8 @@ export interface WornGarment {
   skirt?: SkirtChoice;
   /** How it is worn at the front, if it can be worn open or closed and one was chosen. */
   front?: FrontId;
+  /** Its legs, if it is a pair of trousers that takes a choice of them and one was made. */
+  leg?: LegId;
   /**
    * The collar sewn to it, if it accepts one and one was chosen. It belongs to
    * the garment rather than to the outfit, because that is where a collar is:

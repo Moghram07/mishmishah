@@ -24,6 +24,7 @@ import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
 import { collarsForGarment } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
+import { legsFor } from "@/lib/data/legs";
 import { frontsFor } from "@/lib/data/fronts";
 import {
   sleeveCuffById,
@@ -56,6 +57,8 @@ import {
   setFront,
   setNeckline,
   setSkirt,
+  setLeg,
+  legOf,
   setSleeve,
   skirtOf,
   sleeveOf,
@@ -87,6 +90,7 @@ import type {
   Outfit,
   ProductKind,
   SkirtChoice,
+  LegId,
   SleeveChoice,
   StitchId,
 } from "@/types";
@@ -392,6 +396,12 @@ export function FabricVisualizer() {
     setOutfit((o) => ({ ...o, worn: setSkirt(o.worn, cuttingGarment.id, { ...current, ...next }) }));
   };
 
+  /** Recut the legs of the trousers being cut — resolved when read, see `legOf`. */
+  const chooseLeg = (leg: LegId) => {
+    if (!cuttingGarment) return;
+    setOutfit((o) => ({ ...o, worn: setLeg(o.worn, cuttingGarment.id, leg) }));
+  };
+
   /** Wear the garment being cut open or closed at the front — resolved when read, see `frontOf`. */
   const chooseFront = (front: FrontId) => {
     if (!cuttingGarment) return;
@@ -645,6 +655,11 @@ export function FabricVisualizer() {
     (skirtShapeChoices.length > 1 || skirtLengthChoices.length > 1 || waistChoices.length > 1) &&
     (onBottom || !cuttingGarment?.fabricRegions.includes("bottom"));
 
+  /* how a pair of trousers' legs are cut: straight, slim or wide */
+  const legChoices = cuttingGarment ? legsFor(cuttingGarment) : [];
+  const wornLeg = cuttingEntry ? legOf(cuttingEntry.worn) : undefined;
+  const showLeg = subject === "wardrobe" && legChoices.length > 1 && wornLeg !== undefined;
+
   /* how a robe is worn at the front, her abaya's: open or closed */
   const frontChoices = cuttingGarment ? frontsFor(cuttingGarment) : [];
   const wornFront = cuttingEntry ? frontOf(cuttingEntry.worn) : undefined;
@@ -662,6 +677,11 @@ export function FabricVisualizer() {
     if (!isOpen || !showSkirt) return;
     skirtOptions.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [isOpen, showSkirt, cutting.garmentId, cutting.region]);
+  const legOptions = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isOpen || !showLeg) return;
+    legOptions.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [isOpen, showLeg, cutting.garmentId]);
   const frontOptions = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!isOpen || !showFront) return;
@@ -685,6 +705,14 @@ export function FabricVisualizer() {
       (shape) =>
         art?.silhouette?.({ neckline: necklineOf(w)?.cut, sleeve: sleeveOf(w), skirt: cutAs({ ...wornSkirt, shape: shape.id }, lengths) }) ?? []
     );
+    return { pieces, box: boxAround(pieces) };
+  })();
+
+  /* each leg's icon: the trousers cut to it, all framed alike, so a slimmer or a wider one looks it */
+  const legIcons = (() => {
+    if (!showLeg || !cuttingGarment) return null;
+    const art = garmentArt(cuttingGarment.asset.front);
+    const pieces = legChoices.map((leg) => art?.silhouette?.({ leg: leg.id }) ?? []);
     return { pieces, box: boxAround(pieces) };
   })();
 
@@ -1198,6 +1226,36 @@ export function FabricVisualizer() {
                       {pick(f.name)}
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* a pair of trousers' legs: a row of them cut to each */}
+            {legIcons && wornLeg && (
+              <div ref={legOptions} className="scroll-my-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("viz.leg")}
+                </p>
+                <div role="group" aria-label={t("viz.leg")} className="flex gap-2 overflow-x-auto pb-1">
+                  {legChoices.map((leg, i) => {
+                    const on = wornLeg === leg.id;
+                    return (
+                      <button
+                        key={leg.id}
+                        onClick={() => chooseLeg(leg.id)}
+                        aria-pressed={on}
+                        className={cn(
+                          "btn-focus flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-2 pb-2 pt-2.5 text-xs font-semibold transition-all",
+                          on
+                            ? "border-apricot-500 bg-apricot-500/10 text-foreground"
+                            : "border-border bg-card text-muted-foreground hover:border-apricot-400"
+                        )}
+                      >
+                        <Silhouette pieces={legIcons.pieces[i]} box={legIcons.box} className={cn("h-16 w-full", on && "text-apricot-500")} />
+                        {pick(leg.name)}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -6,6 +6,7 @@ import type {
   FrontId,
   Garment,
   GarmentLayer,
+  LegId,
   Neckline,
   OpeningShape,
   Outfit,
@@ -212,6 +213,23 @@ export function frontOf(worn: WornGarment): FrontId | undefined {
   if (!garment?.fronts) return undefined;
   const wanted = worn.front ?? garment.fronts.default;
   return garment.fronts.offered.includes(wanted) ? wanted : garment.fronts.default;
+}
+
+/**
+ * How a worn pair of trousers' legs are cut, resolved against what it offers.
+ * `undefined` when it has no choice of leg; anything it does not offer falls
+ * back to how it arrives.
+ */
+export function legOf(worn: WornGarment): LegId | undefined {
+  const garment = garmentById(worn.garmentId);
+  if (!garment?.legs) return undefined;
+  const wanted = worn.leg ?? garment.legs.default;
+  return garment.legs.offered.includes(wanted) ? wanted : garment.legs.default;
+}
+
+/** Recut a worn pair of trousers' legs. The choice is resolved when it is read. */
+export function setLeg(worn: WornGarment[], garmentId: string, leg: LegId): WornGarment[] {
+  return worn.map((w) => (w.garmentId === garmentId ? { ...w, leg } : w));
 }
 
 /** Wear a garment open or closed at the front. The choice is resolved when it is read. */
@@ -558,7 +576,9 @@ function recut(worn: WornGarment, garment: Garment): WornGarment {
   const sleeve =
     garment.sleeves &&
     sleeveOf({ ...cut, sleeve: sleeveOf(worn) ?? garment.sleeves.default });
-  return sleeve ? { ...cut, sleeve } : cut;
+  /* the same leg, where the counterpart offers it — a pair of trousers' */
+  const leg = garment.legs && legOf({ ...cut, leg: legOf(worn) ?? garment.legs.default });
+  return { ...cut, ...(sleeve ? { sleeve } : {}), ...(leg ? { leg } : {}) };
 }
 
 /**

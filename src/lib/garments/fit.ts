@@ -1191,6 +1191,14 @@ export interface LegsSpec {
   fly?: { length: number; width: number; on: "left" | "right" };
   /** How far below the band, in centimetres, a slanted pocket's opening reaches the side seam. */
   pocket?: number;
+  /**
+   * A leg cut other than straight — see `LEGS` in `garments/legs.ts` and
+   * `hungLeg`: `slim`, the ease its hem is cut to round the ankle, coming in
+   * to it from the knee; `wide`, how much wider than at the top of the thigh
+   * its hem is, as a share, the leg as wide all the way down. Absent, a
+   * straight leg.
+   */
+  leg?: { slim?: number; wide?: number };
 }
 
 export interface Legs {
@@ -1311,7 +1319,7 @@ export function trousers(body: BodyType, spec: LegsSpec): Legs {
       : []),
   ];
   /* below the crotch each leg hangs from the thigh — see `hungLeg` */
-  const hung = hungLeg(d, { from: d.crotchY, to: hemY, legEase, cuffEase, innerEase });
+  const hung = hungLeg(d, { from: d.crotchY, to: hemY, legEase, cuffEase, innerEase, ...(spec.leg ? { leg: spec.leg } : {}) });
   const out = hung.out;
   /*
     The outside of a leg hangs; the inside follows the leg. A trouser leg is a
@@ -1653,7 +1661,7 @@ const HEM_ROWS = 30;
  */
 function hungLeg(
   d: Draft,
-  s: { from: number; to: number; legEase: number; cuffEase: number; innerEase: number }
+  s: { from: number; to: number; legEase: number; cuffEase: number; innerEase: number; leg?: { slim?: number; wide?: number } }
 ): { out: Pt[]; inner: Pt[] } {
   const ys: number[] = [];
   for (let y = s.from; y < s.to; y += 6) ys.push(y);
@@ -1729,7 +1737,52 @@ function hungLeg(
     const x = Math.min(CENTER, Math.max(inNeed(y), hangs(y) + steady[i] / 2));
     return [x > CENTER - LEGS_TOUCH ? CENTER : x, y] as Pt;
   });
+  if (s.leg?.wide !== undefined) return { out: wideLeg(out, inner, s.leg.wide, t), inner };
+  if (s.leg?.slim !== undefined) return slimLeg(d, ys, knee, out, inner, s.leg.slim, inNeed);
   return { out, inner };
+}
+
+/**
+ * A wide leg: as wide all the way down as it is at the top of the thigh, where
+ * it leaves her hip — and a little wider still at the hem, `grow` of that
+ * width — hung from its inseam, which stays where a straight leg's is, so the
+ * legs stay apart and the width all goes outward. On her, whose legs come in
+ * toward feet that are together, it falls nearly plumb from the hip; on him,
+ * whose feet stand apart, it leans out with his legs, as wide a tube as at the
+ * thigh. Never inside the straight leg's outside.
+ */
+function wideLeg(out: Pt[], inner: Pt[], grow: number, t: (y: number) => number): Pt[] {
+  const top = inner[0][0] - out[0][0];
+  return out.map(([x, y], i) => [Math.min(x, inner[i][0] - top * (1 + grow * t(y))), y] as Pt);
+}
+
+/**
+ * A slim leg: straight to the knee, then each edge on a straight line in to
+ * the ankle, `ease` off it at the hem — the inseam to the inside of the ankle,
+ * never closer to it than its own ease — pushed out wherever the leg below the
+ * knee needs more, a calf wider than the line, and never wider than the
+ * straight leg. A taper, not a pair of leggings: between the knee and the hem
+ * it follows the leg only where the leg would come through it.
+ */
+function slimLeg(
+  d: Draft,
+  ys: number[],
+  knee: number,
+  out: Pt[],
+  inner: Pt[],
+  ease: number,
+  inNeed: (y: number) => number
+): { out: Pt[]; inner: Pt[] } {
+  const k = Math.max(0, ys.findIndex((y) => y >= knee));
+  const n = ys.length - 1;
+  const hemY = ys[n];
+  const [ko, ki] = [out[k][0], inner[k][0]];
+  const [ho, hi] = [d.legOutAt(hemY, ease), Math.max(inNeed(hemY), d.legInAt(hemY, ease))];
+  const u = (y: number) => (y - ys[k]) / (hemY - ys[k] || 1);
+  return {
+    out: out.map(([x, y], i) => (i <= k ? [x, y] : [Math.max(x, Math.min(ko + (ho - ko) * u(y), d.legOutAt(y, ease))), y]) as Pt),
+    inner: inner.map(([x, y], i) => (i <= k ? [x, y] : [Math.min(x, Math.max(ki + (hi - ki) * u(y), inNeed(y))), y]) as Pt),
+  };
 }
 
 /**

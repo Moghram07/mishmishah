@@ -5,12 +5,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
-import { collarOf, cutFrom, setCollar, setFront, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
+import { collarOf, cutFrom, setCollar, setFront, setLeg, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
 import { ROBE_TYPES, SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
 import { collars, collarsForGarment } from "@/lib/data/collars";
 import { sleeveLengthsFor, sleeveTypesFor } from "@/lib/data/sleeves";
-import type { BodyType, Fabric, FabricRegionId, FrontId, Outfit, SkirtLengthId, SkirtShapeId, SleeveChoice, WaistId, WornGarment } from "@/types";
+import type { BodyType, Fabric, FabricRegionId, FrontId, LegId, Outfit, SkirtLengthId, SkirtShapeId, SleeveChoice, WaistId, WornGarment } from "@/types";
 import { DEFAULT_SKIN_TONE, skinTones } from "@/lib/data/skinTones";
 import { chroma, ciede2000, hexToRgb, hue, ita, itaClass } from "@/lib/color/cielab";
 import { frameFor } from "@/lib/mannequin/frame";
@@ -3122,6 +3122,87 @@ describe("every other garment's seams, light and dark", () => {
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
     writeFileSync(
       `.preview/wardrobe/garment-seams-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});
+
+/**
+ * Trouser legs, on a light page and a dark one: her trousers and his in every
+ * leg, under a t-shirt, in a plain cloth and a print — whole, and close up at
+ * the pocket, where a wide leg leaves the hip, and at the hem — then every leg
+ * under each body's jacket.
+ */
+describe("trouser legs, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; body: BodyType; ids: string[]; leg: LegId; cloth: string; zoom: number; focus: [number, number] };
+  const LEGS = ["straight", "slim", "wide"] as const;
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles10-legs-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const stage = (tile: Tile) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of tile.ids) {
+        const g = garmentById(gid)!;
+        /* the trousers in the cloth being shown, a top in another and a jacket in a third */
+        const cloth = gid.endsWith("trousers") ? f(tile.cloth) : gid.endsWith("jacket") ? f("fb-indigo-plaid") : f("fb-rose-silk");
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      worn = setLeg(worn, `${tile.body}-trousers`, tile.leg);
+      const outfit: Outfit = { bodyType: tile.body, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={tile.zoom} focus={tile.focus} />;
+    };
+    const rows: Tile[][] = [
+      ...(["female", "male"] as const).flatMap((body) =>
+        (
+          [
+            ["fb-apricot-linen", "plain"],
+            ["fb-midnight-floral", "print"],
+          ] as const
+        ).map(([cloth, kind]): Tile[] => {
+          const ids = [`${body}-t-shirt`, `${body}-trousers`];
+          const name = body === "female" ? "her" : "his";
+          return [
+            ...LEGS.map((leg): Tile => ({ caption: `${name} trousers, ${leg}, ${kind}`, body, ids, leg, cloth, zoom: 1, focus: [300, 560] })),
+            { caption: `${name}, wide, the pocket 2.4×`, body, ids, leg: "wide", cloth, zoom: 2.4, focus: [235, 470] },
+            { caption: `${name}, slim, the hem 2.4×`, body, ids, leg: "slim", cloth, zoom: 2.4, focus: [250, 850] },
+            { caption: `${name}, wide, the hem 2.4×`, body, ids, leg: "wide", cloth, zoom: 2.4, focus: [235, 850] },
+          ];
+        })
+      ),
+      (["female", "male"] as const).flatMap((body) =>
+        LEGS.map((leg): Tile => ({
+          caption: `${body === "female" ? "her" : "his"} jacket over ${leg}, plain`, body, ids: [`${body}-t-shirt`, `${body}-trousers`, `${body}-jacket`], leg, cloth: "fb-apricot-linen", zoom: 1, focus: [300, 560],
+        }))
+      ),
+    ];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles10-legs-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
   });

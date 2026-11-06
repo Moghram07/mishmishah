@@ -107,6 +107,7 @@ export const garments: Garment[] = [
     fabricRegions: ["body"],
     incompatibleWith: [],
     acceptsCollar: false,
+    legs: { offered: ["straight", "slim", "wide"], default: "straight" },
     asset: { front: "female-trousers-front" },
   },
   {
@@ -272,6 +273,7 @@ export const garments: Garment[] = [
     fabricRegions: ["body"],
     incompatibleWith: [],
     acceptsCollar: false,
+    legs: { offered: ["straight", "slim", "wide"], default: "straight" },
     asset: { front: "male-trousers-front" },
   },
   {

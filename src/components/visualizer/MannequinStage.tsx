@@ -15,6 +15,7 @@ import {
   frontOf,
   necklineOf,
   skirtOf,
+  legOf,
   sleeveOf,
   stack,
   visibleStack,
@@ -151,12 +152,14 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
       const underTop = over ? garmentArt(over.garment.asset.front)!.cover!(choiceOf(over.worn)) : undefined;
       const skirt = skirtOf(w);
       const front = frontOf(w);
+      const leg = legOf(w);
       return {
         neckline: necklineOf(w)?.cut,
         opening: collarOf(w)?.opening,
         sleeve: sleeveOf(w),
         ...(skirt ? { skirt } : {}),
         ...(front ? { front } : {}),
+        ...(leg ? { leg } : {}),
         ...(inside ? { inside } : {}),
         ...(underTop ? { underTop } : {}),
       };

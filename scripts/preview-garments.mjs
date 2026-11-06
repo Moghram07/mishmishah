@@ -65,6 +65,7 @@ const FIT_KIT = await import(src("src/lib/garments/fit.ts"));
 const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
 const { HEM_AT, WAIST_DROP, besideArms, fallRun, hangs, shapeLengths, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
+const { legWiden } = await import(src("src/lib/garments/legs.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES } = await import(
@@ -475,6 +476,13 @@ const CUT_MODULES = {
   "female-abaya-front": await import(
     src("src/lib/garments/art/female/abayaCut.ts")
   ),
+  /* the trousers, each body's, cut to a leg — see `garments/legs.ts` */
+  "female-trousers-front": await import(
+    src("src/lib/garments/art/female/trousersCut.ts")
+  ),
+  "male-trousers-front": await import(
+    src("src/lib/garments/art/male/trousersCut.ts")
+  ),
 };
 
 /**
@@ -499,7 +507,7 @@ const ownCoverage = (garment, skirt = garment.skirt?.default) =>
 const defaultSleeveOf = (assetId) =>
   garments.find((g) => g.asset.front === assetId)?.sleeves?.default;
 
-function artPaths(assetId, body, { behind = false, opening = null, cut = null, sleeve = null, skirt = null, inside = null, front = null, underTop = null } = {}) {
+function artPaths(assetId, body, { behind = false, opening = null, cut = null, sleeve = null, skirt = null, inside = null, front = null, underTop = null, leg = null } = {}) {
   if (COLLAR_CLOTH[assetId] && !behind) return COLLAR_CLOTH[assetId](cut ?? undefined);
   const generated = CUT_MODULES[assetId];
   if (generated && !behind) {
@@ -510,6 +518,7 @@ function artPaths(assetId, body, { behind = false, opening = null, cut = null, s
       inside: inside ?? undefined,
       front: front ?? undefined,
       underTop: underTop ?? undefined,
+      leg: leg ?? undefined,
     });
   }
 
@@ -925,6 +934,23 @@ function fallLine(edge, falls, profile, out) {
   };
 }
 
+/**
+ * The line a wide trouser leg falls on, each side: as wide all the way down as
+ * the same trousers cut straight are at the crotch, out from that straight
+ * leg's inseam — and `widen` of that wider at the hem, growing evenly — as
+ * `wideLeg` in `garments/fit.ts` cuts it. Re-derived here from the straight
+ * cut, which every rule above holds to her; above the crotch, `null`: the
+ * trousers are the straight ones there.
+ */
+function wideLines(straight, crotchY, hemY, widen) {
+  const polys = flatten(straight);
+  const inseam = (y) => Math.max(...crossingsAt(polys, y).flat());
+  const outside = (y) => Math.min(...crossingsAt(polys, y).flat());
+  const top = inseam(crotchY + 0.5) - outside(crotchY + 0.5);
+  const left = (y) => (y < crotchY ? null : inseam(y) - top * (1 + (widen * (y - crotchY)) / (hemY - crotchY)));
+  return { left, right: (y) => ((x) => (x === null ? null : W - x))(left(y)) };
+}
+
 /** A run along one row, grown out from `x`. */
 function runAt(grid, y, x, on) {
   if (!on(grid[y * W + x])) return null;
@@ -968,10 +994,11 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = nu
     return x === null ? null : k === 0 ? x : W - 1 - x;
   };
   const edgeOf = hung?.arms ? armsEdge : trunkEdge;
-  const lines = hung && {
+  /* a wide trouser leg brings its own line — see `wideLines` */
+  const lines = hung && (hung.lines ?? {
     left: fallLine(edgeOf(0), hung, profile, -1),
     right: fallLine(edgeOf(1), hung, profile, 1),
-  };
+  });
   const worn = hung ? hung.cloth : cloth;
 
   /*
@@ -1020,7 +1047,7 @@ function checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung = nu
   const problems = [];
   let far = 0;
   let skew = 0;
-  const onto = hung ? (hung.run !== undefined || hung.slope !== undefined ? "the line it falls on" : "the line it hangs on") : null;
+  const onto = hung ? (hung.run !== undefined || hung.slope !== undefined || hung.lines ? "the line it falls on" : "the line it hangs on") : null;
   const from = onto ? `${onto} at ` : "";
   for (const [name, y, gl, gr] of reads) {
     far = Math.max(far, gl, gr);
@@ -2961,14 +2988,17 @@ const FLY_ABOVE_CROTCH = 1;
 function checkTrouserDetails(bodyKey, body, profile, wardrobe) {
   let failed = 0;
   const cm = (u) => u * BODY_CANVAS.cmPerUnit;
-  for (const garment of wardrobe) {
+  /* every pair of trousers in every leg: each cut module's `legsFor` — a leg moves the side seam the pockets meet */
+  const pairs = wardrobe.flatMap((garment) =>
+    CUT_MODULES[garment.asset.front]?.legsFor
+      ? (garment.legs?.offered ?? [null]).map((leg) => ({ garment, leg }))
+      : []
+  );
+  for (const { garment, leg } of pairs) {
     const assetId = garment.asset.front;
-    if (CUT_MODULES[assetId]) continue;
-    const table = artTable(assetId, body);
-    const legs = [...table.values()].find((v) => v && typeof v === "object" && v.details?.loops);
-    if (!legs) continue;
-    const { fly, pockets, loops } = legs.details;
-    const cloth = rasterize(artPaths(assetId, body));
+    const label = leg && leg !== garment.legs?.default ? `${garment.id} · ${leg}` : garment.id;
+    const { fly, pockets, loops } = CUT_MODULES[assetId].legsFor(undefined, leg ?? undefined).details;
+    const cloth = rasterize(artPaths(assetId, body, { leg }));
     const on = ([x, y]) => {
       for (let dy = -DETAIL_SLACK; dy <= DETAIL_SLACK; dy++) {
         for (let dx = -DETAIL_SLACK; dx <= DETAIL_SLACK; dx++) {
@@ -3005,7 +3035,7 @@ function checkTrouserDetails(bodyKey, body, profile, wardrobe) {
     const bad = loopOut > 0 || off > 0 || unmet > 0 || short;
     if (bad) failed++;
     console.log(
-      `${bad ? "OFF " : "ok  "} ${bodyKey.padEnd(6)} ${garment.id.padEnd(26)} ` +
+      `${bad ? "OFF " : "ok  "} ${bodyKey.padEnd(6)} ${label.padEnd(26)} ` +
         `details on the cloth: ${loops.pieces.length} loops, ${loopOut} px outside it; ` +
         `${points.length - off}/${points.length} points of the fly and pockets on it; ` +
         `${pockets.length - unmet}/${pockets.length} pockets meet the side seam` +
@@ -3066,7 +3096,7 @@ const UNDER_EACH_STYLE = {
   "female-blouse": [{}],
   "female-t-shirt": [{}],
   "female-skirt": [{}, { skirt: { shape: "aline", length: "maxi" } }],
-  "female-trousers": [{}],
+  "female-trousers": [{}, { leg: "wide" }],
 };
 
 /** Every sleeve a garment can be cut with, its cuffs included; `[null]` for one that has no choice. */
@@ -3286,6 +3316,10 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
             .flatMap((shape) =>
               shapeLengths(shape, inner.skirt.lengths).map((length) => ({ cut: cuts[0] ?? null, sleeve: null, skirt: { ...(base ?? inner.skirt.default), shape, length } }))
             ),
+          /* every other leg a pair of trousers is cut to */
+          ...(inner.legs?.offered ?? [])
+            .filter((leg) => !waist && leg !== inner.legs.default)
+            .map((leg) => ({ cut: cuts[0] ?? null, sleeve: null, skirt: null, leg })),
           /* and every sleeve on a shape wide enough to reach her arms, where a skirt may show beside a cuff */
           ...(inner.skirt?.shapes ?? [])
             .filter((shape) => besideArms({ shape, length: inner.skirt.default.length }))
@@ -3301,6 +3335,7 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
             cut: cuts[0] ?? null,
             sleeve: c.sleeve ?? null,
             skirt: c.skirt ? { ...inner.skirt.default, ...c.skirt } : null,
+            leg: c.leg ?? null,
           }));
       if (variants.length === 0) continue;
       let leak = 0;
@@ -3313,8 +3348,8 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
       let worst = "";
       const reveals = [];
       const looseReveals = [];
-      for (const { cut, sleeve, skirt } of variants) {
-        const cloth = rasterize(artPaths(inner.asset.front, body, { cut, sleeve, skirt, inside: enc.hem }));
+      for (const { cut, sleeve, skirt, leg = null } of variants) {
+        const cloth = rasterize(artPaths(inner.asset.front, body, { cut, sleeve, skirt, inside: enc.hem, leg }));
         /* the skirt alone, as it comes out from under the hem: one wide enough shows beside the cuff, and is not the sleeve */
         const style = CUT_MODULES[inner.asset.front]?.skirtFor && inner.skirt ? (skirt ?? inner.skirt.default) : null;
         const skirtCloth = style ? rasterize([CUT_MODULES[inner.asset.front].skirtFor(enc.hem, style).path]) : null;
@@ -3863,9 +3898,9 @@ for (const bodyKey of Object.keys(bodies)) {
      * once per sleeve in the cut it arrives in — so every neckline and every
      * sleeve is measured, without drawing every one of their products.
      */
-    const checkCut = (cutId, sleeve, label, loose, skirt = null, front = null) => {
+    const checkCut = (cutId, sleeve, label, loose, skirt = null, front = null, leg = null) => {
       const cloth = rasterize(
-        artPaths(garment.asset.front, body, { cut: cutId, sleeve, skirt, front })
+        artPaths(garment.asset.front, body, { cut: cutId, sleeve, skirt, front, leg })
       );
       let failed = drawn(bodyKey, label, cloth);
 
@@ -3949,7 +3984,13 @@ for (const bodyKey of Object.keys(bodies)) {
             ? { from: falls.from, hung: false, slope: falls.slope, cloth: rasterize(CUT_MODULES[garment.asset.front].bodyFor({ front: front ?? undefined, sleeve: sleeve ?? undefined })), swings: falls.front, arms: falls.arms ?? false }
             : null;
       if (!loose) failed += checkArmGap(bodyKey, label, cloth, profile, coverage, hung);
-      failed += checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung);
+      /* a wide trouser leg, read from the line it falls on — see `wideLines` */
+      const widen = leg ? legWiden(leg) : undefined;
+      const legHung =
+        widen !== undefined
+          ? { cloth, lines: wideLines(CUT_MODULES[garment.asset.front].legsFor(undefined, "straight").left, profile.crotchY, CUT_MODULES[garment.asset.front].HEM_Y, widen) }
+          : null;
+      failed += checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung ?? legHung);
       failed += checkLegGap(bodyKey, label, cloth, profile, coverage);
       failed += checkBareShoulders(bodyKey, label, cloth, profile, cutId, hung?.from);
       /* said aloud for a cut whose own band is on the arm — the off-shoulder's */
@@ -3974,6 +4015,16 @@ for (const bodyKey of Object.keys(bodies)) {
         failures += failed;
         // the collar pass reuses whichever cut the garment arrives in
         if (paint === null) paint = cloth;
+      }
+
+      /*
+        A pair of trousers in every other leg it is cut to: a leg changes only
+        how it falls below the hip, so each is held to every rule a pair of
+        trousers is — coverage, symmetry, its stand-off, and daylight between
+        the legs all the way down.
+      */
+      for (const leg of (garment.legs?.offered ?? []).filter((l) => !waist && l !== garment.legs.default)) {
+        failures += checkCut(null, null, `${name} · ${leg}`, false, null, null, leg).failed;
       }
 
       /*

@@ -2,15 +2,19 @@ import {
   DRAPE,
   vertical,
 } from "@/lib/garments/shading";
-import { draft, trousers, type LegsSpec, type Tuck } from "@/lib/garments/fit";
+import { draft, type Tuck } from "@/lib/garments/fit";
 import { foldDefs, foldLights, foldShadows, trouserFolds } from "@/lib/garments/folds";
 import { seamFolds, sleeveFoldDefs } from "../sleeveFolds";
 import { beltLoops, detailDefs, detailShading, detailStitch } from "../trouserDetails";
 import type { GarmentArt, RegionArt } from "../index";
+import type { LegId } from "@/types";
+import { DEFAULT_LEG, HEM_Y, cloth, legsFor } from "./trousersCut";
 
 /**
- * Straight-leg trousers, front. The waistband sits at the natural waist and
- * each leg follows her own leg down to the ankle.
+ * Trousers, front, cut to a leg — straight, slim or wide: see `legs.ts`. The
+ * waistband sits at the natural waist and each leg falls from her own leg or
+ * hip down to the ankle. Their geometry lives in `trousersCut.ts`, where
+ * `check:garments` reads it.
  *
  * **Two pieces, not one.** The old outline was a single shape that ran down the
  * outside of one leg, up to a single point at `L300 512`, and back down the
@@ -22,54 +26,7 @@ import type { GarmentArt, RegionArt } from "../index";
  * comes out of the photographs rather than out of a guess.
  */
 
-const HEM_Y = 902;
-
-/** How they are cut: the same numbers worn on their own and under a jacket. */
-const SPEC: LegsSpec = {
-  /*
-    Worn twelve units below her waist — a mid rise, sitting just over the
-    navel. Relative to the waist she was measured to have, so it moves with
-    the body rather than with a typed row.
-  */
-  rise: 12,
-  band: 34,
-  hemY: HEM_Y,
-  /*
-    Her numbers, not a shared set. These were 9/11/9/5 on both bodies, which is
-    the generic silhouette in plain sight — and 11 through the thigh, on top of
-    the taut outer edge's own bridging, is what stood the cloth 18 units off her
-    knee and made a trouser read as a wide shape placed around a leg.
-
-    A woman's trouser is cut close over the seat and **tapers**: five at the
-    hip, five through the thigh, four at the ankle. The inner edge comes in a
-    unit, which widens the daylight between the legs rather than narrowing it.
-  */
-  ease: 5,
-  legEase: 5,
-  cuffEase: 4,
-  innerEase: 4,
-  /*
-    A woman's fly closes right over left, so its J is on her right — the
-    canvas's left — three centimetres in and fifteen down; and her slanted
-    pockets reach the side seam fourteen centimetres below the band.
-  */
-  fly: { length: 15, width: 3, on: "right" },
-  pocket: 14,
-};
-
-const L = trousers("female", SPEC);
-
-/**
- * The trousers worn under a jacket: drawn in under the jacket's hem, where they
- * are wider than it, and out again to their own hem — see `tucked`.
- */
-export const TUCKED = (inside: Tuck) => ((T) => [T.left, T.right])(trousers("female", { ...SPEC, inside }));
-
-const LEG_LEFT_PATH = L.left;
-const LEG_RIGHT_PATH = L.right;
-
-/** The waistband: the top of the legs' own edge, in the same cloth. */
-const WAISTBAND_PATH = L.band;
+const L = legsFor();
 
 /*
   Pressed: a crease down the front of each leg from the waist to the hem, a
@@ -79,7 +36,7 @@ const WAISTBAND_PATH = L.band;
 */
 const SEED = 29;
 const FOLDS = trouserFolds({
-  leg: LEG_LEFT_PATH,
+  leg: L.left,
   bandY: L.bandY,
   crotchY: draft("female").crotchY,
   hemY: HEM_Y,
@@ -92,11 +49,9 @@ const FOLDS = trouserFolds({
   sees only how the cloth pulls toward it — which is folds, and round 2's job.
 */
 
-const legsRegion = (inside?: Tuck): RegionArt => {
-  const T = inside ? trousers("female", { ...SPEC, inside }) : L;
-  const folds = inside
-    ? trouserFolds({ leg: T.left, bandY: T.bandY, crotchY: draft("female").crotchY, hemY: HEM_Y, seed: SEED })
-    : FOLDS;
+const legsRegion = (inside?: Tuck, leg: LegId = DEFAULT_LEG): RegionArt => {
+  const T = legsFor(inside, leg);
+  const folds = T === L ? FOLDS : trouserFolds({ leg: T.left, bandY: T.bandY, crotchY: draft("female").crotchY, hemY: HEM_Y, seed: SEED });
   const seam = seamFolds([T.seam]);
   return {
     focus: [300, 620],
@@ -150,16 +105,18 @@ const legsRegion = (inside?: Tuck): RegionArt => {
   };
 };
 
-const tuckedRegions = new Map<string, RegionArt>();
+const cutRegions = new Map<string, RegionArt>();
 
 export const trousersFront: GarmentArt = {
   regions: { body: legsRegion() },
-  /** Under a jacket, they come out from under its hem. */
+  /** In a leg, or under a jacket, where they come out from under its hem. */
   cut: (choice) => {
-    const inside = choice.inside;
-    if (!inside) return {};
-    const key = `${inside.y}|${inside.x}`;
-    if (!tuckedRegions.has(key)) tuckedRegions.set(key, legsRegion(inside));
-    return { body: tuckedRegions.get(key)! };
+    const { inside, leg = DEFAULT_LEG } = choice;
+    if (!inside && leg === DEFAULT_LEG) return {};
+    const key = `${leg}|${inside ? `${inside.y}|${inside.x}` : ""}`;
+    if (!cutRegions.has(key)) cutRegions.set(key, legsRegion(inside, leg));
+    return { body: cutRegions.get(key)! };
   },
+  /** The legs as cut, for the leg picker. */
+  silhouette: (choice) => cloth(choice),
 };
