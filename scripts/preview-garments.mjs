@@ -1307,7 +1307,7 @@ function checkArmGap(bodyKey, id, paint, profile, coverage, hung = null) {
  * `L295 760 L298 640 L300 512` character for character. A single point at the
  * crotch is not a gap.
  */
-function checkLegGap(bodyKey, id, paint, profile, coverage) {
+function checkLegGap(bodyKey, id, paint, profile, coverage, meets = null) {
   if (!coverage.includes("knee") && !coverage.includes("calf")) return 0;
 
   /*
@@ -1348,8 +1348,25 @@ function checkLegGap(bodyKey, id, paint, profile, coverage) {
   let tightest = Infinity;
   const to = Math.min(edgeEnd(profile.legInner), H - 60);
 
+  /*
+    A palazzo's legs meet below the knee by design, and hang side by side —
+    see `palazzoInseam` in `garments/fit.ts`. From the row they start to come
+    together, `meets.from`, they may close the gap, at a seam on the centre
+    line: but never cross it, each leg's own cloth staying on its own side.
+    Above that row they keep their daylight, as any pair of trousers does.
+  */
+  let crossed = 0;
+  let met = 0;
+  if (meets) {
+    for (let y = Math.ceil(meets.from); y <= to; y++) {
+      met++;
+      if (meets.left[y * W + W / 2 + 1] >= 0.5 || meets.right[y * W + W / 2 - 2] >= 0.5) crossed++;
+    }
+  }
+
   // From well below the crotch: the legs are still touching where they part.
   for (let y = profile.crotchY + 60; y <= to; y += 8) {
+    if (meets && y >= meets.from) break;
     const inner = edgeAt(profile.legInner, y);
     if (inner === null) continue;
     const daylight = W - 2 * inner;
@@ -1373,13 +1390,16 @@ function checkLegGap(bodyKey, id, paint, profile, coverage) {
     ribs. Legs that meet partway down read as one column, a long skirt with a
     line down it, whatever is above.
   */
-  const ok = bad.length === 0;
+  const ok = bad.length === 0 && crossed === 0;
   console.log(
     `${ok ? "ok  " : "HOLE"} ${bodyKey.padEnd(6)} ${id.padEnd(21)} ` +
       `leg gap open on ${rows - bad.length}/${rows} rows, ` +
-      `${tightest === Infinity ? "--" : (tightest * 100).toFixed(0)}% of the body's own at worst`
+      `${tightest === Infinity ? "--" : (tightest * 100).toFixed(0)}% of the body's own at worst` +
+      (meets ? `, above y ${Math.ceil(meets.from)}; met at a centre seam below it, crossing on ${crossed}/${met} rows` : "")
   );
   if (ok) return 0;
+  if (crossed > 0) console.log(`     ${bodyKey.padEnd(6)} fit       ${id} crosses its legs over the centre line on ${crossed} rows`);
+  if (bad.length === 0) return 1;
   console.log(
     `     ${bodyKey.padEnd(6)} fit       ${id} closes the gap between the legs ` +
       `on ${bad.length} of ${rows} rows (y ${bad[0]}–${bad[bad.length - 1]})`
@@ -3096,7 +3116,7 @@ const UNDER_EACH_STYLE = {
   "female-blouse": [{}],
   "female-t-shirt": [{}],
   "female-skirt": [{}, { skirt: { shape: "aline", length: "maxi" } }],
-  "female-trousers": [{}, { leg: "wide" }],
+  "female-trousers": [{}, { leg: "wide" }, { leg: "palazzo" }, { leg: "flare" }],
 };
 
 /** Every sleeve a garment can be cut with, its cuffs included; `[null]` for one that has no choice. */
@@ -3991,7 +4011,11 @@ for (const bodyKey of Object.keys(bodies)) {
           ? { cloth, lines: wideLines(CUT_MODULES[garment.asset.front].legsFor(undefined, "straight").left, profile.crotchY, CUT_MODULES[garment.asset.front].HEM_Y, widen) }
           : null;
       failed += checkStandOff(bodyKey, label, garment, cloth, cover, profile, hung ?? legHung);
-      failed += checkLegGap(bodyKey, label, cloth, profile, coverage);
+      /* a palazzo's legs meet at a centre seam below the knee — see `checkLegGap` */
+      const meetsFrom = leg ? CUT_MODULES[garment.asset.front].meetsFrom?.(leg) : undefined;
+      const legsCut = meetsFrom !== undefined ? CUT_MODULES[garment.asset.front].legsFor(undefined, leg) : null;
+      const meets = legsCut ? { from: meetsFrom, left: rasterize([legsCut.left]), right: rasterize([legsCut.right]) } : null;
+      failed += checkLegGap(bodyKey, label, cloth, profile, coverage, meets);
       failed += checkBareShoulders(bodyKey, label, cloth, profile, cutId, hung?.from);
       /* said aloud for a cut whose own band is on the arm — the off-shoulder's */
       failed += checkUnderarm(bodyKey, label, cloth, cover, profile, cutId !== null && NECKLINE_SLEEVES[cutId] === "band");

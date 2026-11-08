@@ -2,7 +2,7 @@ import type { Garment, LegId } from "@/types";
 import { LEG_SHAPES } from "@/lib/garments/legs";
 
 /**
- * The trouser legs, by name: straight, slim and wide. The geometry lives in
+ * The trouser legs, by name: straight, slim, wide, palazzo and flare. The geometry lives in
  * `lib/garments/legs.ts`, and the ids are read from there, so the catalogue and
  * the drafting cannot disagree about what a leg is.
  */
@@ -15,6 +15,8 @@ const LEG_NAMES: Record<LegId, { en: string; ar: string }> = {
   straight: { en: "Straight", ar: "مستقيم" },
   slim: { en: "Slim", ar: "ضيق" },
   wide: { en: "Wide", ar: "واسع" },
+  palazzo: { en: "Palazzo", ar: "بالاتسو" },
+  flare: { en: "Flare", ar: "شارلستون" },
 };
 
 export const legs: Leg[] = LEG_SHAPES.map((id) => ({ id, name: LEG_NAMES[id] }));

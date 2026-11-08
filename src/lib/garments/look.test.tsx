@@ -3207,3 +3207,88 @@ describe("trouser legs, light and dark", () => {
     );
   });
 });
+
+/**
+ * Her flare and palazzo, on a light page and a dark one, under a t-shirt, in a
+ * plain cloth and a print — whole, and close up where each is its own: the
+ * flare opening below the knee, the palazzo leaving her hip, and its legs
+ * meeting at the centre seam — then each under her jacket, under a blouse,
+ * and under her abaya.
+ */
+describe("flare and palazzo, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; ids: string[]; leg: LegId; cloth: string; zoom: number; focus: [number, number] };
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles11-legs-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const stage = (tile: Tile) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of tile.ids) {
+        const g = garmentById(gid)!;
+        /* the trousers in the cloth being shown; a top, a jacket and an abaya each in their own */
+        const cloth = gid.endsWith("trousers")
+          ? f(tile.cloth)
+          : gid.endsWith("jacket")
+            ? f("fb-indigo-plaid")
+            : gid.endsWith("abaya")
+              ? f("fb-black-crepe")
+              : f("fb-rose-silk");
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      worn = setLeg(worn, "female-trousers", tile.leg);
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={tile.zoom} focus={tile.focus} />;
+    };
+    const TEE = ["female-t-shirt", "female-trousers"];
+    const rows: Tile[][] = [
+      ...(
+        [
+          ["fb-apricot-linen", "plain"],
+          ["fb-midnight-floral", "print"],
+        ] as const
+      ).map(([cloth, kind]): Tile[] => [
+        { caption: `flare, ${kind}`, ids: TEE, leg: "flare", cloth, zoom: 1, focus: [300, 560] },
+        { caption: `palazzo, ${kind}`, ids: TEE, leg: "palazzo", cloth, zoom: 1, focus: [300, 560] },
+        { caption: `flare, below the knee 2.4×`, ids: TEE, leg: "flare", cloth, zoom: 2.4, focus: [240, 800] },
+        { caption: `palazzo, the hip 2.4×`, ids: TEE, leg: "palazzo", cloth, zoom: 2.4, focus: [240, 500] },
+        { caption: `palazzo, the centre seam 2.4×`, ids: TEE, leg: "palazzo", cloth, zoom: 2.4, focus: [300, 760] },
+      ]),
+      [
+        { caption: "jacket over flare, plain", ids: [...TEE, "female-jacket"], leg: "flare", cloth: "fb-apricot-linen", zoom: 1, focus: [300, 560] },
+        { caption: "jacket over palazzo, plain", ids: [...TEE, "female-jacket"], leg: "palazzo", cloth: "fb-apricot-linen", zoom: 1, focus: [300, 560] },
+        { caption: "blouse over flare, print", ids: ["female-blouse", "female-trousers"], leg: "flare", cloth: "fb-midnight-floral", zoom: 1, focus: [300, 560] },
+        { caption: "blouse over palazzo, print", ids: ["female-blouse", "female-trousers"], leg: "palazzo", cloth: "fb-midnight-floral", zoom: 1, focus: [300, 560] },
+        { caption: "abaya over palazzo, plain", ids: [...TEE, "female-abaya"], leg: "palazzo", cloth: "fb-apricot-linen", zoom: 1, focus: [300, 560] },
+      ],
+    ];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles11-legs-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});

@@ -325,7 +325,7 @@ export interface SkirtChoice {
 }
 
 /** How a trouser leg is cut below the hip — see `lib/garments/legs.ts`. */
-export type LegId = "straight" | "slim" | "wide";
+export type LegId = "straight" | "slim" | "wide" | "palazzo" | "flare";
 
 /** How a robe is worn at the front — her abaya: hanging open, or closed down the centre. */
 export type FrontId = "open" | "closed";

@@ -26,14 +26,15 @@ const rows = (body: BodyType, from = draft(body).crotchY + 4): number[] => {
 const kneeOf = (body: BodyType) => (draft(body).crotchY + her.HEM_Y) / 2;
 
 describe("trouser legs", () => {
-  it("offers straight, slim and wide on both bodies, and arrives straight, as each cut module says", () => {
+  it("offers her five legs and him three — palazzo and flare are hers — and arrives straight, as each cut module says", () => {
+    const offered = { female: ["straight", "slim", "wide", "palazzo", "flare"], male: ["straight", "slim", "wide"] };
     for (const body of BODIES) {
       const g = garmentById(`${body}-trousers`)!;
-      expect(g.legs, body).toEqual({ offered: ["straight", "slim", "wide"], default: "straight" });
+      expect(g.legs, body).toEqual({ offered: offered[body], default: "straight" });
       expect(CUTS[body].DEFAULT_LEG, body).toBe(g.legs!.default);
-      expect(legsOffered(g).map((l) => l.id)).toEqual([...LEG_SHAPES]);
+      expect(legsOffered(g).map((l) => l.id), body).toEqual(LEG_SHAPES.filter((l) => offered[body].includes(l)));
     }
-    expect(legsOffered(garmentById("female-trousers")!).map((l) => l.name.ar)).toEqual(["مستقيم", "ضيق", "واسع"]);
+    expect(legsOffered(garmentById("female-trousers")!).map((l) => l.name.ar)).toEqual(["مستقيم", "ضيق", "واسع", "بالاتسو", "شارلستون"]);
     /* nothing else takes a leg */
     for (const id of ["female-skirt", "female-dress", "male-thobe"]) expect(garmentById(id)!.legs, id).toBeUndefined();
   });
@@ -109,18 +110,72 @@ describe("trouser legs", () => {
     }
   });
 
+  it("cuts a palazzo wider than a wide leg, its legs apart above the knee and meeting at the centre below it, never crossing", () => {
+    const d = draft("female");
+    const knee = kneeOf("female");
+    const from = her.meetsFrom("palazzo")!;
+    expect(from, "starts to meet between the crotch and the knee").toBeGreaterThan(d.crotchY + 40);
+    expect(from).toBeLessThan(knee);
+    for (const leg of ["straight", "slim", "wide", "flare"] as const) expect(her.meetsFrom(leg), leg).toBeUndefined();
+    const straight = her.legsFor();
+    const wide = her.legsFor(undefined, "wide");
+    const palazzo = her.legsFor(undefined, "palazzo");
+    for (const y of rows("female")) {
+      const [o, i] = across(palazzo.left, y);
+      const name = `y ${y}`;
+      /* never past the centre line: the legs meet there, and do not cross */
+      expect(i, name).toBeLessThanOrEqual(300 + 0.01);
+      /* above where they start to meet, the inseam is the straight leg's: the same daylight between the legs */
+      if (y < from) expect(i, name).toBeCloseTo(across(straight.left, y)[1], 6);
+      /* below the knee, on the centre line */
+      if (y >= knee) expect(i, name).toBeCloseTo(300, 6);
+      /* and fuller than a wide leg all the way down */
+      expect(o, name).toBeLessThanOrEqual(across(wide.left, y)[0] + 0.01);
+    }
+    /* below the knee the two legs lie against each other: a centre seam, not an edge */
+    expect(palazzo.seam.split("M").length, "the centre front seam and the seam below the knee").toBeGreaterThan(2);
+    const hem = her.HEM_Y - 6;
+    expect(cm(((s) => s[1] - s[0])(across(palazzo.left, hem))), "a palazzo's hem, each leg").toBeGreaterThan(20);
+  });
+
+  it("cuts a flare straight to the knee, then opening outward to the hem, faster toward it, its inseam where the straight leg's is", () => {
+    const knee = kneeOf("female");
+    const straight = her.legsFor();
+    const flare = her.legsFor(undefined, "flare");
+    const width = (L: { left: string }, y: number) => ((s) => s[1] - s[0])(across(L.left, y));
+    for (const y of rows("female")) {
+      const [o, i] = across(flare.left, y);
+      const [so, si] = across(straight.left, y);
+      const name = `y ${y}`;
+      expect(i, name).toBeCloseTo(si, 6);
+      if (y < knee - 6) expect(o, name).toBeCloseTo(so, 6);
+      else expect(o, name).toBeLessThanOrEqual(so + 0.01);
+    }
+    const hem = her.HEM_Y - 6;
+    const kneeW = width(flare, knee);
+    expect(width(flare, hem) / kneeW, "its hem at least half again the knee").toBeGreaterThanOrEqual(1.5);
+    /* opening slowly just below the knee and faster toward the hem: a bell, not a cone */
+    const third = (hem - knee) / 3;
+    const steps = [0, 1, 2].map((k) => width(flare, knee + third * (k + 1)) - width(flare, knee + third * k));
+    expect(steps[1], "faster in the middle third than the first").toBeGreaterThan(steps[0]);
+    expect(steps[2], "and fastest in the last").toBeGreaterThan(steps[1]);
+  });
+
   it("is a choice on the worn trousers, resolved when read, and carried across to the other body", () => {
     const worn = wear([], cutFrom(garmentById("female-trousers")!, "fb-apricot-linen"));
     expect(legOf(worn[0])).toBe("straight");
     const wide = setLeg(worn, "female-trousers", "wide");
     expect(legOf(wide[0])).toBe("wide");
     /* a leg it does not offer falls back to how it arrives */
-    expect(legOf({ ...worn[0], leg: "palazzo" as never })).toBe("straight");
+    expect(legOf({ ...worn[0], leg: "culotte" as never })).toBe("straight");
     /* none for a garment with no choice of leg */
     expect(legOf(cutFrom(garmentById("female-skirt")!, "fb-apricot-linen"))).toBeUndefined();
     const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn: wide };
     const him = switchBody(outfit, "male", "fb-apricot-linen");
     const trousersOn = him.worn.find((w) => w.garmentId === "male-trousers")!;
     expect(legOf(trousersOn)).toBe("wide");
+    /* and a leg his trousers do not offer comes across as how they arrive */
+    const palazzo = { ...outfit, worn: setLeg(worn, "female-trousers", "palazzo") };
+    expect(legOf(switchBody(palazzo, "male", "fb-apricot-linen").worn.find((w) => w.garmentId === "male-trousers")!)).toBe("straight");
   });
 });

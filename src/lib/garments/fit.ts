@@ -1195,10 +1195,12 @@ export interface LegsSpec {
    * A leg cut other than straight — see `LEGS` in `garments/legs.ts` and
    * `hungLeg`: `slim`, the ease its hem is cut to round the ankle, coming in
    * to it from the knee; `wide`, how much wider than at the top of the thigh
-   * its hem is, as a share, the leg as wide all the way down. Absent, a
-   * straight leg.
+   * its hem is, as a share, the leg as wide all the way down; `palazzo`, the
+   * same, and its inseam meeting the other leg's below the knee; `flare`,
+   * how much wider than at the knee its hem is, opening from the knee. Absent,
+   * a straight leg.
    */
-  leg?: { slim?: number; wide?: number };
+  leg?: { slim?: number; wide?: number; palazzo?: number; flare?: number };
 }
 
 export interface Legs {
@@ -1661,7 +1663,7 @@ const HEM_ROWS = 30;
  */
 function hungLeg(
   d: Draft,
-  s: { from: number; to: number; legEase: number; cuffEase: number; innerEase: number; leg?: { slim?: number; wide?: number } }
+  s: { from: number; to: number; legEase: number; cuffEase: number; innerEase: number; leg?: LegsSpec["leg"] }
 ): { out: Pt[]; inner: Pt[] } {
   const ys: number[] = [];
   for (let y = s.from; y < s.to; y += 6) ys.push(y);
@@ -1738,8 +1740,55 @@ function hungLeg(
     return [x > CENTER - LEGS_TOUCH ? CENTER : x, y] as Pt;
   });
   if (s.leg?.wide !== undefined) return { out: wideLeg(out, inner, s.leg.wide, t), inner };
+  if (s.leg?.palazzo !== undefined) return { out: wideLeg(out, inner, s.leg.palazzo, t), inner: palazzoInseam(inner, s.from, knee) };
+  if (s.leg?.flare !== undefined) return { out: flareLeg(ys, knee, out, inner, s.leg.flare), inner };
   if (s.leg?.slim !== undefined) return slimLeg(d, ys, knee, out, inner, s.leg.slim, inNeed);
   return { out, inner };
+}
+
+/**
+ * How far from the crotch to the knee a palazzo's legs start to come
+ * together, as a share: above it they part as a straight leg's do, with the
+ * same daylight between them; from it to the knee they close, and below the
+ * knee they meet at a centre seam. See `meetsFrom` in each `trousersCut`.
+ */
+export const PALAZZO_MEET = 0.6;
+
+/**
+ * A palazzo's inseam: a straight leg's down to `PALAZZO_MEET` of the way to
+ * the knee, then in to the centre by the knee, and on it to the hem — so wide
+ * that the two legs meet there and hang side by side, as a palazzo's do when
+ * she stands. They meet, never cross: each stops at the centre line, where
+ * `trousers` draws them as a seam.
+ */
+function palazzoInseam(inner: Pt[], from: number, knee: number): Pt[] {
+  const meet = from + PALAZZO_MEET * (knee - from);
+  return inner.map(([x, y]) => {
+    const u = Math.max(0, Math.min(1, (y - meet) / (knee - meet || 1)));
+    const at = x + (CENTER - x) * u * u * (3 - 2 * u);
+    return [at > CENTER - LEGS_TOUCH ? CENTER : at, y] as Pt;
+  });
+}
+
+/** How a flare opens below the knee: slowly at first, then faster, as the leg widens toward the hem. */
+const FLARE_CURVE = 1.6;
+
+/**
+ * A flared leg: straight to the knee, then opening outward to the hem, `flare`
+ * of the knee's width wider there — slowly just below the knee and faster
+ * toward the hem, so it reads as a bell rather than a cone. Its inseam stays
+ * where a straight leg's is, so the legs stay apart and the flare all goes
+ * outward.
+ */
+function flareLeg(ys: number[], knee: number, out: Pt[], inner: Pt[], flare: number): Pt[] {
+  const k = Math.max(0, ys.findIndex((y) => y >= knee));
+  const kneeW = inner[k][0] - out[k][0];
+  const to = ys[ys.length - 1];
+  return out.map(([x, y], i) => {
+    if (i <= k) return [x, y] as Pt;
+    const u = (y - ys[k]) / (to - ys[k] || 1);
+    return [Math.min(x, inner[i][0] - kneeW * (1 + flare * u ** FLARE_CURVE)), y] as Pt;
+  });
 }
 
 /**

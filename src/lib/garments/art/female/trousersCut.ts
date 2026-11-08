@@ -5,8 +5,8 @@
   hold one pair and no more. See `dressCut.ts` for why the checker must see
   the real geometry.
 */
-import { trousers, type Legs, type LegsSpec, type Tuck } from "../../fit.ts";
-import { legCut } from "../../legs.ts";
+import { PALAZZO_MEET, draft, trousers, type Legs, type LegsSpec, type Tuck } from "../../fit.ts";
+import { legCut, legsMeet } from "../../legs.ts";
 import type { LegId } from "@/types";
 import type { GarmentChoice } from "../index.ts";
 
@@ -62,6 +62,17 @@ export function legsFor(inside?: Tuck, leg: LegId = DEFAULT_LEG): Legs {
   if (!cuts.has(key)) cuts.set(key, trousers("female", { ...legCut(SPEC, leg), ...(inside ? { inside } : {}) }));
   return cuts.get(key)!;
 }
+
+/**
+ * The row a leg's inseam starts to come in to meet the other's — a palazzo's,
+ * `PALAZZO_MEET` of the way from the crotch to the knee — or `undefined`
+ * for a leg that keeps its daylight to the hem. For `check:garments`.
+ */
+export const meetsFrom = (leg: LegId): number | undefined => {
+  if (!legsMeet(leg)) return undefined;
+  const crotch = draft("female").crotchY;
+  return crotch + PALAZZO_MEET * ((crotch + HEM_Y) / 2 - crotch);
+};
 
 /**
  * Every piece of cloth the trousers are, for one choice: the two legs. The
