@@ -236,7 +236,7 @@ export const sameSkirt = (a: SkirtChoice, b: SkirtChoice): boolean => skirtKey(a
  * `tucked`. A dress's skirt is sewn on at its waist's seam, wherever that is;
  * from a seam above her waist it hangs — see `column`'s `hang`.
  */
-export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck): CutSkirt {
+export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck, panel?: readonly [number, number]): CutSkirt {
   const { flare, flareTo, flareFrom, curve, taper, straight, plumb, dip = 1, waves, pleats, tiers } = SHAPES[skirt.shape];
   const fall = fallOf(skirt.shape);
   const drop = WAIST_DROP[skirt.waist ?? "natural"];
@@ -270,7 +270,8 @@ export function skirtCut(finish: SkirtFinish, skirt: SkirtChoice, inside?: Tuck)
     ...(waves && fall.waves
       ? { wave: { at: fall.waves, depth: waves.depth, width: waves.width } }
       : pleats && fall.pleats
-        ? { steps: { at: fall.pleats, depth: pleats.step } }
+        ? /* with a flat panel down the centre front — a dress buttoned to the hem — its pleats either side of it */
+          { steps: { at: fall.pleats, depth: pleats.step, ...(panel ? { panel: { count: pleats.count, x: panel } } : {}) } }
         : finish.wave && (flare > 0 || straight !== undefined)
           ? { wave: finish.wave }
           : {}),

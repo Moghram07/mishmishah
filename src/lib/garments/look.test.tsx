@@ -5,12 +5,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
-import { collarOf, cutFrom, setCollar, setFront, setLeg, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
+import { collarOf, cutFrom, setBelt, setButtons, setCollar, setFront, setLeg, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
 import { ROBE_TYPES, SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
 import { collars, collarsForGarment } from "@/lib/data/collars";
 import { sleeveLengthsFor, sleeveTypesFor } from "@/lib/data/sleeves";
-import type { BodyType, Fabric, FabricRegionId, FrontId, LegId, Outfit, SkirtLengthId, SkirtShapeId, SleeveChoice, WaistId, WornGarment } from "@/types";
+import type { BeltId, BodyType, ButtonsId, Fabric, FabricRegionId, FrontId, LegId, Outfit, SkirtLengthId, SkirtShapeId, SleeveChoice, WaistId, WornGarment } from "@/types";
 import { DEFAULT_SKIN_TONE, skinTones } from "@/lib/data/skinTones";
 import { chroma, ciede2000, hexToRgb, hue, ita, itaClass } from "@/lib/color/cielab";
 import { frameFor } from "@/lib/mannequin/frame";
@@ -3290,5 +3290,250 @@ describe("flare and palazzo, light and dark", () => {
       `.preview/wardrobe/styles11-legs-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
+  });
+});
+
+/**
+ * Round 12, on a light page and a dark one: the bow collar on the dress and
+ * on her blouse, plain and print, whole and close up.
+ */
+describe("bow collar, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; ids: string[]; cloth: string; zoom: number; focus: [number, number] };
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles12-bow-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const stage = (tile: Tile) => {
+      let worn: WornGarment[] = [];
+      const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+      for (const gid of tile.ids) {
+        const g = garmentById(gid)!;
+        const cloth = f(tile.cloth);
+        worn = wear(worn, cutFrom(g, cloth.id));
+        const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+        for (const r of g.fabricRegions) regions[r] = cloth;
+        by[gid] = regions;
+      }
+      if (tile.ids[0] === "female-dress") worn = setNeckline(worn, "female-dress", "female-high-neckline");
+      worn = setCollar(worn, tile.ids[0], "female-bow-collar");
+      const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={by} zoom={tile.zoom} focus={tile.focus} />;
+    };
+    const rows: Tile[][] = (
+      [
+        ["fb-apricot-linen", "plain"],
+        ["fb-midnight-floral", "print"],
+      ] as const
+    ).map(([cloth, kind]): Tile[] => [
+      { caption: `dress, bow, ${kind}`, ids: ["female-dress"], cloth, zoom: 1, focus: [300, 500] },
+      { caption: `dress, bow, ${kind}, 2.4×`, ids: ["female-dress"], cloth, zoom: 2.4, focus: [300, 250] },
+      { caption: `dress, bow, ${kind}, 4×`, ids: ["female-dress"], cloth, zoom: 4, focus: [300, 238] },
+      { caption: `blouse, bow, ${kind}, 2.4×`, ids: ["female-blouse", "female-skirt"], cloth, zoom: 2.4, focus: [300, 250] },
+    ]);
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/styles12-bow-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  });
+});
+
+/**
+ * Round 12, on a light page and a dark one: the dress buttoned down its front
+ * — to the waist and to the hem, on every cut that takes it, over every shape,
+ * length and waist — and belted, in its own cloth and in brown and black
+ * leather, at every waist; plain and print, whole and close up.
+ */
+describe("buttons and belt, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = {
+    caption: string;
+    cloth: string;
+    cut?: string;
+    sleeve?: SleeveChoice;
+    skirt?: Partial<{ shape: SkirtShapeId; length: SkirtLengthId; waist: WaistId }>;
+    buttons?: ButtonsId;
+    belt?: BeltId;
+    jacket?: boolean;
+    zoom: number;
+    focus: [number, number];
+  };
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  const stage = (tile: Tile) => {
+    const ids = ["female-dress", ...(tile.jacket ? ["female-jacket"] : [])];
+    let worn: WornGarment[] = [];
+    const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const gid of ids) {
+      const g = garmentById(gid)!;
+      const cloth = gid === "female-dress" ? f(tile.cloth) : f("fb-indigo-plaid");
+      worn = wear(worn, cutFrom(g, cloth.id));
+      const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+      for (const r of g.fabricRegions) regions[r] = cloth;
+      by[gid] = regions;
+    }
+    if (tile.cut) worn = setNeckline(worn, "female-dress", `female-${tile.cut}-neckline`);
+    if (tile.sleeve) worn = setSleeve(worn, "female-dress", tile.sleeve);
+    if (tile.buttons) worn = setButtons(worn, "female-dress", tile.buttons);
+    if (tile.belt) worn = setBelt(worn, "female-dress", tile.belt);
+    worn = worn.map((w) => {
+      const skirt = w.garmentId === "female-dress" ? skirtOf(w) : undefined;
+      return skirt && tile.skirt ? { ...w, skirt: { ...skirt, ...tile.skirt } } : w;
+    });
+    const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={by} zoom={tile.zoom} focus={tile.focus} />;
+  };
+  const write = (name: string, theme: keyof typeof THEMES, rows: Tile[][]) => {
+    const t = THEMES[theme];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
+      `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(`.preview/wardrobe/${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+  };
+  const CUTS = ["round", "scoop", "boat", "v", "square", "high", "sweetheart", "collared", "off-shoulder"] as const;
+  const WHOLE = { zoom: 1, focus: [300, 500] as [number, number] };
+
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles12-buttons-%s.html", (theme) => {
+    const rows: Tile[][] = [
+      CUTS.map((cut): Tile => ({ caption: `${cut}, to the hem, plain`, cloth: PLAIN, cut, buttons: "hem", ...WHOLE })),
+      CUTS.map((cut): Tile => ({ caption: `${cut}, to the hem, print`, cloth: PRINT, cut, buttons: "hem", ...WHOLE })),
+      CUTS.map((cut, i): Tile => ({ caption: `${cut}, to the waist, ${i % 2 ? "print" : "plain"}`, cloth: i % 2 ? PRINT : PLAIN, cut, buttons: "waist", ...WHOLE })),
+      [
+        { caption: "empire, A-line maxi, long sleeves, print", cloth: PRINT, cut: "round", buttons: "hem", skirt: { waist: "empire", shape: "aline", length: "maxi" }, sleeve: { type: "set-in", length: "long" }, ...WHOLE },
+        { caption: "dropped, pleated knee, plain", cloth: PLAIN, cut: "v", buttons: "hem", skirt: { waist: "dropped", shape: "pleated", length: "knee" }, ...WHOLE },
+        { caption: "circle knee, print", cloth: PRINT, cut: "square", buttons: "hem", skirt: { shape: "circle", length: "knee" }, ...WHOLE },
+        { caption: "tiered maxi, plain", cloth: PLAIN, cut: "high", buttons: "hem", skirt: { shape: "tiered", length: "maxi" }, ...WHOLE },
+        { caption: "mermaid midi, to the waist only, print", cloth: PRINT, cut: "sweetheart", buttons: "hem", skirt: { shape: "mermaid", length: "midi" }, ...WHOLE },
+        { caption: "collared, empire, pencil knee, plain", cloth: PLAIN, cut: "collared", buttons: "hem", skirt: { waist: "empire", shape: "pencil", length: "knee" }, ...WHOLE },
+        { caption: "collared, dropped, to the hem, under the jacket", cloth: PLAIN, cut: "collared", buttons: "hem", skirt: { waist: "dropped" }, sleeve: { type: "set-in", length: "long" }, jacket: true, ...WHOLE },
+      ],
+      [
+        { caption: "round, the top of the placket 2.4×", cloth: PLAIN, cut: "round", buttons: "hem", zoom: 2.4, focus: [297, 250] },
+        { caption: "round, at the waist seam 2.4×", cloth: PLAIN, cut: "round", buttons: "hem", zoom: 2.4, focus: [297, 350] },
+        { caption: "round, at the hem 2.4×", cloth: PLAIN, cut: "round", buttons: "hem", zoom: 2.4, focus: [297, 740] },
+        { caption: "v, the point 2.4×, print", cloth: PRINT, cut: "v", buttons: "hem", zoom: 2.4, focus: [297, 270] },
+        { caption: "off-shoulder, under the band 2.4×", cloth: PLAIN, cut: "off-shoulder", buttons: "hem", zoom: 2.4, focus: [297, 270] },
+        { caption: "sweetheart, under its dip 2.4×, print", cloth: PRINT, cut: "sweetheart", buttons: "hem", zoom: 2.4, focus: [297, 265] },
+        { caption: "collared, at the waist seam 2.4×, print", cloth: PRINT, cut: "collared", buttons: "hem", zoom: 2.4, focus: [297, 350] },
+      ],
+    ];
+    write("styles12-buttons", theme, rows);
+  });
+
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles12-belt-%s.html", (theme) => {
+    const belts = (cloth: string, kind: string): Tile[] => [
+      { caption: `self-fabric, natural, ${kind}`, cloth, belt: "self", ...WHOLE },
+      { caption: `brown leather, natural, ${kind}`, cloth, belt: "brown", ...WHOLE },
+      { caption: `black leather, natural, ${kind}`, cloth, belt: "black", ...WHOLE },
+      { caption: `self-fabric, empire, ${kind}`, cloth, belt: "self", skirt: { waist: "empire" }, ...WHOLE },
+      { caption: `brown leather, empire, ${kind}`, cloth, belt: "brown", skirt: { waist: "empire" }, ...WHOLE },
+      { caption: `black leather, dropped, ${kind}`, cloth, belt: "black", skirt: { waist: "dropped" }, ...WHOLE },
+      { caption: `self-fabric, dropped, ${kind}`, cloth, belt: "self", skirt: { waist: "dropped" }, ...WHOLE },
+    ];
+    const rows: Tile[][] = [
+      belts(PLAIN, "plain"),
+      belts(PRINT, "print"),
+      [
+        { caption: "self-fabric, the buckle 2.4×, plain", cloth: PLAIN, belt: "self", zoom: 2.4, focus: [297, 344] },
+        { caption: "self-fabric, the buckle 2.4×, print", cloth: PRINT, belt: "self", zoom: 2.4, focus: [297, 344] },
+        { caption: "brown leather, the buckle 2.4×", cloth: PLAIN, belt: "brown", zoom: 2.4, focus: [297, 344] },
+        { caption: "black leather, the buckle 2.4×, print", cloth: PRINT, belt: "black", zoom: 2.4, focus: [297, 344] },
+        { caption: "brown leather, its end at the side 2.4×", cloth: PLAIN, belt: "brown", zoom: 2.4, focus: [250, 344] },
+        { caption: "black, empire, bishop sleeves 2.4×", cloth: PLAIN, belt: "black", skirt: { waist: "empire" }, sleeve: { type: "bishop", length: "long" }, zoom: 2.4, focus: [260, 330] },
+        { caption: "brown, buttoned to the hem 2.4×", cloth: PLAIN, cut: "round", buttons: "hem", belt: "brown", zoom: 2.4, focus: [297, 344] },
+      ],
+      [
+        { caption: "brown, buttoned to the hem, plain", cloth: PLAIN, cut: "round", buttons: "hem", belt: "brown", ...WHOLE },
+        { caption: "self-fabric, circle maxi, print", cloth: PRINT, belt: "self", skirt: { shape: "circle", length: "maxi" }, ...WHOLE },
+        { caption: "black, under the jacket, plain", cloth: PLAIN, belt: "black", jacket: true, sleeve: { type: "set-in", length: "long" }, ...WHOLE },
+        { caption: "brown, long sleeves, collared, print", cloth: PRINT, cut: "collared", belt: "brown", sleeve: { type: "set-in", length: "long" }, ...WHOLE },
+        { caption: "self-fabric, tiered, print", cloth: PRINT, belt: "self", skirt: { shape: "tiered" }, ...WHOLE },
+        { caption: "black, pencil knee, off-shoulder, plain", cloth: PLAIN, cut: "off-shoulder", belt: "black", skirt: { shape: "pencil", length: "knee" }, ...WHOLE },
+        { caption: "brown, empire, A-line maxi, bell sleeves, print", cloth: PRINT, belt: "brown", skirt: { waist: "empire", shape: "aline", length: "maxi" }, sleeve: { type: "bell", length: "long" }, ...WHOLE },
+      ],
+    ];
+    write("styles12-belt", theme, rows);
+  });
+
+  /*
+    The four changes asked for after round 12 was first shown: buttons on the
+    scoop, the boat and the sweetheart — from below its dip; a pleated skirt
+    buttoned to the hem, its pleats either side of a flat panel under the
+    placket; a mermaid buttoned to the waist only, asked for the hem; and the
+    keyhole with its own button and loop and nothing else, asked for buttons.
+  */
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/styles12-fixes-%s.html", (theme) => {
+    const cuts = (cloth: string, kind: string): Tile[] => [
+      { caption: `scoop, to the hem, ${kind}`, cloth, cut: "scoop", buttons: "hem", ...WHOLE },
+      { caption: `boat, to the hem, ${kind}`, cloth, cut: "boat", buttons: "hem", ...WHOLE },
+      { caption: `sweetheart, to the hem, ${kind}`, cloth, cut: "sweetheart", buttons: "hem", ...WHOLE },
+      { caption: `scoop, to the waist, ${kind}`, cloth, cut: "scoop", buttons: "waist", ...WHOLE },
+      { caption: `boat, to the waist, ${kind}`, cloth, cut: "boat", buttons: "waist", ...WHOLE },
+      { caption: `sweetheart, to the waist, ${kind}`, cloth, cut: "sweetheart", buttons: "waist", ...WHOLE },
+      { caption: `sweetheart, under its dip 2.4×, ${kind}`, cloth, cut: "sweetheart", buttons: "hem", zoom: 2.4, focus: [297, 268] },
+    ];
+    const PLEATED = { shape: "pleated" } as const;
+    const rows: Tile[][] = [
+      cuts(PLAIN, "plain"),
+      cuts(PRINT, "print"),
+      [
+        { caption: "pleated midi, to the hem, plain", cloth: PLAIN, buttons: "hem", skirt: { ...PLEATED, length: "midi" }, ...WHOLE },
+        { caption: "pleated knee, empire, to the hem, print", cloth: PRINT, buttons: "hem", skirt: { ...PLEATED, length: "knee", waist: "empire" }, ...WHOLE },
+        { caption: "pleated maxi, dropped, to the hem, plain", cloth: PLAIN, cut: "v", buttons: "hem", skirt: { ...PLEATED, length: "maxi", waist: "dropped" }, ...WHOLE },
+        { caption: "pleated, the panel at the seam 2.4×, plain", cloth: PLAIN, buttons: "hem", skirt: { ...PLEATED, length: "midi" }, zoom: 2.4, focus: [297, 400] },
+        { caption: "pleated, the panel at the hem 2.4×, plain", cloth: PLAIN, buttons: "hem", skirt: { ...PLEATED, length: "midi" }, zoom: 2.4, focus: [297, 730] },
+        { caption: "pleated, the panel at the hem 2.4×, print", cloth: PRINT, buttons: "hem", skirt: { ...PLEATED, length: "midi" }, zoom: 2.4, focus: [297, 730] },
+        { caption: "pleated midi, to the hem, belted, print", cloth: PRINT, buttons: "hem", belt: "brown", skirt: { ...PLEATED, length: "midi" }, ...WHOLE },
+      ],
+      [
+        { caption: "mermaid midi, asked to the hem: to the waist, plain", cloth: PLAIN, buttons: "hem", skirt: { shape: "mermaid", length: "midi" }, ...WHOLE },
+        { caption: "mermaid maxi, asked to the hem: to the waist, print", cloth: PRINT, cut: "scoop", buttons: "hem", skirt: { shape: "mermaid", length: "maxi" }, ...WHOLE },
+        { caption: "mermaid midi, empire, to the waist, plain", cloth: PLAIN, cut: "collared", buttons: "hem", skirt: { shape: "mermaid", length: "midi", waist: "empire" }, ...WHOLE },
+        { caption: "keyhole, asked to the hem: its own button only, plain", cloth: PLAIN, cut: "keyhole", buttons: "hem", ...WHOLE },
+        { caption: "keyhole, asked to the hem, print", cloth: PRINT, cut: "keyhole", buttons: "hem", ...WHOLE },
+        { caption: "keyhole, its closure 2.4×, plain", cloth: PLAIN, cut: "keyhole", buttons: "hem", zoom: 2.4, focus: [297, 240] },
+        { caption: "keyhole, its closure 2.4×, print", cloth: PRINT, cut: "keyhole", buttons: "hem", zoom: 2.4, focus: [297, 240] },
+      ],
+    ];
+    write("styles12-fixes", theme, rows);
   });
 });

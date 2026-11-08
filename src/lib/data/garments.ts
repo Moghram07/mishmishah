@@ -149,6 +149,9 @@ export const garments: Garment[] = [
       waists: ["empire", "natural", "dropped"],
       default: { shape: "flared", length: "midi", waist: "natural" },
     },
+    /* buttoned down a straight centre front only — see `buttonsOn` — and belted on any cut but the wrap */
+    buttons: { offered: ["none", "waist", "hem"], default: "none" },
+    belts: { offered: ["none", "self", "brown", "black"], default: "none" },
     asset: { front: "female-dress-front" },
   },
   {

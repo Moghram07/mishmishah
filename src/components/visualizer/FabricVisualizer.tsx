@@ -26,6 +26,7 @@ import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { legsFor } from "@/lib/data/legs";
 import { frontsFor } from "@/lib/data/fronts";
+import { beltsFor, buttonsFor } from "@/lib/data/closures";
 import {
   sleeveCuffById,
   sleeveCuffsFor,
@@ -59,6 +60,10 @@ import {
   setSkirt,
   setLeg,
   legOf,
+  setButtons,
+  buttonsOf,
+  setBelt,
+  beltOf,
   setSleeve,
   skirtOf,
   sleeveOf,
@@ -81,7 +86,9 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 import { FEATURES } from "@/lib/features";
 import type {
+  BeltId,
   BodyType,
+  ButtonsId,
   Design,
   Fabric,
   FabricRegionId,
@@ -402,6 +409,18 @@ export function FabricVisualizer() {
     setOutfit((o) => ({ ...o, worn: setLeg(o.worn, cuttingGarment.id, leg) }));
   };
 
+  /** Button the dress being cut down its front so far — resolved when read, see `buttonsOf`. */
+  const chooseButtons = (buttons: ButtonsId) => {
+    if (!cuttingGarment) return;
+    setOutfit((o) => ({ ...o, worn: setButtons(o.worn, cuttingGarment.id, buttons) }));
+  };
+
+  /** Belt the dress being cut — resolved when read, see `beltOf`. */
+  const chooseBelt = (belt: BeltId) => {
+    if (!cuttingGarment) return;
+    setOutfit((o) => ({ ...o, worn: setBelt(o.worn, cuttingGarment.id, belt) }));
+  };
+
   /** Wear the garment being cut open or closed at the front — resolved when read, see `frontOf`. */
   const chooseFront = (front: FrontId) => {
     if (!cuttingGarment) return;
@@ -664,6 +683,18 @@ export function FabricVisualizer() {
   const frontChoices = cuttingGarment ? frontsFor(cuttingGarment) : [];
   const wornFront = cuttingEntry ? frontOf(cuttingEntry.worn) : undefined;
   const showFront = subject === "wardrobe" && frontChoices.length > 1 && wornFront !== undefined;
+
+  /*
+    A dress's buttons, beside the cut they depend on — offered only where its
+    centre front is straight — and its belt, beside the waist it sits on.
+  */
+  const cutNow = cuttingEntry ? necklineOf(cuttingEntry.worn)?.cut : undefined;
+  const buttonChoices = cuttingGarment ? buttonsFor(cuttingGarment, cutNow, wornSkirt?.shape) : [];
+  const wornButtons = cuttingEntry ? buttonsOf(cuttingEntry.worn) : undefined;
+  const showButtons = subject === "wardrobe" && !onBottom && buttonChoices.length > 1 && wornButtons !== undefined;
+  const beltChoices = cuttingGarment ? beltsFor(cuttingGarment, cutNow) : [];
+  const wornBelt = cuttingEntry ? beltOf(cuttingEntry.worn) : undefined;
+  const showBelt = beltChoices.length > 1 && wornBelt !== undefined;
 
   /*
     On a phone the controls under the stage show a few rows at a time, and the
@@ -1358,6 +1389,20 @@ export function FabricVisualizer() {
                     </div>
                   </div>
                 )}
+
+                {/* a belt on its waist seam, a dress's: none, its own cloth, or leather */}
+                {showBelt && wornBelt && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("viz.belt")}
+                    </p>
+                    <div role="group" aria-label={t("viz.belt")} className="flex flex-wrap gap-2">
+                      {beltChoices.map((b) => (
+                        <CollarChoice key={b.id} label={pick(b.name)} active={wornBelt === b.id} onClick={() => chooseBelt(b.id)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1384,6 +1429,37 @@ export function FabricVisualizer() {
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   {t("viz.necklineHint")}
                 </p>
+              </div>
+            )}
+
+            {/* a dress's buttons down its front, on a cut with a straight centre front: one row */}
+            {showButtons && wornButtons && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("viz.buttons")}
+                </p>
+                <div
+                  role="group"
+                  aria-label={t("viz.buttons")}
+                  className="grid gap-1 rounded-full bg-muted/60 p-1"
+                  style={{ gridTemplateColumns: `repeat(${buttonChoices.length}, minmax(0, 1fr))` }}
+                >
+                  {buttonChoices.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => chooseButtons(b.id)}
+                      aria-pressed={wornButtons === b.id}
+                      className={cn(
+                        "btn-focus rounded-full px-2 py-2 text-xs font-semibold transition-all",
+                        wornButtons === b.id
+                          ? "bg-card text-foreground shadow-soft"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {pick(b.name)}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

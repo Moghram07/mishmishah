@@ -1,5 +1,7 @@
 import type {
+  BeltId,
   BodyType,
+  ButtonsId,
   BodyZone,
   Collar,
   FabricRegionId,
@@ -33,6 +35,7 @@ import {
   collarsForGarment,
   defaultCollar,
 } from "@/lib/data/collars";
+import { beltsOn, buttonsOn } from "@/lib/garments/closures";
 import {
   defaultSleeve,
   sleeveCuffsFor,
@@ -225,6 +228,50 @@ export function legOf(worn: WornGarment): LegId | undefined {
   if (!garment?.legs) return undefined;
   const wanted = worn.leg ?? garment.legs.default;
   return garment.legs.offered.includes(wanted) ? wanted : garment.legs.default;
+}
+
+/**
+ * How far a worn dress is buttoned down its front, resolved against what it
+ * offers and the cut it is worn in — see `buttonsOn`. `undefined` when it has
+ * no such choice, or its cut cannot be buttoned; a choice its cut does not
+ * take falls back to how it arrives, or, for a cut with its own placket, to
+ * the first it does take.
+ */
+export function buttonsOf(worn: WornGarment): ButtonsId | undefined {
+  const garment = garmentById(worn.garmentId);
+  if (!garment?.buttons) return undefined;
+  const cut = necklineOf(worn)?.cut;
+  const offered = cut ? buttonsOn(cut, garment.buttons.offered, skirtOf(worn)?.shape) : [];
+  if (offered.length === 0) return undefined;
+  const wanted = worn.buttons ?? garment.buttons.default;
+  if (offered.includes(wanted)) return wanted;
+  /* to the hem over a skirt that cannot open so far — a mermaid's — it is buttoned to the waist */
+  if (wanted === "hem" && offered.includes("waist")) return "waist";
+  return offered.includes(garment.buttons.default) ? garment.buttons.default : offered[0];
+}
+
+/** Button a worn dress down its front so far. The choice is resolved when it is read, so it waits out a cut that cannot take it. */
+export function setButtons(worn: WornGarment[], garmentId: string, buttons: ButtonsId): WornGarment[] {
+  return worn.map((w) => (w.garmentId === garmentId ? { ...w, buttons } : w));
+}
+
+/**
+ * The belt a worn dress is worn with, resolved against what it offers and
+ * the cut it is worn in — see `beltsOn`. `undefined` when it takes none.
+ */
+export function beltOf(worn: WornGarment): BeltId | undefined {
+  const garment = garmentById(worn.garmentId);
+  if (!garment?.belts) return undefined;
+  const cut = necklineOf(worn)?.cut;
+  const offered = cut ? beltsOn(cut, garment.belts.offered) : [];
+  if (offered.length === 0) return undefined;
+  const wanted = worn.belt ?? garment.belts.default;
+  return offered.includes(wanted) ? wanted : garment.belts.default;
+}
+
+/** Belt a worn dress. The choice is resolved when it is read. */
+export function setBelt(worn: WornGarment[], garmentId: string, belt: BeltId): WornGarment[] {
+  return worn.map((w) => (w.garmentId === garmentId ? { ...w, belt } : w));
 }
 
 /** Recut a worn pair of trousers' legs. The choice is resolved when it is read. */

@@ -16,6 +16,8 @@ import {
   necklineOf,
   skirtOf,
   legOf,
+  buttonsOf,
+  beltOf,
   sleeveOf,
   stack,
   visibleStack,
@@ -153,6 +155,8 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
       const skirt = skirtOf(w);
       const front = frontOf(w);
       const leg = legOf(w);
+      const buttons = buttonsOf(w);
+      const belt = beltOf(w);
       return {
         neckline: necklineOf(w)?.cut,
         opening: collarOf(w)?.opening,
@@ -160,6 +164,8 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
         ...(skirt ? { skirt } : {}),
         ...(front ? { front } : {}),
         ...(leg ? { leg } : {}),
+        ...(buttons ? { buttons } : {}),
+        ...(belt ? { belt } : {}),
         ...(inside ? { inside } : {}),
         ...(underTop ? { underTop } : {}),
       };

@@ -22,9 +22,11 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, SKIRT, WAIST_Y, bodiceFor, cloth, seamAt, skirtFor } from "./dressCut";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, frontButtons, seamAt, skirtFor, skirtPlacketFor } from "./dressCut";
+import { BELTLESS_CUTS, LEATHER } from "@/lib/garments/closures";
+import { Buckle } from "../buckle";
 import { besideArms, fallOf, hangs, sameSkirt, skirtKey, type CutSkirt } from "@/lib/garments/skirts";
-import type { FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
+import type { BeltId, ButtonsId, FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { litButtons } from "../buttons";
 import { puffLightDefs, puffShade, seamFolds, sleeveFoldDefs, sleeveFolds } from "../sleeveFolds";
@@ -93,8 +95,8 @@ const tiersOf = (inside: Tuck | undefined, skirt: SkirtChoice): TierSpec | undef
  * The skirt's folds, from the waist — or, under a jacket, from the jacket's
  * hem, where the skirt comes out, so they follow the outline it has there.
  */
-const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] => {
-  const sk = skirtFor(inside, skirt);
+export const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, toHem = false): Fold[] => {
+  const sk = skirtFor(inside, skirt, toHem);
   const seam = seamOf(skirt);
   const hem: readonly [Pt, Pt] = [sk.hemLeft, [600 - sk.hemLeft[0], sk.hemLeft[1]]];
   /*
@@ -141,7 +143,11 @@ const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] =
       ...circleFolds({ seam: from, hem, hemDip: 22 * fall.dip, at: fall.waves, start: inside ? 0 : 6, seed: 7 }),
     ];
   }
-  /* a pleated skirt's pleats run from the seam to the hem, and take it in: no gathers, no darts */
+  /*
+    A pleated skirt's pleats run from the seam to the hem, and take it in: no
+    gathers, no darts. Buttoned to the hem, they start either side of a flat
+    panel down the centre front, where the placket lies.
+  */
   if (fall.pleats) {
     const top = rowSpan(sk.path, from[0][1] + 2) ?? [from[0][0], from[1][0]];
     return pleatFolds({
@@ -152,6 +158,7 @@ const skirtFolds = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): Fold[] =
       hem,
       hemDip: 22 * fall.dip,
       lines: fall.pleats,
+      ...(toHem ? { panel: { count: fall.pleats.length + 1, x: PANEL } } : {}),
     });
   }
   if (fall.fitted) {
@@ -594,8 +601,8 @@ function offRow(d: string, y: number): string {
   return dropped ? out.join(" ") : d;
 }
 
-const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId): RegionArt => {
-  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff } = bodiceFor(id, sleeve, waist);
+const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons: ButtonsId = "none"): RegionArt => {
+  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff } = bodiceFor(id, sleeve, waist, buttons);
   /* a puff is lit round and gathered at both ends — see `PuffShape` */
   const puffFolds = puff ? puff.shapes.flatMap((s, i) => puffDrape(s, 60 + i)) : [];
   const puffed = new Set(puff?.sleeves ?? []);
@@ -872,10 +879,12 @@ const topFor = (choice: GarmentChoice): RegionArt => {
     : DEFAULT_CUT;
   const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
   const waist = choice.skirt?.waist ?? "natural";
-  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}`;
+  /* buttoned to the waist or to the hem, the bodice wears the same placket */
+  const placket = bodiceFor(id, sleeve, waist, choice.buttons).placket !== undefined;
+  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placket ? "|placket" : ""}`;
   let region = tops.get(key);
   if (!region) {
-    region = topRegion(id, sleeve, waist);
+    region = topRegion(id, sleeve, waist, placket ? choice.buttons : "none");
     tops.set(key, region);
   }
   return region;
@@ -904,11 +913,75 @@ const waistSeam = (sk: CutSkirt): Fold[] => [
   },
 ];
 
-const bottomRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, under: string[] = []): RegionArt => {
-  const sk = skirtFor(inside, skirt);
-  const folds = [...(inside || !sameSkirt(skirt, DEFAULT_SKIRT) ? skirtFolds(inside, skirt) : SKIRT_FOLDS), ...waistSeam(sk)];
-  const tiers = tiersOf(inside, skirt);
+/** A belt's light: lit along its top edge and falling away toward its lower one, as a band round her is. */
+const BELT_SHADE: Stop[] = [
+  [0, "#ffffff"],
+  [0.2, "#f4f4f4"],
+  [0.8, "#dddddd"],
+  [1, "#c6c6c6"],
+];
+
+/**
+ * A belt over the waist seam — see `beltFor` — lying over the bodice and
+ * the skirt, behind any sleeve hanging beside it. In the dress's own cloth,
+ * cut from another part of the roll so its print does not run on from the
+ * skirt's, and topstitched along both edges; or in leather, its own colour,
+ * a soft sheen along its top edge and a stitch along each.
+ */
+const beltArt = (skirt: SkirtChoice, kind: Exclude<BeltId, "none">, under: string[]): RegionArt => {
+  const b = beltFor(skirt);
+  const leather = kind === "self" ? undefined : LEATHER[kind];
+  const [top, foot] = [b.left[0][0], b.left[b.left.length - 1][0]];
+  const s = 2.4;
+  const stitch =
+    `M${(top + 3).toFixed(2)} ${b.top + s} L${(597 - top).toFixed(2)} ${b.top + s} ` +
+    `M${(foot + 3).toFixed(2)} ${b.bottom - s} L${(597 - foot).toFixed(2)} ${b.bottom - s}`;
   return {
+    ...(under.length ? { under } : {}),
+    focus: [300, b.mid],
+    surface: leather ? { blur: 5, relief: 2.5 } : { blur: 6, relief: 3, warp: 3 },
+    ...(leather ? { solid: leather } : { grain: { shift: [6, 13] } }),
+    shape: (fill) => <path d={b.path} fill={fill} />,
+    defs: (uid) => vertical(uid("belt"), BELT_SHADE),
+    shading: (uid) => <path d={b.path} fill={`url(#${uid("belt")})`} />,
+    ...(leather
+      ? {
+          light: () => (
+            <g fill="none" stroke="#ffffff" strokeLinecap="round">
+              <path d={`M${(top + 2).toFixed(2)} ${b.top + 1.2} L${(598 - top).toFixed(2)} ${b.top + 1.2}`} strokeWidth={1.1} opacity={0.22} />
+              <path d={stitch} strokeWidth={0.6} strokeDasharray="1.8 1.4" opacity={0.3} />
+            </g>
+          ),
+        }
+      : { stitch }),
+  };
+};
+
+/** The belt a choice wears, if it wears one its cut takes — see `BELTLESS_CUTS`. */
+const beltOn = (choice: GarmentChoice): Exclude<BeltId, "none"> | undefined => {
+  const id = cutOf(choice.neckline);
+  return choice.belt && choice.belt !== "none" && !BELTLESS_CUTS.includes(id) ? choice.belt : undefined;
+};
+
+/** The cut a choice names, or the one the dress arrives in. */
+const cutOf = (neckline?: string): NecklineId =>
+  (NECKLINE_IDS as readonly string[]).includes(neckline ?? "") ? (neckline as NecklineId) : DEFAULT_CUT;
+
+const bottomRegion = (
+  inside?: Tuck,
+  skirt: SkirtChoice = DEFAULT_SKIRT,
+  under: string[] = [],
+  placket = false,
+  belt?: RegionArt
+): RegionArt => {
+  const sk = skirtFor(inside, skirt, placket);
+  const folds = [...(inside || placket || !sameSkirt(skirt, DEFAULT_SKIRT) ? skirtFolds(inside, skirt, placket) : SKIRT_FOLDS), ...waistSeam(sk)];
+  const tiers = tiersOf(inside, skirt);
+  /* buttoned to the hem: its placket on down the skirt, a piece over it outlined along its two long sides */
+  const p = placket ? skirtPlacketFor(inside, skirt) : undefined;
+  const stitch = `M${sk.waistLeft[0] + 6} ${seamAt(skirt.waist) - 2} L${594 - sk.waistLeft[0]} ${seamAt(skirt.waist) - 2}`;
+  return {
+    ...(belt ? { over: belt } : {}),
     ...(under.length ? { under } : {}),
     focus: [300, 580],
     surface: {
@@ -918,9 +991,25 @@ const bottomRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, under: 
       /* a tiered skirt's print bends a little along its gathers */
       ...(tiers ? { gathers: tierRidges(tiers) } : {}),
     },
-    shape: (fill) => <path d={sk.path} fill={fill} />,
+    shape: (fill) =>
+      p ? (
+        <>
+          <path d={sk.path} fill={fill} />
+          <path d={p.path} fill={fill} />
+        </>
+      ) : (
+        <path d={sk.path} fill={fill} />
+      ),
     /* its outline, but for its top: the waist seam */
-    edge: () => <path d={offRow(sk.path, sk.waistY)} fill="none" />,
+    edge: () =>
+      p ? (
+        <>
+          <path d={offRow(sk.path, sk.waistY)} fill="none" />
+          <path d={p.sides} fill="none" />
+        </>
+      ) : (
+        <path d={offRow(sk.path, sk.waistY)} fill="none" />
+      ),
     defs: (uid) => (
       <>
         {vertical(uid("drape"), DRAPE)}
@@ -934,7 +1023,7 @@ const bottomRegion = (inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, under: 
       </>
     ),
     light: (uid) => foldLights(uid, folds),
-    stitch: `M${sk.waistLeft[0] + 6} ${seamAt(skirt.waist) - 2} L${594 - sk.waistLeft[0]} ${seamAt(skirt.waist) - 2}`,
+    stitch: p ? `${stitch} ${p.stitch}` : stitch,
   };
 };
 
@@ -953,16 +1042,22 @@ export const dressFront: GarmentArt = {
    */
   cut: (choice): Partial<Record<FabricRegionId, RegionArt>> => {
     const { inside, skirt = DEFAULT_SKIRT } = choice;
-    if (!inside && sameSkirt(skirt, DEFAULT_SKIRT)) return { top: topFor(choice) };
-    const id = (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")
-      ? (choice.neckline as NecklineId)
-      : DEFAULT_CUT;
+    const id = cutOf(choice.neckline);
+    /* buttoned to the hem, the placket runs on down the skirt; a belt lies over both */
+    const placket = buttonedToHem(choice);
+    const belt = beltOn(choice);
+    if (!inside && sameSkirt(skirt, DEFAULT_SKIRT) && !placket && !belt) return { top: topFor(choice) };
     const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
-    const under = besideArms(skirt) ? bodiceFor(id, sleeve, skirt.waist).armCover : [];
+    const arms = bodiceFor(id, sleeve, skirt.waist).armCover;
+    const under = besideArms(skirt) ? arms : [];
+    const sleeveKey = `|${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}`;
     const key =
       `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}` +
-      (under.length ? `|${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}` : "");
-    if (!bottoms.has(key)) bottoms.set(key, bottomRegion(inside, skirt, under));
+      (under.length ? sleeveKey : "") +
+      (placket ? "|placket" : "") +
+      /* the belt lies behind the sleeves at every waist */
+      (belt ? `|belt-${belt}${sleeveKey}` : "");
+    if (!bottoms.has(key)) bottoms.set(key, bottomRegion(inside, skirt, under, placket, belt ? beltArt(skirt, belt, arms) : undefined));
     return { top: topFor(choice), bottom: bottoms.get(key)! };
   },
   /** The cuffs' hardware — the near side's only, on a cut with one sleeve. */
@@ -975,14 +1070,32 @@ export const dressFront: GarmentArt = {
     const { left, right } = cuff.cut.trim;
     return <CuffHardware trims={cuff.oneSided ? [left] : [left, right]} />;
   },
-  /** The cut's buttons — a shirt-dress's placket, a keyhole's closure — drawn under any collar. */
+  /**
+   * Its buttons — a shirt-dress's placket, a keyhole's closure, a placket
+   * down the front — drawn under any collar; and a belt's buckle, over the
+   * belt at the centre front.
+   */
   cutTrim: (choice) => {
-    const id = (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")
-      ? (choice.neckline as NecklineId)
-      : DEFAULT_CUT;
-    const buttons = bodiceFor(id, choice.sleeve ?? DEFAULT_SLEEVE, choice.skirt?.waist).cut.buttons;
-    if (!buttons) return null;
-    return litButtons(buttons.at, buttons.r);
+    const { groups } = frontButtons(choice);
+    const buttons =
+      groups.length === 0 ? null : groups.length === 1 ? (
+        litButtons(groups[0].at, groups[0].r)
+      ) : (
+        <>
+          {groups.map((g, i) => (
+            <g key={i}>{litButtons(g.at, g.r)}</g>
+          ))}
+        </>
+      );
+    const belt = beltOn(choice);
+    if (!belt) return buttons;
+    const { buckle } = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
+    return (
+      <>
+        {buttons}
+        <Buckle {...buckle} />
+      </>
+    );
   },
   armCover: (choice) =>
     bodiceFor(

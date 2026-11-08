@@ -13,8 +13,26 @@
 */
 import { draft, line, mirrorPts, outline, reverse, run, setIn, span, type Pt, type Tuck } from "../../fit.ts";
 import { hemRow, top, type Frame, type PuffShape, type SleeveChoice, type SleeveCut } from "../../sleeves.ts";
-import { WAIST_DROP, sameSkirt, skirtCut, skirtKey, type CutSkirt, type SkirtFinish } from "../../skirts.ts";
-import type { SkirtChoice, WaistId } from "@/types";
+import { WAIST_DROP, fallOf, sameSkirt, skirtCut, skirtKey, type CutSkirt, type SkirtFinish } from "../../skirts.ts";
+import {
+  BELT_ABOVE_SEAM,
+  BELT_OUT,
+  BELT_WIDTH,
+  BUCKLE,
+  BUTTONED_CUTS,
+  BUTTONED_TO_WAIST_ONLY,
+  BUTTON_FIRST,
+  BUTTON_HEM_CLEAR,
+  BUTTON_LAST,
+  BUTTON_PITCH,
+  BUTTON_R,
+  BUTTON_SLIDE,
+  OWN_PLACKET,
+  PANEL_HALF,
+  PLACKET_HALF,
+  PLACKET_STITCH,
+} from "../../closures.ts";
+import type { ButtonsId, SkirtChoice, WaistId } from "@/types";
 import type { GarmentChoice } from "../index.ts";
 import { mirror as mirrorPath } from "../../collar.ts";
 import {
@@ -68,12 +86,24 @@ export const SKIRT = skirtCut(FINISH, DEFAULT_SKIRT);
  * style and jacket cut once, kept.
  */
 const skirts = new Map<string, CutSkirt>();
-export function skirtFor(inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT): CutSkirt {
-  if (!inside && sameSkirt(skirt, DEFAULT_SKIRT)) return SKIRT;
-  const key = `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}`;
-  if (!skirts.has(key)) skirts.set(key, skirtCut(FINISH, skirt, inside));
+export function skirtFor(inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, toHem = false): CutSkirt {
+  /* buttoned to the hem, a pleated skirt has a flat panel down its centre front for the placket, its pleats either side */
+  const panel = toHem && fallOf(skirt.shape).pleats !== undefined;
+  if (!inside && !panel && sameSkirt(skirt, DEFAULT_SKIRT)) return SKIRT;
+  const key = `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}${panel ? "|panel" : ""}`;
+  if (!skirts.has(key)) skirts.set(key, skirtCut(FINISH, skirt, inside, panel ? PANEL : undefined));
   return skirts.get(key)!;
 }
+
+/**
+ * Whether a choice is buttoned on to the hem: a cut that can be buttoned,
+ * over a skirt that can open so far — see `BUTTONED_TO_WAIST_ONLY`. Asked to,
+ * over a mermaid it is buttoned to the waist.
+ */
+export const buttonedToHem = (choice: GarmentChoice): boolean =>
+  choice.buttons === "hem" &&
+  BUTTONED_CUTS.includes(cutOf(choice.neckline)) &&
+  !BUTTONED_TO_WAIST_ONLY.includes((choice.skirt ?? DEFAULT_SKIRT).shape);
 
 export interface Bodice {
   cut: NecklineCut;
@@ -127,6 +157,8 @@ export interface Bodice {
    * that those stay off: the arm bands, and an off-shoulder's band.
    */
   puff?: { sleeves: string[]; shapes: PuffShape[]; over: string[] };
+  /** Its placket, when it is buttoned down the front and its cut has none of its own — see `withPlacket`. */
+  placket?: Placket;
 }
 
 /** The sleeve the dress arrives in. Kept in step with its record by a test. */
@@ -527,14 +559,352 @@ export function bandArm(
   };
 }
 
-export function bodiceFor(id: NecklineId, sleeve: SleeveChoice = DEFAULT_SLEEVE, waist: WaistId = "natural"): Bodice {
-  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}`;
+export function bodiceFor(
+  id: NecklineId,
+  sleeve: SleeveChoice = DEFAULT_SLEEVE,
+  waist: WaistId = "natural",
+  buttons: ButtonsId = "none"
+): Bodice {
+  /* buttoned to the waist or to the hem, the bodice is the same: its placket runs to the waist seam either way */
+  const placketed = placketOn(id, buttons);
+  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placketed ? "|placket" : ""}`;
   let b = cache.get(key);
   if (!b) {
-    b = bodice(id, sleeve, waist);
+    b = placketed ? withPlacket(bodiceFor(id, sleeve, waist), waist) : bodice(id, sleeve, waist);
     cache.set(key, b);
   }
   return b;
+}
+
+/* ------------------------------------------------------------- buttons */
+
+/** Whether a cut buttoned so wants a placket of its own: one it can be buttoned on, and has none already — see `OWN_PLACKET`. */
+const placketOn = (id: NecklineId, buttons: ButtonsId): boolean =>
+  buttons !== "none" && BUTTONED_CUTS.includes(id) && !OWN_PLACKET.includes(id);
+
+/**
+ * Her centre front: the centre of her neck, where every cut's opening is
+ * centred — see `anatomy` in `necklines.ts`, which measures it at the same row.
+ */
+export const FRONT_X = draft("female").neck(164).center;
+
+/** A pleated skirt's flat centre panel, buttoned to the hem: centred on the placket — see `PANEL_HALF`. */
+export const PANEL: readonly [number, number] = [FRONT_X - PANEL_HALF, FRONT_X + PANEL_HALF];
+
+/** A path's subpaths as points, its curves walked in short steps: absolute `M L H V C Z`, all the drafting writes. */
+function flatten(d: string): Pt[][] {
+  const tokens = d.match(/[A-Za-z]|-?[0-9]*[.]?[0-9]+(?:e-?[0-9]+)?/g) ?? [];
+  const out: Pt[][] = [];
+  let cur: Pt[] = [];
+  let at: Pt = [0, 0];
+  let cmd = "M";
+  let i = 0;
+  const num = () => Number(tokens[i++]);
+  while (i < tokens.length) {
+    if (/[A-Za-z]/.test(tokens[i])) {
+      cmd = tokens[i++];
+      if (cmd === "Z") {
+        if (cur.length) out.push(cur);
+        cur = [];
+        continue;
+      }
+    }
+    if (cmd === "M") {
+      if (cur.length) out.push(cur);
+      at = [num(), num()];
+      cur = [at];
+      cmd = "L";
+    } else if (cmd === "L") {
+      at = [num(), num()];
+      cur.push(at);
+    } else if (cmd === "H") {
+      at = [num(), at[1]];
+      cur.push(at);
+    } else if (cmd === "V") {
+      at = [at[0], num()];
+      cur.push(at);
+    } else if (cmd === "C") {
+      const [a, b, c]: Pt[] = [[num(), num()], [num(), num()], [num(), num()]];
+      const p0 = at;
+      for (let k = 1; k <= 12; k++) {
+        const t = k / 12;
+        const m = 1 - t;
+        cur.push([
+          m * m * m * p0[0] + 3 * m * m * t * a[0] + 3 * m * t * t * b[0] + t * t * t * c[0],
+          m * m * m * p0[1] + 3 * m * m * t * a[1] + 3 * m * t * t * b[1] + t * t * t * c[1],
+        ]);
+      }
+      at = c;
+    } else {
+      throw new Error(`flatten: no "${cmd}" in the drafting's vocabulary`);
+    }
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
+/** Whether a point is inside a path's cloth: even-odd across its subpaths, as one piece is filled. */
+function inside(polys: Pt[][], x: number, y: number): boolean {
+  let c = false;
+  for (const p of polys) {
+    for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+      const [xi, yi] = p[i];
+      const [xj, yj] = p[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+    }
+  }
+  return c;
+}
+
+/** Whether a point lies on a piece of cloth, for the tests and `check:garments` to hold what lies on it to. */
+export const covers = (path: string, x: number, y: number): boolean => inside(flattened(path), x, y);
+
+/** Each path flattened once: the tests and the checker ask of the same few thousands of times. */
+const flat = new Map<string, Pt[][]>();
+const flattened = (path: string): Pt[][] => {
+  let polys = flat.get(path);
+  if (!polys) {
+    polys = flatten(path);
+    flat.set(path, polys);
+  }
+  return polys;
+};
+
+/** A piece's left and right edges across a row — or `undefined` where it does not reach. */
+export const across = (path: string, y: number): [number, number] | undefined => spanAt(flattened(path), y);
+
+/** The first row, down a column, that is inside a piece — or `undefined`. */
+function firstRow(polys: Pt[][], x: number, from: number, to: number): number | undefined {
+  for (let y = from; y <= to; y += 0.25) if (inside(polys, x, y)) return y;
+  return undefined;
+}
+
+/** A piece's left and right edges across a row, from its flattened outline — or `undefined` where it does not reach. */
+function spanAt(polys: Pt[][], y: number): [number, number] | undefined {
+  const xs: number[] = [];
+  for (const p of polys) {
+    for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+      const [xi, yi] = p[i];
+      const [xj, yj] = p[j];
+      if (yi > y !== yj > y) xs.push(xi + ((y - yi) * (xj - xi)) / (yj - yi));
+    }
+  }
+  return xs.length >= 2 ? [Math.min(...xs), Math.max(...xs)] : undefined;
+}
+
+/**
+ * A placket down a bodice's centre front, from its opening to its waist seam,
+ * and where its first button may go.
+ *
+ * The placket starts where the cloth does at the centre front — the bottom of
+ * a round opening, a V's point, a square's lower edge, a keyhole's drop — so
+ * it never pokes into the opening; its top is level, at the lowest of the
+ * opening across its width. Anything of the bodice's own drawn over it — an
+ * off-shoulder's band — hides its top, and its first button goes below that.
+ * Its foot runs under the skirt, which is sewn on over the bodice's hem.
+ */
+export interface Placket {
+  /** The piece, and its two long edges: its top lies on the opening and its foot under the skirt, so neither is an edge. */
+  path: string;
+  sides: string;
+  stitch: string;
+  /** Where it starts and ends, and the highest row a button's centre may sit at. */
+  top: number;
+  foot: number;
+  first: number;
+}
+
+function bodicePlacket(b: Bodice, waist: WaistId): Placket {
+  const c = FRONT_X;
+  const h = PLACKET_HALF;
+  const body = flatten(b.pieces[0]);
+  let top = 0;
+  for (let x = c - h; x <= c + h + 1e-9; x += 2) top = Math.max(top, firstRow(body, x, 140, 420) ?? 0);
+  top = Math.ceil((top + 0.5) * 4) / 4;
+  /* what the bodice draws over its top: the button is to be seen */
+  let clear = top;
+  for (const piece of b.pieces.slice(1)) {
+    const polys = flatten(piece);
+    let y = top;
+    let covered = false;
+    while (y < top + 80 && inside(polys, c, y)) {
+      covered = true;
+      y += 0.25;
+    }
+    if (covered) clear = Math.max(clear, y);
+  }
+  const foot = seamAt(waist);
+  const [l, r] = [c - h, c + h];
+  const s = PLACKET_STITCH;
+  return {
+    path: outline(span([l, top], [l, foot], 5), span([l, foot], [r, foot], 2), span([r, foot], [r, top], 5)),
+    sides: `M${l} ${top} L${l} ${foot} M${r} ${foot} L${r} ${top}`,
+    stitch: [
+      line(span([l + s, top + s], [l + s, foot - 5], 5)),
+      line(span([r - s, top + s], [r - s, foot - 5], 5)),
+    ].join(" "),
+    top,
+    foot,
+    first: clear + BUTTON_FIRST,
+  };
+}
+
+/** A bodice with a placket sewn on down its centre front, over its body and under everything else of it. */
+function withPlacket(b: Bodice, waist: WaistId): Bodice {
+  const p = bodicePlacket(b, waist);
+  const insert = (list: string[], item: string): string[] => [list[0], item, ...list.slice(1)];
+  return {
+    ...b,
+    pieces: insert(b.pieces, p.path),
+    stitch: [b.stitch, p.stitch].join(" "),
+    /* each piece's free edges, index for index: the placket's are its two long sides */
+    ...(b.edges ? { edges: insert(b.edges, p.sides) } : b.seamed ? {} : { edges: insert(b.pieces, p.sides) }),
+    ...(b.seamed ? { seamed: { ...b.seamed, edges: insert(b.seamed.edges, p.sides) } } : {}),
+    placket: p,
+  };
+}
+
+/**
+ * Buttons evenly down a run, from no higher than `first` to `last` exactly:
+ * as many as bring their spacing nearest `BUTTON_PITCH`'s 7.5 cm, the first
+ * free to sit up to `BUTTON_SLIDE` lower than it might, to take up the
+ * difference.
+ */
+export function buttonRun(first: number, last: number): { at: number[]; pitch: number } {
+  const [, want] = BUTTON_PITCH;
+  const run = last - first;
+  if (run < want / 2) return { at: [last], pitch: want };
+  let best = { k: 1, pitch: run, off: Infinity };
+  for (let k = 1; k <= 24; k++) {
+    const pitch = Math.min(Math.max(want, (run - BUTTON_SLIDE) / k), run / k);
+    if (Math.abs(pitch - want) < best.off) best = { k, pitch, off: Math.abs(pitch - want) };
+  }
+  return { at: Array.from({ length: best.k + 1 }, (_, i) => last - (best.k - i) * best.pitch), pitch: best.pitch };
+}
+
+/** A hem's row at a column, from the points its outline runs through. */
+const hemAt = (hem: Pt[], x: number): number => {
+  for (let i = 0; i + 1 < hem.length; i++) {
+    const [ax, ay] = hem[i];
+    const [bx, by] = hem[i + 1];
+    if ((ax <= x && x <= bx) || (bx <= x && x <= ax)) return ax === bx ? Math.max(ay, by) : ay + ((x - ax) * (by - ay)) / (bx - ax);
+  }
+  return hem[hem.length - 1][1];
+};
+
+/**
+ * The placket on through the skirt, from the skirt's top — which lies over
+ * the bodice's — down to its hem, ending on the hem as it runs: dipping,
+ * waving or stepping, as the skirt's does.
+ */
+function skirtPlacket(sk: CutSkirt) {
+  const c = FRONT_X;
+  const h = PLACKET_HALF;
+  const [l, r] = [c - h, c + h];
+  const top = sk.waistY;
+  /* just inside the hem, so the placket's cloth never runs past the skirt's */
+  const along: Pt[] = [];
+  for (let x = r; x >= l - 1e-9; x -= 2) along.push([x, hemAt(sk.hem, x) - 0.5]);
+  const s = PLACKET_STITCH;
+  return {
+    path: `M${l} ${top} L${r} ${top} ${along.map(([x, y]) => `L${x} ${y}`).join(" ")} Z`,
+    sides: `M${l} ${top} L${l} ${along[along.length - 1][1]} M${r} ${along[0][1]} L${r} ${top}`,
+    stitch: [
+      `M${l + s} ${top} L${l + s} ${hemAt(sk.hem, l + s) - 4}`,
+      `M${r - s} ${top} L${r - s} ${hemAt(sk.hem, r - s) - 4}`,
+    ].join(" "),
+    top,
+    hem: hemAt(sk.hem, c),
+  };
+}
+
+/** The skirt's placket, when the dress buttons on to the hem; each style and jacket cut once, kept. */
+const skirtPlackets = new Map<string, ReturnType<typeof skirtPlacket>>();
+export function skirtPlacketFor(inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT) {
+  const key = `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}`;
+  if (!skirtPlackets.has(key)) skirtPlackets.set(key, skirtPlacket(skirtFor(inside, skirt, true)));
+  return skirtPlackets.get(key)!;
+}
+
+/**
+ * Every button down a dress's front, as worn — a cut's own, and those of
+ * its placket — in groups of one size: a keyhole's small one at its closure,
+ * then the placket's. The shirt-dress keeps its own four to the waist; on to
+ * the hem, it and every other cut carry on at the same spacing below the
+ * seam, the last at least `BUTTON_HEM_CLEAR` of a spacing above the hem.
+ */
+export function frontButtons(choice: GarmentChoice = {}): { groups: { at: Pt[]; r: number }[]; pitch?: number } {
+  const id = cutOf(choice.neckline);
+  const asked = choice.buttons ?? "none";
+  /* over a mermaid, to the hem is to the waist */
+  const buttons = asked === "hem" && !buttonedToHem(choice) ? "waist" : asked;
+  const waist = choice.skirt?.waist ?? "natural";
+  const b = bodiceFor(id, choice.sleeve, waist, buttons);
+  const own = b.cut.buttons;
+  if (buttons === "none" || !BUTTONED_CUTS.includes(id)) return { groups: own ? [own] : [] };
+  const last = seamAt(waist) - BUTTON_LAST;
+  /* the shirt-dress's first button clears its collar's points, as it always has; any other cut's, its opening */
+  const shirt = OWN_PLACKET.includes(id) && own ? own : undefined;
+  let run = buttonRun(shirt ? shirt.at[0][1] : b.placket!.first, last);
+  /* where that spaces the shirt-dress's buttons as they always were — at her waist — its own numbers draw them */
+  if (shirt && run.at.length === shirt.at.length && run.at.every((y, i) => Math.abs(y - shirt.at[i][1]) < 1e-6)) {
+    run = { at: shirt.at.map(([, y]) => y), pitch: run.pitch };
+  }
+  const ys = [...run.at];
+  if (buttons === "hem") {
+    const hem = skirtPlacketFor(undefined, { ...DEFAULT_SKIRT, ...choice.skirt }).hem;
+    for (let y = ys[ys.length - 1] + run.pitch; y <= hem - BUTTON_HEM_CLEAR * run.pitch; y += run.pitch) ys.push(y);
+  }
+  const r = shirt ? shirt.r : BUTTON_R;
+  const placket = { at: ys.map((y) => [FRONT_X, y] as Pt), r };
+  /* a cut's own buttons that are not its placket's — a keyhole's at its closure — stay */
+  const extra = own && !shirt ? [own] : [];
+  return { groups: [...extra, placket], pitch: run.pitch };
+}
+
+/** The cut a choice names, or the one the dress arrives in. */
+const cutOf = (neckline?: string): NecklineId =>
+  (NECKLINE_IDS as readonly string[]).includes(neckline ?? "") ? (neckline as NecklineId) : DEFAULT_CUT;
+
+/* ---------------------------------------------------------------- belt */
+
+/**
+ * A belt over the waist seam, at any waist: `BELT_WIDTH` deep, centred
+ * `BELT_ABOVE_SEAM` above the row the skirt is sewn at, which is where the
+ * seam shows. Across each row it reaches `BELT_OUT` past the dress — past the
+ * bodice above the seam, as drawn, and the skirt below it, whichever comes
+ * further out —
+ * so it lies over the dress rather than in it, and the skirt comes out from
+ * under it. Its buckle is at her centre front.
+ */
+export function beltFor(skirt: SkirtChoice = DEFAULT_SKIRT) {
+  const sk = skirtFor(undefined, skirt);
+  const seam = seamAt(skirt.waist);
+  const mid = seam - BELT_ABOVE_SEAM;
+  const [top, bottom] = [mid - BELT_WIDTH / 2, mid + BELT_WIDTH / 2];
+  const d = draft("female");
+  const polys = flatten(sk.path);
+  /* the bodice as drawn, its body piece: it stands a little further out than her side plus its ease under the bust */
+  const body = flatten(bodiceFor("round", DEFAULT_SLEEVE, skirt.waist).pieces[0]);
+  const leftAt = (y: number) => {
+    const x = [y <= seam ? Math.min(d.sideAt(y, EASE), spanAt(body, y)?.[0] ?? Infinity) : Infinity, spanAt(polys, y)?.[0] ?? Infinity];
+    return Math.min(...x) - BELT_OUT;
+  };
+  const rows: number[] = [];
+  for (let y = top; y < bottom; y += 2) rows.push(y);
+  rows.push(bottom);
+  const left: Pt[] = rows.map((y) => [leftAt(y), y]);
+  const path = `M${left.map(([x, y]) => `${x.toFixed(2)} ${y}`).join(" L")} ` +
+    `L${[...left].reverse().map(([x, y]) => `${(600 - x).toFixed(2)} ${y}`).join(" L")} Z`;
+  return {
+    path,
+    top,
+    bottom,
+    mid,
+    seam,
+    left,
+    buckle: { x: FRONT_X, y: mid, ...BUCKLE },
+  };
 }
 
 /** Every cut in the sleeve the dress arrives in — what the checker walks first. */
@@ -563,14 +933,16 @@ export const DEFAULT_CUT: NecklineId = "round";
  * that the checker and the renderer ask the same question and cannot be given
  * two different answers.
  */
-export const cloth = ({ neckline, sleeve, inside, skirt }: GarmentChoice = {}): string[] => [
-  ...bodiceFor(
-    (NECKLINE_IDS as readonly string[]).includes(neckline ?? "") ? (neckline as NecklineId) : DEFAULT_CUT,
-    sleeve,
-    skirt?.waist
-  ).pieces,
-  skirtFor(inside, skirt).path,
-];
+export const cloth = (choice: GarmentChoice = {}): string[] => {
+  const { neckline, sleeve, inside, skirt, buttons } = choice;
+  const toHem = buttonedToHem(choice);
+  return [
+    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, buttons).pieces,
+    /* buttoned to the hem: its placket on through the skirt, and a pleated skirt's flat panel under it */
+    skirtFor(inside, skirt, toHem).path,
+    ...(toHem ? [skirtPlacketFor(inside, skirt).path] : []),
+  ];
+};
 
 /**
  * A bodice's details for one cut at one waist — its buttons and its tie —
@@ -580,10 +952,12 @@ export const cloth = ({ neckline, sleeve, inside, skirt }: GarmentChoice = {}): 
  */
 export function details(id: NecklineId, waist: WaistId = "natural") {
   const b = bodiceFor(id, DEFAULT_SLEEVE, waist);
+  /* as it arrives: a shirt-dress buttoned to the waist, spaced as `frontButtons` spaces it; a keyhole's closure */
+  const { groups } = frontButtons({ neckline: id, skirt: { ...DEFAULT_SKIRT, waist }, buttons: OWN_PLACKET.includes(id) ? "waist" : "none" });
   return {
     pieces: b.pieces,
     seamY: seamAt(waist),
-    buttons: b.cut.buttons ?? null,
+    buttons: groups[0] ?? null,
     tie: b.cut.wrap?.tie ?? null,
   };
 }

@@ -98,6 +98,11 @@ export interface RegionDrawing {
    * cloth does wherever an edge lies on it.
    */
   under?: string[];
+  /**
+   * A piece that never takes the fabric — a leather belt — filled with this
+   * colour instead. Lit, shaded and edged as any piece is.
+   */
+  solid?: string;
 }
 
 interface Props {
@@ -268,7 +273,7 @@ export function FabricRegion({
       ? fabric.palette?.accent ?? fabric.color
       : thread.color;
 
-  const fill = `url(#${uid("pattern")})`;
+  const fill = drawing.solid ?? `url(#${uid("pattern")})`;
   /*
     The outfit's grain, plus however this particular piece is cut from it. The
     turn is applied about the canvas pivot as before; the shift comes after, so

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Pt } from "./fit";
+import { pleatsBeside } from "./fit";
 import type { Uid } from "./shading";
 import type { PuffShape } from "./sleeves";
 import { BODY_CANVAS } from "@/lib/mannequin/bodies";
@@ -804,6 +805,12 @@ export interface PleatSpec {
   hemDip: number;
   /** Where each pleat folds, across it from 0 to 1 — see `fallOf`. */
   lines: number[];
+  /**
+   * A flat panel down the centre front, x from its left edge to its right,
+   * and how many pleats there are: they are laid either side of it instead —
+   * see `pleatsBeside` — so none lies under a placket down it.
+   */
+  panel?: { count: number; x: readonly [number, number] };
 }
 
 /**
@@ -816,6 +823,20 @@ export interface PleatSpec {
  * stays whole, at its true size.
  */
 export function pleatFolds(s: PleatSpec): Fold[] {
+  if (s.panel) {
+    /* beside a flat panel: each fold from its place across the top to its place across the hem */
+    const { count, x } = s.panel;
+    const tops = pleatsBeside(count, s.top[0][0], s.top[1][0], x);
+    const feet = pleatsBeside(count, s.hem[0][0], s.hem[1][0], x);
+    return tops.map((tx, i) => {
+      const ty = (tx - s.top[0][0]) / (s.top[1][0] - s.top[0][0]);
+      const t = (feet[i] - s.hem[0][0]) / (s.hem[1][0] - s.hem[0][0]);
+      const top = along(s.top[0], s.top[1], ty);
+      const foot = along(s.hem[0], s.hem[1], t);
+      const end: Pt = [feet[i], foot[1] + s.hemDip * Math.sin(Math.PI * t) + 6];
+      return { ridge: [top, along(top, end, 0.5), end], width: [1.2, 1.8], shadow: 0.5, light: 0.3, soft: 1 };
+    });
+  }
   return s.lines.map((t) => {
     const top = along(s.top[0], s.top[1], t);
     const foot = along(s.hem[0], s.hem[1], t);

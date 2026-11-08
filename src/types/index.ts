@@ -331,6 +331,16 @@ export type LegId = "straight" | "slim" | "wide" | "palazzo" | "flare";
 export type FrontId = "open" | "closed";
 
 /**
+ * How far a dress is buttoned down its centre front, on a placket — see
+ * `lib/garments/closures.ts`: not at all, from the neck to the waist seam, or
+ * from the neck to the hem.
+ */
+export type ButtonsId = "none" | "waist" | "hem";
+
+/** The belt a dress is worn with on its waist seam: none, one of its own cloth, or leather in brown or black. */
+export type BeltId = "none" | "self" | "brown" | "black";
+
+/**
  * The drawing a body or a garment is rendered from.
  *
  * Front-on, and only front-on. This carried optional `back` and `side` slots
@@ -540,6 +550,14 @@ export interface Garment {
   fronts?: { offered: FrontId[]; default: FrontId };
   /** The legs a pair of trousers can be cut with, and the one it arrives in. Absent, it has no choice of leg. */
   legs?: { offered: LegId[]; default: LegId };
+  /**
+   * How far it can be buttoned down its centre front, and how it arrives — a
+   * dress's, on the cuts with a straight centre front only: see `buttonsOn`.
+   * Absent, it has no such choice.
+   */
+  buttons?: { offered: ButtonsId[]; default: ButtonsId };
+  /** The belts it can be worn with on its waist seam, and the one it arrives with. Absent, it takes none. */
+  belts?: { offered: BeltId[]; default: BeltId };
   /** Which drawing to use, per view. Ids resolved by `lib/garments/art`. */
   asset: ViewAssets;
 }
@@ -727,6 +745,10 @@ export interface WornGarment {
   front?: FrontId;
   /** Its legs, if it is a pair of trousers that takes a choice of them and one was made. */
   leg?: LegId;
+  /** How far it is buttoned down the front, if it takes a choice of it and one was made. */
+  buttons?: ButtonsId;
+  /** Its belt, if it takes one and one was chosen. */
+  belt?: BeltId;
   /**
    * The collar sewn to it, if it accepts one and one was chosen. It belongs to
    * the garment rather than to the outfit, because that is where a collar is:

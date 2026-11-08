@@ -95,6 +95,8 @@ export const dictionaries = {
     "viz.waist": "Waist",
     "viz.leg": "Leg",
     "viz.front": "Front",
+    "viz.buttons": "Buttons",
+    "viz.belt": "Belt",
     "viz.collar": "Collar",
     "viz.noCollar": "Plain",
     "viz.collarHint":
@@ -252,6 +254,8 @@ export const dictionaries = {
     "viz.waist": "الخصر",
     "viz.leg": "القصّة",
     "viz.front": "الأمام",
+    "viz.buttons": "الأزرار",
+    "viz.belt": "الحزام",
     "viz.collar": "الياقة",
     "viz.noCollar": "بدون ياقة",
     "viz.collarHint": "يمكن تفصيل الياقة من قماش مختلف.",

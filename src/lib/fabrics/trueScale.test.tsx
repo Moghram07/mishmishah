@@ -159,6 +159,39 @@ describe("every print at its true size", () => {
     }
   }, 60_000);
 
+  /*
+    Every way a dress is buttoned and belted, at every waist, likewise at one
+    zoom: a placket and a self-fabric belt are cut from the dress's cloth, and
+    a leather belt takes none — but it is drawn as cloth is, and must never
+    lay the print at another size.
+  */
+  it("on every way a dress is buttoned and belted, at every waist, in every size of repeat", () => {
+    for (const garment of garments.filter((g) => g.buttons || g.belts)) {
+      for (const buttons of garment.buttons?.offered ?? [undefined]) for (const belt of garment.belts?.offered ?? [undefined]) {
+        for (const waist of garment.skirt?.waists ?? [undefined]) {
+          for (const fabric of byRepeat) {
+            const repeat = fabricRepeatCm(fabric) / BODY_CANVAS.cmPerUnit;
+            const regions = Object.fromEntries(
+              [...garment.fabricRegions, "collar"].map((r) => [r, fabric])
+            ) as Partial<Record<FabricRegionId, Fabric>>;
+            const worn = cutFrom(garment, fabric.id);
+            const outfit: Outfit = {
+              bodyType: garment.gender,
+              skinTone: DEFAULT_SKIN_TONE,
+              direction: 0,
+              worn: [{ ...worn, ...(buttons ? { buttons } : {}), ...(belt ? { belt } : {}), ...(waist && garment.skirt ? { skirt: { ...garment.skirt.default, waist } } : {}) }],
+            };
+            const html = renderToStaticMarkup(
+              <MannequinStage outfit={outfit} fabrics={{ [garment.id]: regions }} zoom={2} focus={[300, 380]} />
+            );
+            const frameW = Number(html.match(/<svg[^>]*viewBox="[^ ]+ [^ ]+ ([^ ]+) [^"]+"/)?.[1]);
+            expectTrueTiles(html, repeat, RENDER_PX / frameW, `${garment.id}, buttons ${buttons}, belt ${belt}, ${waist ?? ""}, in ${fabric.id}`);
+          }
+        }
+      }
+    }
+  }, 60_000);
+
   /* every way a robe is worn at the front, her abaya open and closed, with every sleeve it is cut with, likewise at one zoom */
   it("on every front a robe is worn with, and every sleeve, in every size of repeat", () => {
     for (const garment of garments.filter((g) => g.fronts)) {

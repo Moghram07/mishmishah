@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice } from "@/types";
+import type { BeltId, ButtonsId, FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice } from "@/types";
 import type { Uid } from "@/lib/garments/shading";
 import type { Encloses } from "@/lib/garments/sleeves";
 import type { Tuck } from "@/lib/garments/fit";
@@ -140,6 +140,8 @@ export interface RegionArt {
    * `RegionDrawing`.
    */
   under?: string[];
+  /** A piece that never takes the fabric — a leather belt — filled with this colour: see `RegionDrawing`. */
+  solid?: string;
   /** Where a close-up should centre. */
   focus?: [x: number, y: number];
 }
@@ -160,6 +162,10 @@ export interface GarmentChoice {
   front?: FrontId;
   /** Its legs, for a pair of trousers that takes a choice of them — see `lib/garments/legs.ts`. */
   leg?: LegId;
+  /** How far a dress is buttoned down its front — see `lib/garments/closures.ts`. */
+  buttons?: ButtonsId;
+  /** The belt worn on a dress's waist seam. */
+  belt?: BeltId;
   /**
    * The hem of a jacket it is worn under, if it is: it comes out from under it
    * no wider than the jacket — see `tucked` in `garments/fit.ts`.

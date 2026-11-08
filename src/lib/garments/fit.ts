@@ -1912,13 +1912,29 @@ export const tierOut = (tiers: Tiers) => (y: number): number =>
   }, 0);
 
 /**
+ * Where pleats fold either side of a flat panel down the centre front, as x
+ * across a run from `left` to `right` — the skirt at a row: half of
+ * `count` each side, evenly between the side and the panel, the panel's two
+ * edges the folds nearest it. With a placket down the panel, the pleats
+ * start beside it and none lies under it.
+ */
+export function pleatsBeside(count: number, left: number, right: number, panel: readonly [number, number]): number[] {
+  const n = Math.round(count / 2);
+  const [pl, pr] = panel;
+  return [
+    ...Array.from({ length: n }, (_, k) => left + ((pl - left) * (k + 1)) / n),
+    ...Array.from({ length: n }, (_, k) => pr + ((right - pr) * k) / n),
+  ];
+}
+
+/**
  * A hem across pleats: each pleat's own run of hem, between the lines where
  * the pleats fold, drops evenly toward the centre front, where its fold lies
  * over the next — `depth` lower at its fold — and steps back up at the line.
  * Nothing drops at the side seams, so the corners stay on the length's row,
  * and the two halves are mirror images. Only ever down, as a wave is.
  */
-function steppedHem(left: Pt, right: Pt, dip: number, lines: number[], depth: number): Pt[] {
+function steppedHem(left: Pt, right: Pt, dip: number, lines: number[], depth: number, flat?: readonly [number, number]): Pt[] {
   const at = (t: number, drop: number): Pt => [
     left[0] + (right[0] - left[0]) * t,
     left[1] + (right[1] - left[1]) * t + Math.sin(Math.PI * t) * dip + drop,
@@ -1928,8 +1944,10 @@ function steppedHem(left: Pt, right: Pt, dip: number, lines: number[], depth: nu
   for (let i = 0; i + 1 < breaks.length; i++) {
     const [a, b] = [breaks[i], breaks[i + 1]];
     /* toward the centre: down to its fold at the end nearer the centre, from nothing at the other */
+    /* a flat panel between two of the lines is no pleat: its hem does not drop */
+    const level = flat !== undefined && Math.abs(a - flat[0]) < 1e-9 && Math.abs(b - flat[1]) < 1e-9;
     const drop = (t: number) =>
-      b <= 0.5 ? (depth * (t - a)) / (b - a) : a >= 0.5 ? (depth * (b - t)) / (b - a) : (depth * Math.min(t - a, b - t)) / ((b - a) / 2);
+      level ? 0 : b <= 0.5 ? (depth * (t - a)) / (b - a) : a >= 0.5 ? (depth * (b - t)) / (b - a) : (depth * Math.min(t - a, b - t)) / ((b - a) / 2);
     for (const s of [0, 1 / 3, 2 / 3, 1]) {
       const t = a + (b - a) * s;
       pts.push(at(t, drop(t)));
@@ -2104,7 +2122,12 @@ export function column(
      */
     wave?: { at: number[]; depth: number; width?: number };
     /** A hem stepped at its pleats' lines, across it from 0 to 1 — see `steppedHem`. */
-    steps?: { at: number[]; depth: number };
+    steps?: {
+      at: number[];
+      depth: number;
+      /** A flat panel down the centre front, x from its left edge to its right, the pleats laid either side of it instead — see `pleatsBeside`. */
+      panel?: { count: number; x: readonly [number, number] };
+    };
     /** The hem of a jacket worn over it — see `tucked`. */
     inside?: Tuck;
     /**
@@ -2123,6 +2146,8 @@ export function column(
   waistY: number;
   band: string;
   bandStitch: string;
+  /** The hem as the points its outline runs through, left to right. */
+  hem: Pt[];
   /** Where a straight shape leaves her — see `straight` — for its folds to be released at. */
   leaves?: number;
   /** A tiered skirt's tiers, as cut — see `tiers`. */
@@ -2227,8 +2252,19 @@ export function column(
   const waistLeft = side[0];
   const hemRight = mirror([hemLeft])[0];
   const { wave, steps } = spec;
+  /* across a flat panel, the pleats either side of it, where they fold at the hem */
+  const across = (x: number) => (x - hemLeft[0]) / (hemRight[0] - hemLeft[0]);
   const hemPts = steps
-    ? steppedHem(hemLeft, hemRight, dip, steps.at, steps.depth)
+    ? steps.panel
+      ? steppedHem(
+          hemLeft,
+          hemRight,
+          dip,
+          pleatsBeside(steps.panel.count, hemLeft[0], hemRight[0], steps.panel.x).map(across),
+          steps.depth,
+          [across(steps.panel.x[0]), across(steps.panel.x[1])]
+        )
+      : steppedHem(hemLeft, hemRight, dip, steps.at, steps.depth)
     : wave
       ? hem(hemLeft, hemRight, dip, 48).map(([x, y]) => {
           const drop = wave.at.reduce((sum, t) => {
@@ -2247,7 +2283,8 @@ export function column(
   const { band, bandStitch } = spec.band
     ? waistband(side, fromY + spec.band)
     : { band: "", bandStitch: "" };
-  return { path, hemLeft, waistLeft, waistY: fromY, band, bandStitch, ...(leaves !== undefined ? { leaves } : {}), ...(tiers ? { tiers } : {}) };
+  /* the hem as the points its outline runs through, left to right — for what ends on it, a placket */
+  return { path, hemLeft, waistLeft, waistY: fromY, band, bandStitch, hem: hemPts, ...(leaves !== undefined ? { leaves } : {}), ...(tiers ? { tiers } : {}) };
 }
 
 /* --------------------------------------------------------- the neck opening */
