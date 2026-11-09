@@ -1,4 +1,4 @@
-import { FALL, softShadow, vertical } from "@/lib/garments/shading";
+import { collarTone } from "../../collarLight";
 import { blade, type Point } from "@/lib/garments/collar";
 import { foldDefs, foldLights, foldShadows, lapelRoll } from "@/lib/garments/folds";
 import { LAPEL, reflect, reflectPts, standBehind } from "../yoke";
@@ -74,22 +74,13 @@ const LAPEL_RIGHT_PATH = reflect(LAPEL_LEFT_PATH);
 const [GORGE_RIGHT, BREAK_RIGHT] = reflectPts([LAPEL_PTS[0], LAPEL_PTS[2]]);
 const ROLL = [...lapelRoll(LAPEL_PTS[0], LAPEL_PTS[2]), ...lapelRoll(GORGE_RIGHT, BREAK_RIGHT)];
 
-const COLLAR_CAST_PATH = blade(
-  COLLAR.map(([x, y]) => [x, y + 3] as Point),
-  COLLAR_BOWS
-);
-const LAPEL_CAST_PATH = blade(
-  LAPEL_PTS.map(([x, y]) => [x - 2, y + 3] as Point),
-  LAPEL_BOWS
-);
-
 export const notchedCollarBehind = behindBandArt(STAND_BEHIND_PATH);
 
 export const notchedCollarFront: GarmentArt = {
   regions: {
     collar: {
       focus: [300, 240],
-      surface: { blur: 6, relief: 4, warp: 2 },
+      outline: "soft",
       /**
        * A lapel is cut on the same straight grain as the jacket, and from
        * further down the roll — so a stripe stays upright across the break but
@@ -104,21 +95,7 @@ export const notchedCollarFront: GarmentArt = {
           <path d={LAPEL_RIGHT_PATH} fill={fill} />
         </>
       ),
-      defs: (uid) => (
-        <>
-          {vertical(uid("fall"), FALL)}
-          {softShadow(uid("soft"), 4)}
-          {foldDefs(uid)}
-        </>
-      ),
-      cast: (uid) => (
-        <g filter={`url(#${uid("soft")})`} opacity="0.36">
-          <path d={COLLAR_CAST_PATH} fill="#7a7a7a" />
-          <path d={reflect(COLLAR_CAST_PATH)} fill="#7a7a7a" />
-          <path d={LAPEL_CAST_PATH} fill="#7a7a7a" />
-          <path d={reflect(LAPEL_CAST_PATH)} fill="#7a7a7a" />
-        </g>
-      ),
+      defs: foldDefs,
       shading: (uid) => (
         <>
           {/*
@@ -126,10 +103,7 @@ export const notchedCollarFront: GarmentArt = {
             collar it came out two dark tabs beside the neck; head-on it is the
             top collar you see, the same cloth facing the same way.
           */}
-          <path d={COLLAR_LEFT_PATH} fill={`url(#${uid("fall")})`} />
-          <path d={COLLAR_RIGHT_PATH} fill={`url(#${uid("fall")})`} />
-          <path d={LAPEL_LEFT_PATH} fill={`url(#${uid("fall")})`} />
-          <path d={LAPEL_RIGHT_PATH} fill={`url(#${uid("fall")})`} />
+          {collarTone()}
           {foldShadows(uid, ROLL)}
         </>
       ),

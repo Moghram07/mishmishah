@@ -88,13 +88,15 @@ export const collars: Collar[] = [
     fabricRegions: ["collar"],
     compatibleWith: ROUND_NECK,
     /**
-     * A short band at the throat, open at the front — the smallest of the set.
-     * Shorter than the turtleneck on purpose as well as in fact: two bands of
-     * the same width and height are one collar drawn twice, and
-     * `check:garments` rejects a pair whose boxes agree on both axes.
+     * A short band at the throat, its ends meeting at the front over a tiny V
+     * — the smallest of the set, built as his mandarin is. Shorter than the
+     * turtleneck on purpose as well as in fact: two bands of the same width
+     * and height are one collar drawn twice, and `check:garments` rejects a
+     * pair whose boxes agree on both axes.
      */
     footprint: { width: [9, 13], drop: [4, 8] },
-    build: { stand: 14, fall: "none" },
+    /* open at the front: the V runs down to the seam, as his does */
+    build: { stand: 14, fall: "none", front: "open" },
     opening: "high",
     asset: { front: "female-mandarin-collar-front", behindBody: "female-mandarin-collar-behind" },
   },

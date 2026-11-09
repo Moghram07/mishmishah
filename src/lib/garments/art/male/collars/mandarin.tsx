@@ -1,5 +1,4 @@
-import { nudge } from "@/lib/garments/collar";
-import { standBehind, standGapped } from "../yoke";
+import { standBehind, standGapped, standGappedEdges } from "../yoke";
 import { behindBandArt } from "../../behindBand";
 import { bandFront } from "./band";
 
@@ -21,9 +20,7 @@ import { bandFront } from "./band";
 const BAND_PATH = standGapped(16, 4);
 const STAND_BEHIND_PATH = standBehind(16);
 
-/** The band's lower edge, dropped onto the garment it is sewn to. */
-const BAND_CAST_PATH = nudge(BAND_PATH, 0, 3);
 
-export const maleMandarinCollarFront = bandFront({ band: BAND_PATH, cast: BAND_CAST_PATH, rise: 16, closes: "gap", buttons: 0 });
+export const maleMandarinCollarFront = bandFront({ band: BAND_PATH, rise: 16, closes: "gap", buttons: 0, top: standGappedEdges(16, 4).top });
 
 export const maleMandarinCollarBehind = behindBandArt(STAND_BEHIND_PATH);

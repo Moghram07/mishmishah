@@ -237,6 +237,10 @@ export const standBehind = (rise: number) =>
 /** The front band's edges, for a collar whose leaves hang from its fold. */
 export const standFrontEdges = (rise: number) => standEdges("male", { ...STAND, rise });
 
+/** The gapped band's edges: its top, round the ends and down the V — where it is folded, and catches the light. */
+export const standGappedEdges = (rise: number, half: number) =>
+  standEdges("male", { ...STAND, rise, notch: { half, depth: 0, v: true } });
+
 /**
  * A high opening, cut at the base of his neck where a standing band can be
  * sewn. It dips to y 188 at centre front, and every band's lower edge follows

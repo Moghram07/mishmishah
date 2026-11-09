@@ -1,7 +1,7 @@
-import { softShadow } from "@/lib/garments/shading";
-import { nudge } from "@/lib/garments/collar";
-import { standBehind, standFront } from "../yoke";
+import { line } from "@/lib/garments/fit";
+import { standBehind, standFront, standFrontEdges } from "../yoke";
 import { behindBandArt } from "../../behindBand";
+import { collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
 import type { GarmentArt } from "../../index";
 
 /**
@@ -24,27 +24,24 @@ import type { GarmentArt } from "../../index";
  * silhouette and reads as a stripe painted on a throat.
  *
  * **No stitching and no closure.** A turtleneck is unbroken knit: it has no
- * fastening to topstitch and no centre-front seam to shade. Both were on this
- * shape when it was the Mandarin, and both belong to the Mandarin.
+ * fastening to topstitch and no centre-front seam to shade.
+ *
+ * Lit as every collar is — see `collarLight.tsx`: in the cloth's own colour,
+ * no line round it, a soft shadow under its edge and a little light along
+ * its top, where it is folded.
  */
 
 const BAND_PATH = standFront(24);
 const STAND_BEHIND_PATH = standBehind(24);
 
-/**
- * The band's lower edge, dropped onto the garment it is sewn to.
- *
- * The simplest collar in the wardrobe and therefore the one with least to hide:
- * with nothing at the join it is a stripe lying flat on a chest, however
- * carefully the band itself is shaded.
- */
-const BAND_CAST_PATH = nudge(BAND_PATH, 0, 3);
+/** The band's top edge, where it is folded over: it catches the light. */
+const TOP_EDGE = line(standFrontEdges(24).top);
 
 export const turtleneckCollarFront: GarmentArt = {
   regions: {
     collar: {
       focus: [300, 176],
-      surface: { blur: 4, relief: 4, warp: 2 },
+      outline: "soft",
       /**
        * Cut across the grain, which is how a band is cut — it has to bend round
        * a throat without dragging, and a crossgrain strip does that where a
@@ -53,22 +50,9 @@ export const turtleneckCollarFront: GarmentArt = {
        */
       grain: { turn: 90 },
       shape: (fill) => <path d={BAND_PATH} fill={fill} />,
-      /*
-        The band's form used to be a left-to-right ramp across it, because a
-        band round a throat is the tightest cylinder in the wardrobe and a
-        top-to-bottom ramp on one says "flat panel". `surface` reads that turn
-        off the band's own outline instead, so the only thing left to declare
-        here is the blur the contact shadow needs.
-      */
-      defs: (uid) => softShadow(uid("soft"), 3),
-      cast: (uid) => (
-        <path
-          d={BAND_CAST_PATH}
-          fill="#7a7a7a"
-          opacity="0.4"
-          filter={`url(#${uid("soft")})`}
-        />
-      ),
+      defs: edgeLightDefs,
+      shading: collarTone,
+      light: (uid) => edgeLight(uid, TOP_EDGE),
     },
   },
 };

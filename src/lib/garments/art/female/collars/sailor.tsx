@@ -1,10 +1,4 @@
-import {
-  FALL,
-  cutEdge,
-  horizontal,
-  softShadow,
-  vertical,
-} from "@/lib/garments/shading";
+import { collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
 import { blade, mirror, type Point } from "@/lib/garments/collar";
 import { reflect, standBehind } from "../yoke";
 import { SAILOR_BOWS, SAILOR_PANEL, sailor } from "../collarCuts";
@@ -54,10 +48,6 @@ const STAND_BEHIND_PATH = standBehind(6);
 */
 
 /** The collar dropped onto the garment, as cut for a high neckline: it lies on it, not in it. */
-const PANEL_CAST_PATH = blade(
-  SAILOR_PANEL.map(([x, y]) => [x, y + 4] as Point),
-  SAILOR_BOWS
-);
 
 export const sailorCollarBehind = behindBandArt(STAND_BEHIND_PATH);
 
@@ -72,7 +62,7 @@ function collarOn(cut?: string): RegionArt {
   const FREE_EDGE_RIGHT = panels.axis !== undefined ? mirror(FREE_EDGE, panels.axis) : reflect(FREE_EDGE);
   return {
     focus: [300, 236],
-    surface: { blur: 6, relief: 4, warp: 2 },
+    outline: "soft",
     /** Cut from further down the roll than the garment it lies on. */
     grain: { shift: [10, 18] },
     shape: (fill) => (
@@ -81,57 +71,10 @@ function collarOn(cut?: string): RegionArt {
         <path d={PANEL_RIGHT_PATH} fill={fill} />
       </>
     ),
-    defs: (uid) => (
-      <>
-        {vertical(uid("flat"), FALL)}
-        {/*
-          Across the piece, not down it: each panel crosses a shoulder, and a
-          shoulder is round. A vertical ramp on a shape this wide says the
-          cloth is flat, which is the one thing a collar across a shoulder
-          cannot be.
-        */}
-        {horizontal(uid("shoulder"), [
-          [0, "#b8b8b8"],
-          [0.35, "#ffffff"],
-          [0.7, "#f0f0f0"],
-          [1, "#c4c4c4"],
-        ])}
-        {softShadow(uid("soft"), 4)}
-      </>
-    ),
-    cast: (uid) => (
-      <g filter={`url(#${uid("soft")})`} opacity="0.46">
-        {v ? (
-          <g transform="translate(0 4)">
-            <path d={PANEL_LEFT_PATH} fill="#7a7a7a" />
-            <path d={PANEL_RIGHT_PATH} fill="#7a7a7a" />
-          </g>
-        ) : (
-          <>
-            <path d={PANEL_CAST_PATH} fill="#7a7a7a" />
-            <path d={reflect(PANEL_CAST_PATH)} fill="#7a7a7a" />
-          </>
-        )}
-      </g>
-    ),
-    shading: (uid) => (
-      <>
-        <path d={PANEL_LEFT_PATH} fill={`url(#${uid("flat")})`} />
-        <path d={PANEL_RIGHT_PATH} fill={`url(#${uid("flat")})`} />
-        <path
-          d={PANEL_LEFT_PATH}
-          fill={`url(#${uid("shoulder")})`}
-          opacity="0.55"
-        />
-        <path
-          d={PANEL_RIGHT_PATH}
-          fill={`url(#${uid("shoulder")})`}
-          opacity="0.55"
-        />
-        {cutEdge(FREE_EDGE, 3, 0.38)}
-        {cutEdge(FREE_EDGE_RIGHT, 3, 0.38)}
-      </>
-    ),
+    defs: edgeLightDefs,
+    /* in the garment's light, no line round it; a soft shadow under its edges and a little light along the folded outer edge */
+    shading: collarTone,
+    light: (uid) => edgeLight(uid, FREE_EDGE, FREE_EDGE_RIGHT),
   };
 }
 

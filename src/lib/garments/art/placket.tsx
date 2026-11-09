@@ -1,5 +1,5 @@
-import { horizontal } from "@/lib/garments/shading";
 import { PLACKET_BOWS, blade, shrink, type Point } from "@/lib/garments/collar";
+import { collarTone, edgeLight, edgeLightDefs } from "./collarLight";
 import type { RegionArt } from "./index";
 
 /**
@@ -17,6 +17,12 @@ import type { RegionArt } from "./index";
  * piece in this wardrobe that should not read as curved. Everything else here
  * was fixed by bending it; this one is right because it is not bent.
  *
+ * Lit as a collar is — see `collarLight.tsx`: the garment's own colour, no
+ * line round it, a soft shadow on the shirt under its edges and a little light
+ * along its folded ones. It used to be outlined, shadowed with a hard dark rim
+ * and shaded darker toward both edges, which read as a strip of darker cloth
+ * laid down the front.
+ *
  * Shared by his shirt, polo and thobe and by her blouse, which differ only in
  * how far down the band runs, how wide it is, and where it starts under the
  * collar.
@@ -24,13 +30,6 @@ import type { RegionArt } from "./index";
 
 /** A hair of barrel on the long edges, and square across the ends — see `collar.ts`. */
 export { PLACKET_BOWS };
-
-/** The band widened, for the thin rim of shadow it drops either side. */
-const placketCast = (corners: Point[]) =>
-  blade(
-    corners.map(([x, y]) => [x < 300 ? x - 2 : x + 2, y] as Point),
-    PLACKET_BOWS
-  );
 
 /** The fold and the two rows of topstitch, derived from the band itself. */
 const placketStitch = (corners: Point[]) =>
@@ -46,27 +45,11 @@ export const placketArt = (path: string, corners: Point[]): RegionArt => ({
   focus: [300, 280],
   /** Cut down the length of the roll, as a placket is. */
   grain: { shift: [0, 9] },
+  outline: "soft",
   shape: (fill) => <path d={path} fill={fill} />,
-  defs: (uid) => (
-    <>
-      {/*
-        Across the band: a placket is two or three thicknesses of cloth and
-        stands proud of the shirt, so it catches the light along its middle and
-        falls away at both folded edges.
-      */}
-      {horizontal(uid("band"), [
-        [0, "#b4b4b4"],
-        [0.3, "#ffffff"],
-        [0.7, "#f2f2f2"],
-        [1, "#adadad"],
-      ])}
-    </>
-  ),
-  cast: () => (
-    // Hard-edged on purpose. A pressed edge lying flat on cloth throws a rim,
-    // not a pool — the soft blur the collars use would read as a bulge here.
-    <path d={placketCast(corners)} fill="#8f8f8f" opacity="0.18" />
-  ),
-  shading: (uid) => <path d={path} fill={`url(#${uid("band")})`} />,
+  defs: edgeLightDefs,
+  shading: collarTone,
+  /* folded and pressed along both long edges, and turned in at its foot: a little light just inside them */
+  light: (uid) => edgeLight(uid, path),
   stitch: placketStitch(corners),
 });

@@ -563,17 +563,59 @@ export function bodiceFor(
   id: NecklineId,
   sleeve: SleeveChoice = DEFAULT_SLEEVE,
   waist: WaistId = "natural",
-  buttons: ButtonsId = "none"
+  buttons: ButtonsId = "none",
+  collared = false
 ): Bodice {
   /* buttoned to the waist or to the hem, the bodice is the same: its placket runs to the waist seam either way */
   const placketed = placketOn(id, buttons);
   const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placketed ? "|placket" : ""}`;
+  /* with a collar sewn on, the neck edge's topstitch goes, and a keyhole's own closure — see `underCollar` */
+  if (collared) {
+    const open = bodiceFor(id, sleeve, waist, buttons);
+    let c = cache.get(`${key}|collared`);
+    if (!c) {
+      c = underCollar(open);
+      cache.set(`${key}|collared`, c);
+    }
+    return c;
+  }
   let b = cache.get(key);
   if (!b) {
     b = placketed ? withPlacket(bodiceFor(id, sleeve, waist), waist) : bodice(id, sleeve, waist);
     cache.set(key, b);
   }
   return b;
+}
+
+/**
+ * A bodice with a collar sewn on it.
+ *
+ * The collar covers the neck edge it is sewn to, so the topstitch along that
+ * edge goes — under a band it showed as a row of dashes just below the band's
+ * foot. Every bodice's stitch starts with its cut's, which starts with the
+ * neck edge's; a shirt-dress keeps the rows down its placket.
+ *
+ * And a keyhole's own closure — its small button and the fabric loop round
+ * it — gives way to the collar, which closes the neck itself. Under a band
+ * they were hidden all but for slivers: the loop's rim showed through a
+ * mandarin's V and just below the band's foot.
+ */
+function underCollar(b: Bodice): Bodice {
+  const neck = b.cut.neckStitch ?? b.cut.stitch;
+  const off = (stitch: string) => (neck && stitch.startsWith(neck) ? stitch.slice(neck.length).trimStart() : stitch);
+  const { neckStitch: _neck, ...sewn } = b.cut;
+  const stitched = { ...b, stitch: off(b.stitch), cut: { ...sewn, stitch: off(b.cut.stitch) } };
+  if (!b.cut.loopRim) return stitched;
+  const loop = b.cut.extras[0];
+  const drop = (list: string[]) => list.filter((d) => d !== loop);
+  const { loopRim: _rim, buttons: _own, ...cut } = stitched.cut;
+  return {
+    ...stitched,
+    cut: { ...cut, extras: drop(b.cut.extras) },
+    pieces: drop(b.pieces),
+    ...(b.edges ? { edges: drop(b.edges) } : {}),
+    ...(b.seamed ? { seamed: { ...b.seamed, edges: drop(b.seamed.edges) } } : {}),
+  };
 }
 
 /* ------------------------------------------------------------- buttons */
@@ -839,7 +881,8 @@ export function frontButtons(choice: GarmentChoice = {}): { groups: { at: Pt[]; 
   /* over a mermaid, to the hem is to the waist */
   const buttons = asked === "hem" && !buttonedToHem(choice) ? "waist" : asked;
   const waist = choice.skirt?.waist ?? "natural";
-  const b = bodiceFor(id, choice.sleeve, waist, buttons);
+  /* a cut's own closure stays only with no collar over it — see `underCollar` */
+  const b = bodiceFor(id, choice.sleeve, waist, buttons, Boolean(choice.opening));
   const own = b.cut.buttons;
   if (buttons === "none" || !BUTTONED_CUTS.includes(id)) return { groups: own ? [own] : [] };
   const last = seamAt(waist) - BUTTON_LAST;
@@ -934,10 +977,11 @@ export const DEFAULT_CUT: NecklineId = "round";
  * two different answers.
  */
 export const cloth = (choice: GarmentChoice = {}): string[] => {
-  const { neckline, sleeve, inside, skirt, buttons } = choice;
+  const { neckline, sleeve, inside, skirt, buttons, opening } = choice;
   const toHem = buttonedToHem(choice);
   return [
-    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, buttons).pieces,
+    /* with a collar on it, a keyhole without its own loop — see `underCollar` */
+    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, buttons, Boolean(opening)).pieces,
     /* buttoned to the hem: its placket on through the skirt, and a pleated skirt's flat panel under it */
     skirtFor(inside, skirt, toHem).path,
     ...(toHem ? [skirtPlacketFor(inside, skirt).path] : []),

@@ -1,10 +1,7 @@
-import {
-  cutEdge,
-  softShadow,
-  vertical,
-} from "@/lib/garments/shading";
+import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
+import { collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
 import { opening, standBehind } from "../yoke";
-import { reverse, run } from "@/lib/garments/fit";
+import { reverse, run, type Pt } from "@/lib/garments/fit";
 import { behindBandArt } from "../../behindBand";
 import type { GarmentArt } from "../../index";
 
@@ -176,77 +173,57 @@ const RUFF_PATH =
 const STAND_BEHIND_PATH = standBehind(10);
 
 /**
- * The gathers, as **alternating wedges** rather than as lines.
+ * The gathers, as soft folds.
  *
- * A frill is gathered cloth, and gathered cloth reads entirely by alternation:
- * every other fold turns toward the light and the one between it turns away. A
- * single flat ramp over the whole ring plus seven grey sticks laid on top gave
- * neither — it read as a scalloped disc with pencil marks on it.
- *
- * Each wedge is one scallop, from the gathered edge out to the tip, and every
- * second one is shaded. Generated off the same `ring` the outline is, so a
- * shadow cannot land anywhere but on the fold it belongs to.
+ * A frill is gathered cloth, and gathered cloth reads by alternation: every
+ * other fold turns toward the light and the one between it turns away. They
+ * were drawn as hard-edged wedges, every second one shaded grey, which read as
+ * dark spokes on a disc; now each is a fold drawn as a seam's is — a soft
+ * shadow on one side and a little light on the other — between two scallops,
+ * from where the cloth is gathered out to the trough, opening as it goes.
+ * Generated off the same `ring` the outline is, so a fold cannot land anywhere
+ * but between the scallops it parts.
  */
-const GATHER_WEDGES = Array.from(
-  { length: SPAN },
-  (_, i) =>
-    `M${ring(FROM + i, INNER)} L${ring(FROM + i, TROUGH)} ` +
-    `Q${ring(FROM + i + 0.5, 1)} ${ring(FROM + i + 1, TROUGH)} ` +
-    `L${ring(FROM + i + 1, INNER)} Z`
-);
+const ringPt = (turn: number, t: number): Pt => {
+  const [x, y] = ring(turn, t).split(" ").map(Number);
+  return [x, y];
+};
+const GATHERS: Fold[] = Array.from({ length: SPAN - 1 }, (_, i) => ({
+  ridge: [0.45, 0.6, 0.75, TROUGH].map((t) => ringPt(FROM + i + 1, t)),
+  width: [0.8, 2.6],
+  shadow: 0.18,
+  light: 0.22,
+  soft: 1.6,
+}));
 
-/** The scalloped edge itself — the cut the frill is finished on. */
+/** The scalloped edge itself — the cut the frill is finished on, where it catches the light. */
 const EDGE = `M${ring(FROM, TROUGH)} ` + scallops(TROUGH, 1);
-
-/** The frill dropped onto the shoulders it sits on. */
-const RUFF_CAST_PATH =
-  `M${ring(FROM, TROUGH + 0.04)} ` +
-  scallops(TROUGH + 0.04, 1.05) +
-  " " +
-  Array.from(
-    { length: SPAN },
-    (_, i) =>
-      `Q${ring(FROM + SPAN - i - 0.5, INNER)} ${ring(FROM + SPAN - i - 1, INNER)}`
-  ).join(" ") +
-  " Z";
-
-const LIFT: [number, string][] = [
-  [0, "#ffffff"],
-  [0.4, "#f4f4f4"],
-  [1, "#c2c2c2"],
-];
 
 export const ruffledCollarFront: GarmentArt = {
   regions: {
     collar: {
       focus: [300, 184],
-      surface: { blur: 5, relief: 4, warp: 2 },
+      outline: "soft",
       /** Cut across the grain and gathered on the crossway, as a frill is. */
       grain: { turn: 90 },
       shape: (fill) => <path d={RUFF_PATH} fill={fill} />,
       defs: (uid) => (
         <>
-          {vertical(uid("lift"), LIFT)}
-          {softShadow(uid("soft"), 4)}
+          {foldDefs(uid)}
+          {edgeLightDefs(uid)}
         </>
       ),
-      cast: (uid) => (
-        <path
-          d={RUFF_CAST_PATH}
-          fill="#7a7a7a"
-          opacity="0.32"
-          filter={`url(#${uid("soft")})`}
-        />
-      ),
+      /* in the garment's light, with no line round it — see `collarLight.tsx` — and its gathers soft folds */
       shading: (uid) => (
         <>
-          <path d={RUFF_PATH} fill={`url(#${uid("lift")})`} />
-          {GATHER_WEDGES.map((d, i) =>
-            i % 2 === 0 ? null : (
-              <path key={d} d={d} fill="#9d9d9d" opacity="0.3" />
-            )
-          )}
-          {cutEdge(EDGE, 2.5, 0.34)}
+          {collarTone()}
+          {foldShadows(uid, GATHERS)}
+        </>
+      ),
+      light: (uid) => (
+        <>
+          {foldLights(uid, GATHERS)}
+          {edgeLight(uid, EDGE)}
         </>
       ),
     },

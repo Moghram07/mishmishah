@@ -101,8 +101,16 @@ export interface NecklineCut {
   seam: string;
   /** Topstitch along the opening. */
   stitch: string;
+  /**
+   * The part of `stitch` along the neck edge, where `stitch` runs on past it —
+   * down the shirt-dress's placket. What a collar sewn to the neck covers,
+   * and so leaves off; absent, all of `stitch` is along the neck edge.
+   */
+  neckStitch?: string;
   /** Extra cloth the cut adds: a band, a strap, a placket. Same fabric. */
   extras: string[];
+  /** Which of `extras` is a placket: drawn as a collar is, with no line round it. */
+  placket?: string;
   /** Fold lines — drape that is shading rather than silhouette. */
   folds: string[];
   /**
@@ -119,6 +127,11 @@ export interface NecklineCut {
   wrap?: WrapPanel;
   /** A halter's neckband, for the drawing to light and gather the bodice into — see `HalterBand`. */
   halter?: HalterBand;
+  /**
+   * A faced edge drawn as a soft fold, as every seam is now, rather than as
+   * a ring of topstitch: the keyhole's opening below the neck.
+   */
+  faced?: string;
   /**
    * The opening as the half-ellipse it is cut on, for a flat collar to lie
    * along — see `flatCollar`. The cuts with a plain curved opening have it:
@@ -688,7 +701,9 @@ const CUTS: Record<NecklineId, (a: Anatomy) => NecklineCut> = {
         opening: [run(rightHalf), run(drop), run(leftHalf)].join(" "),
       },
       seam: line(opening),
-      stitch: [line(inset(opening, 5)), line(inset(drop, 4))].join(" "),
+      stitch: line(inset(opening, 5)),
+      /* the opening below, faced: a soft fold just inside its edge, where the dashed ring of topstitch was */
+      faced: line(inset(drop, 2.5)),
       extras: [loop],
       loopRim: around(outer, -KEYHOLE_LOOP_OPEN, -2 * Math.PI + KEYHOLE_LOOP_OPEN),
       buttons: { at: [button], r: KEYHOLE_BUTTON },
@@ -842,7 +857,9 @@ const CUTS: Record<NecklineId, (a: Anatomy) => NecklineCut> = {
     return {
       ...base,
       extras: [placket],
+      placket,
       buttons: { at: buttons, r: COLLARED_BUTTON },
+      neckStitch: base.stitch,
       stitch: [
         base.stitch,
         line(span([a.center - half + 4, topY + 4], [a.center - half + 4, footY - 5], 5)),

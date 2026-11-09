@@ -1,10 +1,4 @@
-import {
-  FALL,
-  UNDERCOLLAR,
-  cutEdge,
-  softShadow,
-  vertical,
-} from "@/lib/garments/shading";
+import { collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
 import { mirror } from "@/lib/garments/collar";
 import { line, outline, type Pt } from "@/lib/garments/fit";
 import { peterPan } from "../collarCuts";
@@ -57,18 +51,9 @@ function collarOn(halves: { left: Pt[]; right: Pt[]; free: [Pt[], Pt[]] }, ownRi
   /* the free edge: the outer run only — see `peterPan` — never the neckline or the centre-front join */
   const FREE_EDGE = line(halves.free[0]);
   const FREE_EDGE_RIGHT = ownRight ? line(halves.free[1]) : mirror(FREE_EDGE);
-  /* the half dropped onto the chest — a flat collar still has a thickness */
-  const dropped = (half: Pt[]) => outline(half.map(([x, y]) => [x, y + 4] as Pt));
-  const HALF_CAST_PATH = dropped(halves.left);
-  const HALF_CAST_RIGHT = ownRight ? dropped(halves.right) : mirror(HALF_CAST_PATH);
-  /*
-    The centre-front join, shaded: one half lies a little over the other there,
-    and without the shadow falling between them the two read as one piece.
-  */
-  const JOIN_SHADE = outline(halves.left.map(([x, y]) => [x - 5, y] as Pt));
   return {
     focus: [300, 214],
-    surface: { blur: 6, relief: 4, warp: 2 },
+    outline: "soft",
     /**
      * Cut across the grain, which is how a flat collar is cut so that it
      * turns the corner round a neckline without dragging. It is also what
@@ -81,33 +66,16 @@ function collarOn(halves: { left: Pt[]; right: Pt[]; free: [Pt[], Pt[]] }, ownRi
         <path d={HALF_RIGHT_PATH} fill={fill} />
       </>
     ),
-    defs: (uid) => (
-      <>
-        {vertical(uid("fall"), FALL)}
-        {vertical(uid("under"), UNDERCOLLAR)}
-        {softShadow(uid("soft"), 3)}
-      </>
-    ),
-    cast: (uid) => (
-      <g filter={`url(#${uid("soft")})`} opacity="0.5">
-        <path d={HALF_CAST_PATH} fill="#6f6f6f" />
-        <path d={HALF_CAST_RIGHT} fill="#6f6f6f" />
-      </g>
-    ),
-    shading: (uid) => (
-      <>
-        <path d={HALF_LEFT_PATH} fill={`url(#${uid("fall")})`} />
-        <path d={HALF_RIGHT_PATH} fill={`url(#${uid("fall")})`} />
-        <path d={JOIN_SHADE} fill={`url(#${uid("under")})`} opacity="0.5" />
-        {/*
-          And the cut edge all the way round. A Peter Pan is almost always the
-          same cloth as the blouse it is sewn to, and then nothing but its own
-          thickness separates the two.
-        */}
-        {cutEdge(FREE_EDGE, 3, 0.4)}
-        {cutEdge(FREE_EDGE_RIGHT, 3, 0.4)}
-      </>
-    ),
+    defs: edgeLightDefs,
+    /*
+      In the garment's light, with no line round it — see `collarLight.tsx`.
+      What separates a same-cloth Peter Pan from the dress is its thickness:
+      a soft shadow under its edge, which its outline throws (the right half's
+      on the left, at the centre front, where one lies a little over the
+      other), and a little light along the free edge, where it rolls.
+    */
+    shading: collarTone,
+    light: (uid) => edgeLight(uid, FREE_EDGE, FREE_EDGE_RIGHT),
   };
 }
 

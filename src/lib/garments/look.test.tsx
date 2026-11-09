@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
-import { collarOf, cutFrom, setBelt, setButtons, setCollar, setFront, setLeg, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
+import { collarOf, collarsFitting, cutFrom, setBelt, setButtons, setCollar, setFront, setLeg, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
 import { ROBE_TYPES, SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
 import { collars, collarsForGarment } from "@/lib/data/collars";
@@ -3536,4 +3536,270 @@ describe("buttons and belt, light and dark", () => {
     ];
     write("styles12-fixes", theme, rows);
   });
+});
+
+/**
+ * Round 13, on a light page and a dark one: every collar on every neckline
+ * that offers it — the cuts of her dress, her t-shirt and blouse, his shirt,
+ * polo, thobe and jacket, and her jacket — close up, plain and print. Every
+ * collar now in its cloth's own colour, with no line round it; her mandarin
+ * rebuilt as his; the bow on the keyhole above the opening; the keyhole's
+ * edge a soft fold. The pairs come from `collarsFitting`, so none is left out.
+ */
+describe("collars, light and dark", () => {
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; body: BodyType; ids: string[]; neckline?: string; collar?: string; cloth: string; zoom?: number; focus?: [number, number] };
+  type Family = { label: string; body: BodyType; ids: string[]; neckline?: string; collars: string[] };
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  const CLOSE = { zoom: 4, focus: [300, 226] as [number, number] };
+  const short = (id: string) => id.replace(/^(fe)?male-/, "").replace(/-(collar|neckline)$/, "");
+  const stage = (t: Tile) => {
+    const cloth = f(t.cloth);
+    let worn: WornGarment[] = [];
+    const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const gid of t.ids) {
+      const g = garmentById(gid)!;
+      worn = wear(worn, cutFrom(g, cloth.id));
+      const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+      for (const r of g.fabricRegions) regions[r] = cloth;
+      by[gid] = regions;
+    }
+    if (t.neckline) worn = setNeckline(worn, t.ids[0], t.neckline);
+    if (t.collar) worn = setCollar(worn, t.ids[0], t.collar);
+    const outfit: Outfit = { bodyType: t.body, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={by} zoom={t.zoom ?? CLOSE.zoom} focus={t.focus ?? CLOSE.focus} />;
+  };
+  /** Her dress, one family per cut that takes a collar; then each other garment that takes one, in its own opening. */
+  const families = (): Family[] => {
+    const dress = garmentById("female-dress")!;
+    const base = wear([], cutFrom(dress, PLAIN));
+    const onCut = (cut: string): Family => {
+      const neckline = `female-${cut}-neckline`;
+      const collars = collarsFitting(dress, setNeckline(base, dress.id, neckline)[0]).map((c) => c.id);
+      return { label: `dress · ${cut}`, body: "female", ids: [dress.id], neckline, collars };
+    };
+    const own = (label: string, body: BodyType, ids: string[]): Family => ({
+      label,
+      body,
+      ids,
+      collars: collarsForGarment(garmentById(ids[0])!).map((c) => c.id),
+    });
+    return [
+      ...["round", "scoop", "boat", "v", "high", "keyhole", "collared"].map(onCut),
+      own("her t-shirt", "female", ["female-t-shirt", "female-trousers"]),
+      own("her blouse", "female", ["female-blouse", "female-skirt"]),
+      own("his shirt", "male", ["male-shirt", "male-trousers"]),
+      own("his polo", "male", ["male-polo", "male-trousers"]),
+      own("his thobe", "male", ["male-thobe"]),
+      own("his jacket", "male", ["male-jacket", "male-trousers"]),
+      own("her jacket", "female", ["female-jacket", "female-trousers"]),
+    ];
+  };
+  /** Rows of at most six: the round cuts with the V, his shirt with his polo, the jackets with the thobe. */
+  const rows = (cloth: string, kind: string): Tile[][] => {
+    const tiles = families().map((fam) =>
+      fam.collars.map((collar): Tile => ({
+        caption: `${fam.label} · ${short(collar)}, ${kind}`,
+        body: fam.body,
+        ids: fam.ids,
+        neckline: fam.neckline,
+        collar,
+        cloth,
+      }))
+    );
+    const [round, scoop, boat, v, high, keyhole, collared, tee, blouse, shirt, polo, thobe, hisJacket, herJacket] = tiles;
+    return [
+      [...round, ...scoop, ...boat, ...v],
+      high,
+      keyhole,
+      collared,
+      tee,
+      blouse,
+      [...shirt, ...polo],
+      [...thobe, ...hisJacket, ...herJacket],
+    ];
+  };
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/round13-collars-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const plain = rows(PLAIN, "plain");
+    const print = rows(PRINT, "print");
+    /*
+      Then the four things this round asked for, closer: her mandarin's ends
+      meeting over a tiny V; the bow on a keyhole, its knot on the band and
+      the opening below it between the tails; the keyhole's edge, a soft fold,
+      with no collar; and the mandarin over a keyhole.
+    */
+    const detail = (cloth: string, kind: string): Tile[] => {
+      const dress = (neckline: string, collar: string | undefined, caption: string, zoom: number, focus: [number, number]): Tile => ({
+        caption: `${caption}, ${kind}, ${zoom}×`,
+        body: "female",
+        ids: ["female-dress"],
+        neckline: `female-${neckline}-neckline`,
+        collar,
+        cloth,
+        zoom,
+        focus,
+      });
+      return [
+        dress("high", "female-mandarin-collar", "dress · high · mandarin", 8, [297, 184]),
+        dress("keyhole", "female-bow-collar", "dress · keyhole · bow", 6, [297, 214]),
+        dress("keyhole", undefined, "dress · keyhole, no collar", 8, [297, 200]),
+        dress("keyhole", "female-mandarin-collar", "dress · keyhole · mandarin", 8, [297, 196]),
+      ];
+    };
+    /* each family plain, then print */
+    const all = [...plain.flatMap((row, i) => [row, print[i]]), detail(PLAIN, "plain"), detail(PRINT, "print")];
+    const html = renderToStaticMarkup(
+      <>
+        {all.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+      `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/round13-collars-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  }, 60_000);
+});
+
+describe("round 13 fixes, light and dark", () => {
+  /*
+    The three fixes asked for before round 13's commit: no topstitch along a
+    neck under its collar; every button strip lit as a collar is; and every
+    other row of tonal topstitch faint — barely there at whole-figure size,
+    clear only close up.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = {
+    caption: string;
+    body: BodyType;
+    ids: string[];
+    neckline?: string;
+    collar?: string;
+    buttons?: ButtonsId;
+    zoom: number;
+    focus: [number, number];
+  };
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  const stage = (t: Tile, clothId: string) => {
+    const cloth = f(clothId);
+    let worn: WornGarment[] = [];
+    const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const gid of t.ids) {
+      const g = garmentById(gid)!;
+      worn = wear(worn, cutFrom(g, cloth.id));
+      const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+      for (const r of g.fabricRegions) regions[r] = cloth;
+      by[gid] = regions;
+    }
+    if (t.neckline) worn = setNeckline(worn, t.ids[0], t.neckline);
+    if (t.collar) worn = setCollar(worn, t.ids[0], t.collar);
+    if (t.buttons) worn = setButtons(worn, t.ids[0], t.buttons);
+    const outfit: Outfit = { bodyType: t.body, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={by} zoom={t.zoom} focus={t.focus} />;
+  };
+  const her = (caption: string, ids: string[], zoom: number, focus: [number, number], more: Partial<Tile> = {}): Tile => ({
+    caption,
+    body: "female",
+    ids,
+    zoom,
+    focus,
+    ...more,
+  });
+  const his = (caption: string, ids: string[], zoom: number, focus: [number, number], more: Partial<Tile> = {}): Tile => ({
+    ...her(caption, ids, zoom, focus, more),
+    body: "male",
+  });
+  const dress = (cut: string) => `female-${cut}-neckline`;
+  const ROWS: Tile[][] = [
+    /* every button strip, close */
+    [
+      her("blouse · placket", ["female-blouse", "female-skirt"], 4, [300, 270]),
+      his("shirt · placket", ["male-shirt", "male-trousers"], 4, [300, 270]),
+      his("polo · placket", ["male-polo", "male-trousers"], 4, [300, 250]),
+      his("thobe · placket", ["male-thobe"], 4, [300, 260]),
+      her("dress · round, buttons to the waist", ["female-dress"], 4, [297, 270], { neckline: dress("round"), buttons: "waist" }),
+      her("dress · shirt-dress", ["female-dress"], 4, [297, 270], { neckline: dress("collared") }),
+      her("dress · round, buttons to the hem", ["female-dress"], 4, [297, 520], { neckline: dress("round"), buttons: "hem" }),
+    ],
+    /* tonal topstitch at whole-figure size */
+    [
+      her("dress · round", ["female-dress"], 1, [300, 500], { neckline: dress("round") }),
+      her("dress · shirt-dress", ["female-dress"], 1, [300, 500], { neckline: dress("collared") }),
+      her("t-shirt", ["female-t-shirt", "female-trousers"], 1, [300, 500]),
+      her("blouse", ["female-blouse", "female-skirt"], 1, [300, 500]),
+      his("shirt", ["male-shirt", "male-trousers"], 1, [300, 500]),
+      his("thobe", ["male-thobe"], 1, [300, 500]),
+    ],
+    /* and close: bare necklines, a sleeve's hem, cuffs, hems */
+    [
+      her("dress · round neckline", ["female-dress"], 5, [297, 215], { neckline: dress("round") }),
+      her("t-shirt · neckline", ["female-t-shirt", "female-trousers"], 5, [297, 205]),
+      her("dress · short sleeve's hem", ["female-dress"], 5, [205, 296], { neckline: dress("round") }),
+      her("blouse · cuff", ["female-blouse", "female-skirt"], 5, [180, 470]),
+      his("shirt · cuff", ["male-shirt", "male-trousers"], 5, [170, 480]),
+      her("trousers · hem", ["female-t-shirt", "female-trousers"], 4, [250, 900]),
+    ],
+    /* the neck under every kind of collar on the dress, close */
+    [
+      her("dress · high · mandarin", ["female-dress"], 6, [297, 192], { neckline: dress("high"), collar: "female-mandarin-collar" }),
+      her("dress · high · turtleneck", ["female-dress"], 6, [297, 196], { neckline: dress("high"), collar: "female-turtleneck-collar" }),
+      her("dress · keyhole · mandarin", ["female-dress"], 6, [297, 196], { neckline: dress("keyhole"), collar: "female-mandarin-collar" }),
+      her("dress · round · Peter Pan", ["female-dress"], 5, [297, 210], { neckline: dress("round"), collar: "female-peter-pan-collar" }),
+      her("dress · v · sailor", ["female-dress"], 4, [297, 240], { neckline: dress("v"), collar: "female-sailor-collar" }),
+      her("dress · shirt-dress · shirt", ["female-dress"], 5, [297, 205], { neckline: dress("collared") }),
+    ],
+  ];
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/round13-fixes-%s.html", (theme) => {
+    const t = THEMES[theme];
+    /* each row plain, then print */
+    const all = ROWS.flatMap((row) => [
+      row.map((tile) => ({ tile, cloth: PLAIN, caption: `${tile.caption}, plain, ${tile.zoom}×` })),
+      row.map((tile) => ({ tile, cloth: PRINT, caption: `${tile.caption}, print, ${tile.zoom}×` })),
+    ]);
+    const html = renderToStaticMarkup(
+      <>
+        {all.map((row, r) => (
+          <div key={r} className="row">
+            {row.map(({ tile, cloth, caption }) => (
+              <figure key={caption}>
+                {stage(tile, cloth)}
+                <figcaption>{caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+      `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/round13-fixes-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  }, 60_000);
 });

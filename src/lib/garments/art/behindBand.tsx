@@ -1,4 +1,4 @@
-import { vertical } from "@/lib/garments/shading";
+import { collarTone } from "./collarLight";
 import type { GarmentArt } from "./index";
 
 /**
@@ -12,29 +12,22 @@ import type { GarmentArt } from "./index";
  * between one neck and another already lives: each body's `yoke.ts` measures
  * its own throat and builds `standBehind` from it.
  *
- * It is shaded darker than the front of the band, because the back of a collar
- * is turned away from the light and lies in the shadow of the head — but only
- * a little darker. At 55% it stopped reading as cloth at all: the sliver that
- * shows is a few units wide, so the fabric's pattern barely registers across
- * it, and a heavy multiply turned the whole thing into a grey rim round the
- * throat that looked like a rendering seam. Shadow has to stay light enough
- * that you can still see what cloth is in it.
+ * In the cloth's own colour, with no line round it. It used to be shaded
+ * darker than the front — the back of a collar turned from the light — and,
+ * drawn under the photograph with nothing beneath its edges, it took the
+ * page's rim all round: the sliver either side of the throat read as a dark
+ * line beside the neck. A collar is lit as a seam is now (see
+ * `collarLight.tsx`), and this is the same band as its front.
  */
-
-const UNDER: [number, string][] = [
-  [0, "#bdbdbd"],
-  [0.45, "#dcdcdc"],
-  [1, "#b6b6b6"],
-];
 
 /** One shared drawing, given the band's own outline. */
 export const behindBandArt = (path: string): GarmentArt => ({
   regions: {
     collar: {
       focus: [300, 170],
+      outline: "soft",
       shape: (fill) => <path d={path} fill={fill} />,
-      defs: (uid) => vertical(uid("under"), UNDER),
-      shading: (uid) => <path d={path} fill={`url(#${uid("under")})`} />,
+      shading: collarTone,
     },
   },
 });

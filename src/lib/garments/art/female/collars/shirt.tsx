@@ -1,12 +1,11 @@
-import { FALL, softShadow, vertical } from "@/lib/garments/shading";
-import { arc, nudge, type Point } from "@/lib/garments/collar";
+import { arc, type Point } from "@/lib/garments/collar";
 import { line, run, type Pt } from "@/lib/garments/fit";
 import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
+import { collarFold, collarTone } from "../../collarLight";
 import {
   COLLAR_AXIS,
   NECK_BASE_SEAM,
   reflect,
-  reflectPts,
   standBehind,
   standFront,
   standFrontEdges,
@@ -80,7 +79,6 @@ const LEAF_LEFT_PATH =
   `M${MEET[0]} ${MEET[1]} ${run(ROLL_LEFT.slice(1))} ` +
   `${arc(SIDE, OUTER, 2)} ${arc(OUTER, TIP, 1.5)} ${arc(TIP, MEET, -1)} Z`;
 const LEAF_RIGHT_PATH = reflect(LEAF_LEFT_PATH);
-const [TIP_RIGHT] = reflectPts([TIP]);
 
 /**
  * Where the band is sewn to the neckline: a seam, so a soft line of shadow
@@ -90,23 +88,11 @@ const [TIP_RIGHT] = reflectPts([TIP]);
  */
 const BAND_FOOT = line(standFrontEdges(BAND_RISE).foot.map(([x, y]) => [x, y - 0.8] as Pt));
 
-/** The narrow V between the leaves, where the band shows. */
-const V_SHADE = `M${MEET[0]} ${MEET[1]} L${TIP[0]} ${TIP[1]} L${TIP_RIGHT[0]} ${TIP_RIGHT[1]} Z`;
-
-/* The fold: a soft, rounded turn along the roll line — light and shadow only. */
-const ROLL_FOLD: Fold = {
-  ridge: ROLL.map(([x, y]) => [x, y + 2] as Pt),
-  width: [2, 2],
-  shadow: 0.28,
-  light: 0.45,
-  soft: 1,
-};
+/* The fold: a soft, rounded turn along the roll line, drawn as a seam is — a little light, a soft shadow. */
+const ROLL_FOLD: Fold = collarFold(ROLL.map(([x, y]) => [x, y + 2] as Pt), 2);
 
 /** Where the band is sewn to the neckline: a soft fold, seen only in the V between the leaves. */
 const BAND_SEAM = seamFolds([BAND_FOOT]);
-
-/** Each leaf's shadow on the body, under its outer edge. */
-const LEAF_CAST_PATH = `${nudge(LEAF_LEFT_PATH, 1.5, 3)} ${nudge(LEAF_RIGHT_PATH, -1.5, 3)}`;
 
 /** The button on the band, in the V: one, below the meeting point. */
 const BUTTON_DROP = 15;
@@ -115,7 +101,7 @@ export const shirtCollarFront: GarmentArt = {
   regions: {
     collar: {
       focus: [300, 192],
-      surface: { blur: 5, relief: 4, warp: 2 },
+      outline: "soft",
       /**
        * Cut from further along the roll than the shirt it is sewn to, so a
        * stripe stays upright but does not line up across the seam.
@@ -138,8 +124,6 @@ export const shirtCollarFront: GarmentArt = {
       ),
       defs: (uid) => (
         <>
-          {vertical(uid("fall"), FALL)}
-          {softShadow(uid("soft"), 3)}
           {foldDefs(uid)}
           {sleeveFoldDefs(uid)}
           {/* the band's seam is lit only where the band shows: its light is drawn after the leaves */}
@@ -150,16 +134,11 @@ export const shirtCollarFront: GarmentArt = {
           </mask>
         </>
       ),
-      cast: (uid) => (
-        <path d={LEAF_CAST_PATH} fill="#7a7a7a" opacity="0.35" filter={`url(#${uid("soft")})`} />
-      ),
       shading: (uid) => (
         <>
-          {/* the band, in the shade of the leaves folded over it */}
-          <path d={V_SHADE} fill="#c8c8c8" />
+          {/* the garment's light; the band's seam and the roll, soft folds; the leaves' soft shadow on the band is their outline's */}
+          {collarTone()}
           {foldShadows(uid, BAND_SEAM)}
-          <path d={LEAF_LEFT_PATH} fill={`url(#${uid("fall")})`} />
-          <path d={LEAF_RIGHT_PATH} fill={`url(#${uid("fall")})`} />
           {foldShadows(uid, [ROLL_FOLD])}
         </>
       ),

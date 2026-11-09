@@ -1,4 +1,4 @@
-import { FALL, softShadow, vertical } from "@/lib/garments/shading";
+import { collarTone } from "../../collarLight";
 import { nudge, softEdges, type Point } from "@/lib/garments/collar";
 import { lifted, reverse, run, type Pt } from "@/lib/garments/fit";
 import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
@@ -83,16 +83,14 @@ const LEAF_LEFT_PATH = `M${MEET[0]} ${MEET[1]} ${run(FOLD_IN)} ${softEdges(
 )} Z`;
 const LEAF_RIGHT_PATH = reflect(LEAF_LEFT_PATH);
 
-/** Each leaf's shadow on the shirt, under its edges. */
-const LEAF_CAST_PATH = `${nudge(LEAF_LEFT_PATH, 1, 2.5)} ${nudge(LEAF_RIGHT_PATH, -1, 2.5)}`;
-
 /** A point `t` of the way from `a` to `b` — past either end when `t` is outside 0 to 1. */
 const along = (a: Point, b: Point, t: number): Point => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 
 /**
  * The rib: fine lines down the fall from the fold to the edge, fanning a
- * little as the fall widens, a rib every half centimetre or so. Overshooting
- * both edges, since shading is masked to the collar.
+ * little as the fall widens, a rib every half centimetre or so — drawn by its
+ * light alone, so the knit shows without a dark line in it. Overshooting
+ * both edges, since the light is masked to the collar.
  */
 const RIB_COUNT = 15;
 const RIB_LEFT = Array.from({ length: RIB_COUNT }, (_, k) => {
@@ -102,7 +100,6 @@ const RIB_LEFT = Array.from({ length: RIB_COUNT }, (_, k) => {
   const [a, b] = [along(top, foot, -0.25), along(top, foot, 1.2)];
   return `M${a[0].toFixed(1)} ${a[1].toFixed(1)} L${b[0].toFixed(1)} ${b[1].toFixed(1)}`;
 }).join(" ");
-const RIBS = `${RIB_LEFT} ${reflect(RIB_LEFT)}`;
 /** The same ribs nudged across by half a rib: the lit side of each. */
 const RIB_LIGHTS = `${nudge(RIB_LEFT, 1.1, 0)} ${reflect(nudge(RIB_LEFT, 1.1, 0))}`;
 
@@ -113,32 +110,11 @@ const ROLL: Fold[] = [
   { ridge: reflectPts(FOLD_RIDGE).map(([x, y]) => [x, y] as Pt), width: [2.8, 2.8], shadow: 0.2, light: 0.32, soft: 1.8 },
 ];
 
-/* The edge rolling a little under, all the way round the fall: a soft shade just inside it. */
-const EDGE_IN = 2.2;
-const EDGE_RIDGE: Pt[] = [
-  along(SIDE, OUTER, 0.25),
-  along(SIDE, OUTER, 0.85),
-  along(OUTER, TIP, 0.15),
-  along(OUTER, TIP, 0.5),
-  along(OUTER, TIP, 0.88),
-].map(([x, y]) => [x + EDGE_IN * 0.78, y - EDGE_IN * 0.62] as Pt);
-const EDGES: Fold[] = [
-  { ridge: EDGE_RIDGE, width: [2.4, 2.4], shadow: 0.2, light: 0, soft: 1.6, shadowToward: [-0.78, 0.62] },
-  {
-    ridge: reflectPts(EDGE_RIDGE).map(([x, y]) => [x, y] as Pt),
-    width: [2.4, 2.4],
-    shadow: 0.2,
-    light: 0,
-    soft: 1.6,
-    shadowToward: [0.78, 0.62],
-  },
-];
-
 export const malePoloCollarFront: GarmentArt = {
   regions: {
     collar: {
       focus: [300, 200],
-      surface: { blur: 6, relief: 4, warp: 2 },
+      outline: "soft",
       /** Knit, and cut round: the rib runs across the grain. */
       grain: { turn: 90 },
       shape: (fill) => (
@@ -147,22 +123,12 @@ export const malePoloCollarFront: GarmentArt = {
           <path d={LEAF_RIGHT_PATH} fill={fill} />
         </>
       ),
-      defs: (uid) => (
-        <>
-          {vertical(uid("fall"), FALL)}
-          {softShadow(uid("soft"), 3)}
-          {foldDefs(uid)}
-        </>
-      ),
-      cast: (uid) => (
-        <path d={LEAF_CAST_PATH} fill="#7a7a7a" opacity="0.32" filter={`url(#${uid("soft")})`} />
-      ),
+      defs: foldDefs,
       shading: (uid) => (
         <>
-          <path d={LEAF_LEFT_PATH} fill={`url(#${uid("fall")})`} />
-          <path d={LEAF_RIGHT_PATH} fill={`url(#${uid("fall")})`} />
-          <path d={RIBS} fill="none" stroke="#9a9a9a" strokeWidth="0.8" strokeLinecap="round" opacity="0.4" />
-          {foldShadows(uid, [...ROLL, ...EDGES])}
+          {/* the garment's light and the soft roll; the rib reads by its light alone, with no dark line in it */}
+          {collarTone()}
+          {foldShadows(uid, ROLL)}
         </>
       ),
       light: (uid) => (

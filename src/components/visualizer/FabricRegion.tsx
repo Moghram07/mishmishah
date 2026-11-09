@@ -13,7 +13,7 @@ import type { Fabric, GrainDirection, StitchId } from "@/types";
 import { fabricRepeatCm, useFabricArtwork } from "@/lib/fabrics/artwork";
 import { printKeep } from "@/lib/fabrics/printScale";
 import { stitchById } from "@/lib/data/stitches";
-import { clothSurface, clothWarp, type Uid } from "@/lib/garments/shading";
+import { FLAT_LIT, clothSurface, clothWarp, type Uid } from "@/lib/garments/shading";
 
 /**
  * One area of cloth, at its true print size.
@@ -103,6 +103,22 @@ export interface RegionDrawing {
    * colour instead. Lit, shaded and edged as any piece is.
    */
   solid?: string;
+  /**
+   * `"soft"`: no line round the piece anywhere — neither the rim against the
+   * page nor the dark edge on what it lies on — only the soft shadow its edge
+   * throws on whatever is under it, about as strong as a seam's fold. A
+   * collar's: cut from the same cloth as what it is sewn to, its edge is cloth
+   * lying on cloth, and an outline drawn round it read as a dark ring.
+   */
+  outline?: "soft";
+  /**
+   * Pieces drawn as a `"soft"` outline draws a whole region, by their index in
+   * `shape` — a placket lying on its own bodice. No line round them, the
+   * lighter shadow under their edge, and no form of their own: lit flat in the
+   * garment's light, as a collar is — see `FLAT_LIT` — so a strip of the same
+   * cloth reads as the same colour as what it lies on.
+   */
+  softPieces?: readonly number[];
 }
 
 interface Props {
@@ -216,6 +232,24 @@ const EDGE_DARK = "#241e19";
 const CONTACT = { color: "#5c4a3e", width: 3.2, opacity: 0.5, soft: 1.6 } as const;
 
 /**
+ * The same shadow under a piece drawn with a `"soft"` outline: lighter and a
+ * little wider, a soft step in the cloth's own colour rather than a line.
+ */
+const SOFT_CONTACT = { color: "#5c4a3e", width: 3.2, opacity: 0.3, soft: 2 } as const;
+
+/**
+ * Topstitch in thread the colour of the cloth — "tonal", every garment's
+ * default. Not a colour laid on the cloth but the cloth itself a little
+ * darker where the thread sinks into it, so on a print it is the print's own
+ * colours, motif by motif: there in a close-up, gone at whole-figure size.
+ *
+ * It used to be the fabric's accent colour at over half strength, and on a
+ * print that is the motif's colour — orange dashes round every neckline and
+ * down every placket of a navy floral, plain to see from across the room.
+ */
+const TONAL_THREAD = { width: 0.7, darken: 0.22, dash: "2.6 2.2" } as const;
+
+/**
  * Apply a filter to each piece of a region separately, rather than once to the
  * group.
  *
@@ -265,13 +299,10 @@ export function FabricRegion({
   const tile = fabricRepeatCm(fabric) / cmPerUnit;
   const artwork = useFabricArtwork(fabric, printKeep(tile * pxPerUnit));
 
+  /* a thread picked to show keeps its own colour; the tonal one is the cloth's — see `TONAL_THREAD` */
   const thread = stitchById(stitch);
-  const threadColor =
-    stitch === "hidden"
-      ? null
-      : stitch === "tonal"
-      ? fabric.palette?.accent ?? fabric.color
-      : thread.color;
+  const tonal = stitch === "tonal";
+  const threadColor = stitch === "hidden" ? null : tonal ? "#000000" : thread.color;
 
   const fill = drawing.solid ?? `url(#${uid("pattern")})`;
   /*
@@ -299,6 +330,13 @@ export function FabricRegion({
     rather than darken what lies under them.
   */
   const over = drawing.under?.length ? drawing.under : null;
+  /* a soft outline: no line round the piece, and a lighter shadow under its edge */
+  const soft = drawing.outline === "soft";
+  const contact = soft ? SOFT_CONTACT : CONTACT;
+  /* a piece of a region drawn soft on its own — see `softPieces` */
+  const softPieces = soft ? [] : drawing.softPieces ?? [];
+  const softAt = (i: number) => soft || softPieces.includes(i);
+  const flat = softPieces.length && forms.length ? piecesOf(drawing.shape(FLAT_LIT)) : [];
   const behind = (node: ReactNode) => (over ? <g mask={`url(#${uid("behind")})`}>{node}</g> : node);
 
   return (
@@ -359,7 +397,19 @@ export function FabricRegion({
             width={canvas[0]}
             height={canvas[1]}
           >
-            <feGaussianBlur stdDeviation={CONTACT.soft} />
+            <feGaussianBlur stdDeviation={contact.soft} />
+          </filter>
+        )}
+        {beneath && softPieces.length > 0 && (
+          <filter
+            id={uid("contact-soft")}
+            filterUnits="userSpaceOnUse"
+            x="0"
+            y="0"
+            width={canvas[0]}
+            height={canvas[1]}
+          >
+            <feGaussianBlur stdDeviation={SOFT_CONTACT.soft} />
           </filter>
         )}
         {over && (
@@ -406,7 +456,11 @@ export function FabricRegion({
         its sleeves each get their own form, and the seam between them shows
         because two surfaces meet there.
       */}
-      {cloth.map((piece, i) => (
+      {cloth.map((piece, i) => {
+        /* one piece of a region drawn soft: its own shadow, no line, lit flat — see `softPieces` */
+        const alone = !soft && softPieces.includes(i);
+        const shadow = alone ? SOFT_CONTACT : contact;
+        return (
         <g key={i}>
           {/*
             The soft shadow the piece's edge throws on whatever it lies on — skin,
@@ -419,11 +473,11 @@ export function FabricRegion({
             <g mask={`url(#${beneath.shade})`} style={{ mixBlendMode: "multiply" }}>
               {behind(
                 <g
-                  filter={`url(#${uid("contact")})`}
+                  filter={`url(#${uid(alone ? "contact-soft" : "contact")})`}
                   fill="none"
-                  stroke={CONTACT.color}
-                  strokeOpacity={CONTACT.opacity}
-                  strokeWidth={CONTACT.width}
+                  stroke={shadow.color}
+                  strokeOpacity={shadow.opacity}
+                  strokeWidth={shadow.width}
                   strokeLinejoin="round"
                 >
                   {edges[i]}
@@ -441,7 +495,7 @@ export function FabricRegion({
             </g>
           )}
           {/* against the page, the rim in the page's text colour; on anything else, dark in either theme */}
-          {behind(
+          {!softAt(i) && behind(
             <g
               mask={beneath ? `url(#${beneath.rim})` : undefined}
               fill="none"
@@ -453,7 +507,7 @@ export function FabricRegion({
               {edges[i]}
             </g>
           )}
-          {beneath &&
+          {beneath && !softAt(i) &&
             behind(
               <g
                 mask={`url(#${beneath.dark})`}
@@ -466,7 +520,7 @@ export function FabricRegion({
                 {edges[i]}
               </g>
             )}
-          {forms[i] && (
+          {forms[i] && !alone && (
             <g style={{ mixBlendMode: "multiply" }}>
               {behind(
                 <g filter={`url(#${uid("surface")})`}>
@@ -475,8 +529,10 @@ export function FabricRegion({
               )}
             </g>
           )}
+          {flat[i] && alone && <g style={{ mixBlendMode: "multiply" }}>{behind(flat[i])}</g>}
         </g>
-      ))}
+        );
+      })}
       {joined && (
         <g style={{ mixBlendMode: "multiply" }}>
           {behind(<g filter={`url(#${uid("surface")})`}>{drawing.shape("#fff")}</g>)}
@@ -535,18 +591,21 @@ export function FabricRegion({
         any part of one that falls outside the piece should simply not be there
         — and the neckline stitches all did, crossing the opening and painting
         on the throat.
+
+        Tonal thread is the cloth's own colour, a little darker — see
+        `TONAL_THREAD` — multiplied over it rather than laid on it.
       */}
       {threadColor && drawing.stitch && (
-        <g mask={`url(#${uid("mask")})`}>
+        <g mask={`url(#${uid("mask")})`} style={tonal ? { mixBlendMode: "multiply" } : undefined}>
           {behind(
             <path
               d={drawing.stitch}
               fill="none"
               stroke={threadColor}
-              strokeWidth="0.9"
+              strokeWidth={tonal ? TONAL_THREAD.width : "0.9"}
               strokeLinecap="round"
-              strokeDasharray="2.6 2.2"
-              strokeOpacity="0.55"
+              strokeDasharray={tonal ? TONAL_THREAD.dash : "2.6 2.2"}
+              strokeOpacity={tonal ? TONAL_THREAD.darken : "0.55"}
             />
           )}
         </g>

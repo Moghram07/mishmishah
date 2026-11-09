@@ -1642,11 +1642,7 @@ export function FabricVisualizer() {
                     <StitchChoice
                       key={s.id}
                       label={pick(s.label)}
-                      color={
-                        s.id === "tonal"
-                          ? activeFabric.palette?.accent ?? activeFabric.color
-                          : s.color
-                      }
+                      color={s.id === "tonal" ? activeFabric.color : s.color}
                       active={activeStitch === s.id}
                       onClick={() => setStitch(s.id)}
                     />

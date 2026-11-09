@@ -1,4 +1,3 @@
-import { nudge } from "@/lib/garments/collar";
 import { standBehind, standFront } from "../yoke";
 import { behindBandArt } from "../../behindBand";
 import { bandFront } from "./band";
@@ -22,9 +21,6 @@ import { bandFront } from "./band";
 const BAND_PATH = standFront(20);
 const STAND_BEHIND_PATH = standBehind(20);
 
-/** The band's lower edge, dropped onto the garment it is sewn to. */
-const BAND_CAST_PATH = nudge(BAND_PATH, 0, 3);
-
-export const maleRegularCollarFront = bandFront({ band: BAND_PATH, cast: BAND_CAST_PATH, rise: 20, closes: "tab", buttons: 2 });
+export const maleRegularCollarFront = bandFront({ band: BAND_PATH, rise: 20, closes: "tab", buttons: 2 });
 
 export const maleRegularCollarBehind = behindBandArt(STAND_BEHIND_PATH);

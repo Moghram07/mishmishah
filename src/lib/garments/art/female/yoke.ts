@@ -265,6 +265,19 @@ export const standFront = (rise: number) => stand("female", { ...STAND, rise });
 export const standNotched = (rise: number, half: number, depth: number) =>
   stand("female", { ...STAND, rise, notch: { half, depth } });
 
+/**
+ * The same band with its two ends meeting at centre front: top corners
+ * softly rounded, a V between them `half` either side of the centre at the
+ * top, closing to a point on the band's lower edge — his mandarin's, and now
+ * hers.
+ */
+export const standGapped = (rise: number, half: number) =>
+  stand("female", { ...STAND, rise, notch: { half, depth: 0, v: true } });
+
+/** That band's edges: its top, round the ends and down the V — where it is folded, and catches the light. */
+export const standGappedEdges = (rise: number, half: number) =>
+  standEdges("female", { ...STAND, rise, notch: { half, depth: 0, v: true } });
+
 /** The half behind the neck: a little wider, and level along the top. */
 export const standBehind = (rise: number) =>
   stand("female", { ...STAND, rise, off: BEHIND, flatTop: true });

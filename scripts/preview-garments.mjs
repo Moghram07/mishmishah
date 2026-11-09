@@ -514,6 +514,8 @@ function artPaths(assetId, body, { behind = false, opening = null, cut = null, s
   if (generated && !behind) {
     return generated.cloth({
       neckline: cut ?? undefined,
+      /* a collar sewn into this opening: a keyhole gives its own loop up to it, drawn and measured alike */
+      opening: opening ?? undefined,
       sleeve: sleeve ?? defaultSleeveOf(assetId),
       skirt: skirt ?? undefined,
       inside: inside ?? undefined,

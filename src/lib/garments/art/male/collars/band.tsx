@@ -1,5 +1,6 @@
-import { softShadow } from "@/lib/garments/shading";
+import { line, type Pt } from "@/lib/garments/fit";
 import { COLLAR_AXIS, THOBE_PLACKET, standFrontEdges } from "../yoke";
+import { collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
 import type { GarmentArt } from "../../index";
 import { litButtons } from "../../buttons";
 
@@ -16,6 +17,11 @@ import { litButtons } from "../../buttons";
  *
  * Each collar's own file names its band, so `check:garments` measures it —
  * see `regular.tsx`, `regularShort.tsx` and `mandarin.tsx`.
+ *
+ * Lit as every collar is — see `collarLight.tsx`: the cloth's own colour, no
+ * line round it, a soft shadow under its edges and a little light along its
+ * top, where it is folded. A tab throws a soft shadow on the end under it and
+ * nothing more: the fine dark line along its edge is gone.
  */
 
 /**
@@ -30,11 +36,12 @@ const STRIP_MIDDLE = (THOBE_PLACKET[0] + THOBE_PLACKET[1]) / 2;
 /** How the band is lit and where its ends close: a crease, or a tab's edge lying on the other end. */
 export function bandFront(s: {
   band: string;
-  cast: string;
   rise: number;
   closes: "tab" | "gap";
   /** The buttons on a tab, one above the other. */
   buttons: number;
+  /** The band's folded top edge, where it differs from the plain band's — round a gap's ends and down its V. */
+  top?: Pt[];
 }): GarmentArt {
   const edges = standFrontEdges(s.rise);
   /** Where an edge of the band is at a column. */
@@ -59,7 +66,7 @@ export function bandFront(s: {
     regions: {
       collar: {
         focus: [300, 172],
-        surface: { blur: 4, relief: 4, warp: 2 },
+        outline: "soft",
         /**
          * Cut across the grain, which is how a band is cut: it has to bend
          * round a throat without dragging, and a crossgrain strip does that
@@ -69,7 +76,7 @@ export function bandFront(s: {
         shape: (fill) => <path d={s.band} fill={fill} />,
         defs: (uid) => (
           <>
-            {softShadow(uid("soft"), 3)}
+            {edgeLightDefs(uid)}
             {s.closes === "tab" && (
               <filter id={uid("tab-soft")} filterUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000" colorInterpolationFilters="sRGB">
                 <feGaussianBlur stdDeviation={1.2} />
@@ -77,30 +84,23 @@ export function bandFront(s: {
             )}
           </>
         ),
-        /* the band's lower edge, dropped onto the garment it is sewn to */
-        cast: (uid) => <path d={s.cast} fill="#7a7a7a" opacity="0.4" filter={`url(#${uid("soft")})`} />,
-        /* a gap is cut into the band itself; a tab's end lies on the end under it */
+        /* a gap is cut into the band itself; a tab's end lies on the end under it, and throws a soft shadow there */
         shading:
           s.closes === "gap"
-            ? () => null
-            : /* a soft shadow on the end under it, then the edge, fine and dark */
-              (uid) => (
+            ? collarTone
+            : (uid) => (
                 <>
+                  {collarTone()}
                   <path
                     d={`M${tabX - 1.2} ${top(tabX) + 1} L${tabX - 1.2} ${foot(tabX) - 1}`}
                     stroke="#5c4a3e"
                     strokeWidth="2.6"
-                    opacity="0.5"
-                    filter={`url(#${uid("tab-soft")})`}
-                  />
-                  <path
-                    d={`M${tabX} ${top(tabX) + 0.4} L${tabX} ${foot(tabX) - 0.4}`}
-                    stroke="#241e19"
-                    strokeWidth="1.4"
                     opacity="0.3"
+                    filter={`url(#${uid("tab-soft")})`}
                   />
                 </>
               ),
+        light: (uid) => edgeLight(uid, line(s.top ?? edges.top)),
       },
     },
     /**

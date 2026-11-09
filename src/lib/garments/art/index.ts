@@ -142,6 +142,10 @@ export interface RegionArt {
   under?: string[];
   /** A piece that never takes the fabric — a leather belt — filled with this colour: see `RegionDrawing`. */
   solid?: string;
+  /** No line round the piece, only a soft shadow under its edge — every collar's: see `RegionDrawing`. */
+  outline?: "soft";
+  /** Pieces drawn so on their own, by index — a placket on its bodice: see `RegionDrawing`. */
+  softPieces?: readonly number[];
   /** Where a close-up should centre. */
   focus?: [x: number, y: number];
 }

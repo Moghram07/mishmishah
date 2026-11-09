@@ -29,6 +29,7 @@ import { besideArms, fallOf, hangs, sameSkirt, skirtKey, type CutSkirt } from "@
 import type { BeltId, ButtonsId, FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { litButtons } from "../buttons";
+import { edgeLight, edgeLightDefs } from "../collarLight";
 import { puffLightDefs, puffShade, seamFolds, sleeveFoldDefs, sleeveFolds } from "../sleeveFolds";
 import { CUFF, CuffHardware, cuffMarks, rowsOf, sewnDrape, shoulderFall } from "../sleevedTop";
 import { horizontal, type Stop } from "@/lib/garments/shading";
@@ -601,8 +602,16 @@ function offRow(d: string, y: number): string {
   return dropped ? out.join(" ") : d;
 }
 
-const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons: ButtonsId = "none"): RegionArt => {
-  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff } = bodiceFor(id, sleeve, waist, buttons);
+const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons: ButtonsId = "none", collared = false): RegionArt => {
+  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, placket } = bodiceFor(id, sleeve, waist, buttons, collared);
+  /*
+    Its placket — one buttoned on, or a shirt-dress's own — lit as a collar
+    is: no line round it, the soft shadow under its edges, and a little light
+    along its long folded ones, kept to the placket. See `softPieces`.
+  */
+  const plackets = [placket?.path, cut.placket].filter((d): d is string => Boolean(d));
+  const softPieces = plackets.map((d) => pieces.indexOf(d)).filter((i) => i >= 0);
+  const placketFolds = [placket?.sides, cut.placket].filter((d): d is string => Boolean(d));
   /* a puff is lit round and gathered at both ends — see `PuffShape` */
   const puffFolds = puff ? puff.shapes.flatMap((s, i) => puffDrape(s, 60 + i)) : [];
   const puffed = new Set(puff?.sleeves ?? []);
@@ -661,6 +670,8 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons
   const sleeveSeams = seamFolds(seamed?.seams ?? []);
   const cuffSeams = seamFolds(cuff && !seamed ? cuff.cut.seams : []);
   const halterSeam = seamFolds(cut.halter ? [line(cut.halter.seam)] : []);
+  /* a keyhole's faced opening, its edge a soft fold rather than a ring of topstitch */
+  const facedSeam = seamFolds(cut.faced ? [cut.faced] : []);
   const bodiceFolds = [
     ...BODICE_FOLDS,
     ...(cut.band ? (bandSleeves ? raglanBandFolds(cut.band) : bandFolds(cut.band)) : []),
@@ -712,6 +723,16 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons
         {foldDefs(uid)}
         {cuff && horizontal(uid("cuff"), CUFF)}
         {cut.halter && horizontal(uid("halter-band"), HALTER_BAND_LIGHT)}
+        {plackets.length > 0 && (
+          <>
+            {edgeLightDefs(uid)}
+            <mask id={uid("plackets")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
+              {plackets.map((d, i) => (
+                <path key={i} d={d} fill="#fff" />
+              ))}
+            </mask>
+          </>
+        )}
         {wrap && (
           <>
             <mask id={uid("wrap-under")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
@@ -778,6 +799,7 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons
             {foldShadows(uid, puffFolds)}
           </g>
         )}
+        {foldShadows(uid, facedSeam)}
         {/* a halter's neckband, lit round the neck, and the seam the bodice is gathered into */}
         {cut.halter && (
           <>
@@ -849,7 +871,7 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons
     light: (uid) => (
       <>
         {foldLights(uid, bodiceFolds)}
-        {foldLights(uid, [...bandSeams, ...sleeveSeams, ...cuffSeams, ...halterSeam])}
+        {foldLights(uid, [...bandSeams, ...sleeveSeams, ...cuffSeams, ...halterSeam, ...facedSeam])}
         {/* a keyhole's loop: a rouleau, rounded, catching the light along its rim */}
         {cut.loopRim && <path d={line(cut.loopRim)} fill="none" stroke="#ffffff" strokeWidth={0.7} strokeLinecap="round" opacity={0.45} />}
         {puff && (
@@ -859,9 +881,11 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons
         {bandDrape.length > 0 && <g mask={`url(#${uid("band-sleeves")})`}>{foldLights(uid, bandDrape)}</g>}
         {cuff?.cut.folds.length ? foldLights(uid, cuff.cut.folds) : null}
         {seamed && <g mask={`url(#${uid("fold-sleeves")})`}>{foldLights(uid, drape)}</g>}
+        {plackets.length > 0 && <g mask={`url(#${uid("plackets")})`}>{edgeLight(uid, ...placketFolds)}</g>}
       </>
     ),
     stitch,
+    ...(softPieces.length ? { softPieces } : {}),
     /* a wrap's tie, hanging over the skirt */
     ...(wrap ? { over: tieArt(wrap.tie) } : {}),
   };
@@ -881,10 +905,12 @@ const topFor = (choice: GarmentChoice): RegionArt => {
   const waist = choice.skirt?.waist ?? "natural";
   /* buttoned to the waist or to the hem, the bodice wears the same placket */
   const placket = bodiceFor(id, sleeve, waist, choice.buttons).placket !== undefined;
-  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placket ? "|placket" : ""}`;
+  /* a collar sewn on covers the neck edge's topstitch, and takes a keyhole's own closure off it — see `underCollar` in dressCut */
+  const collared = Boolean(choice.opening);
+  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placket ? "|placket" : ""}${collared ? "|collared" : ""}`;
   let region = tops.get(key);
   if (!region) {
-    region = topRegion(id, sleeve, waist, placket ? choice.buttons : "none");
+    region = topRegion(id, sleeve, waist, placket ? choice.buttons : "none", collared);
     tops.set(key, region);
   }
   return region;
@@ -1014,6 +1040,14 @@ const bottomRegion = (
       <>
         {vertical(uid("drape"), DRAPE)}
         {foldDefs(uid)}
+        {p && (
+          <>
+            {edgeLightDefs(uid)}
+            <mask id={uid("placket")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
+              <path d={p.path} fill="#fff" />
+            </mask>
+          </>
+        )}
       </>
     ),
     shading: (uid) => (
@@ -1022,8 +1056,15 @@ const bottomRegion = (
         {foldShadows(uid, folds)}
       </>
     ),
-    light: (uid) => foldLights(uid, folds),
+    light: (uid) => (
+      <>
+        {foldLights(uid, folds)}
+        {/* the placket's long folded edges, as the bodice's — see `topRegion` */}
+        {p && <g mask={`url(#${uid("placket")})`}>{edgeLight(uid, p.sides)}</g>}
+      </>
+    ),
     stitch: p ? `${stitch} ${p.stitch}` : stitch,
+    ...(p ? { softPieces: [1] } : {}),
   };
 };
 

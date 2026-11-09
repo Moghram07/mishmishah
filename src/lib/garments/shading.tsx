@@ -159,9 +159,25 @@ export const cutEdge = (d: string, width = 3, opacity = 0.42): ReactNode => (
  * weakens where it hangs free. That is the next thing to fix, and it needs the
  * body's depth rather than the garment's outline.
  */
+/** The lamp every surface is lit by: how high it stands, and the ambient floor under it. */
+const LAMP = { elevation: 55, ambient: 0.58 } as const;
+
+/**
+ * The grey a garment's surface multiplies its cloth by wherever its form lies
+ * level — a flat height field faces straight out, so under `LAMP` it takes
+ * `ambient + (1 − ambient) · sin(elevation)`, about 0.92. A piece drawn with
+ * no form of its own — a collar — is multiplied by this, so it comes out the
+ * colour of the cloth it is sewn to rather than a shade lighter.
+ */
+export const FLAT_LIT = (() => {
+  const v = LAMP.ambient + (1 - LAMP.ambient) * Math.sin((LAMP.elevation * Math.PI) / 180);
+  const hex = Math.round(255 * v).toString(16).padStart(2, "0");
+  return `#${hex}${hex}${hex}`;
+})();
+
 export const clothSurface = (
   id: string,
-  { blur = 10, relief = 6, azimuth = 225, elevation = 55, ambient = 0.58 } = {}
+  { blur = 10, relief = 6, azimuth = 225, elevation = LAMP.elevation, ambient = LAMP.ambient } = {}
 ): ReactNode => (
   <filter
     key={id}

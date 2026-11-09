@@ -165,12 +165,15 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
 
   const resolve = (choice: GarmentChoice) => {
     const high = choice.opening === "high" && spec.openings.high !== undefined;
+    /* a collar sewn to its own opening, in place of the crew neck's band — see `finish` */
+    const collared = Boolean(choice.opening) && !high;
     const sleeve = choice.sleeve ?? spec.defaultSleeve;
     const inside = choice.inside;
     const key =
       `${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${high ? "high" : "own"}` +
+      (collared ? "|collared" : "") +
       (inside ? `|${inside.y}|${inside.x}` : "");
-    return { high, sleeve, key, inside };
+    return { high, collared, sleeve, key, inside };
   };
 
   const cutFor = (choice: GarmentChoice): SleeveCut => {
@@ -185,7 +188,7 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
   };
 
   const region = (choice: GarmentChoice): RegionArt => {
-    const { high, key, sleeve } = resolve(choice);
+    const { high, collared, key, sleeve } = resolve(choice);
     let r = regions.get(key);
     if (r) return r;
     const k = cutFor(choice);
@@ -207,7 +210,12 @@ export function sleevedTop(spec: SleevedTopSpec): SleevedTop {
         ) : null}
       </>
     );
-    const finish = (high ? spec.high : spec.own) ?? {};
+    /*
+      The opening's own finish — a crew neck's band, its shading and its
+      topstitch — but not under a collar sewn to that opening: the collar is
+      sewn on in its place, and covers the seam.
+    */
+    const finish = (collared ? undefined : high ? spec.high : spec.own) ?? {};
     const pieces = [k.body, ...k.sleeves, ...k.bands];
     const seamed = k.seamed;
     /*

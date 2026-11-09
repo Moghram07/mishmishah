@@ -1,53 +1,44 @@
-import {
-  softShadow,
-} from "@/lib/garments/shading";
-import { nudge } from "@/lib/garments/collar";
-import { standBehind, standNotched } from "../yoke";
+import { standBehind, standGapped, standGappedEdges } from "../yoke";
 import { behindBandArt } from "../../behindBand";
+import { collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
+import { line } from "@/lib/garments/fit";
 import type { GarmentArt } from "../../index";
 
 /**
- * Mandarin collar: a short band standing round the neck, open at the front.
+ * Mandarin collar: a short band standing round the neck, its two ends meeting
+ * at the throat.
  *
- * The opening is the whole point, and it is what this collar did not have. The
- * shape filed here before was an unbroken band with the closure drawn as a
- * *shadow* down the middle — and an unbroken band rising up a throat is a
- * turtleneck, which is where that shape now lives. A mandarin's two ends meet
- * at the throat with a real gap between them and the facing edges rounded off.
+ * Built as his is (`male/collars/mandarin.tsx`): a smooth band hugging the
+ * neck, its top corners softly rounded, the ends meeting at centre front with
+ * only a tiny V between them — about half a centimetre across at the top,
+ * closing to nothing at the seam. It used to be open in a deep rounded U cut
+ * most of the way down the band, and the band read as a ring round the neck
+ * with a bite out of it.
  *
- * It is also **shorter**. A mandarin band is a few centimetres of cloth at the
- * base of the neck; a turtleneck is as tall as the neck. Drawn to the same
- * height the two are the same collar twice, which `check:garments` says out
- * loud — it rejects two collars whose boxes agree on both axes.
+ * **Shorter than the turtleneck**: a mandarin is a few centimetres of cloth at
+ * the base of the neck, a turtleneck as tall as the neck — fourteen units of
+ * stand against twenty-four. And open, where the turtleneck is unbroken.
  *
- * Two pieces. `BAND_PATH` is the front, notched; `STAND_BEHIND_PATH` is the
- * same band drawn under the photograph, and what shows of it is the arc round
- * the back of the neck. Without that second piece a band stops dead at the
- * silhouette and reads as a stripe painted on a throat.
+ * Two pieces. `BAND_PATH` is the front; `STAND_BEHIND_PATH` is the same band
+ * drawn under the photograph, and what shows of it is the arc round the back
+ * of the neck. Without that second piece a band stops dead at the silhouette
+ * and reads as a stripe painted on a throat.
  */
 
-/**
- * Fourteen units of stand, with the opening cut almost the whole way down it.
- *
- * The gap has to be deep to read as a gap. Cut a third of the way in it looks
- * like a dent in the top edge; taken to within ten units of the lower edge the
- * band visibly *parts* at the throat, which is the one thing that tells a
- * mandarin from a turtleneck at a glance. The ten units it stops short of are
- * not slack either — the garment's high neckline seam sits at y 189, and cloth
- * has to cover it.
- */
-const BAND_PATH = standNotched(14, 6, 17);
-const STAND_BEHIND_PATH = standBehind(14);
+/** Fourteen units of stand, about 2.7 cm; the V a unit and a half either side of the centre at the top. */
+const RISE = 14;
+const V_HALF = 1.5;
+const BAND_PATH = standGapped(RISE, V_HALF);
+const STAND_BEHIND_PATH = standBehind(RISE);
 
-/** The band's lower edge, dropped onto the garment it is sewn to. */
-const BAND_CAST_PATH = nudge(BAND_PATH, 0, 3);
-
+/** The band's top edge — the fold it is turned on — and the ends' edges down the V: where it catches the light. */
+const TOP_EDGE = line(standGappedEdges(RISE, V_HALF).top);
 
 export const mandarinCollarFront: GarmentArt = {
   regions: {
     collar: {
       focus: [300, 180],
-      surface: { blur: 4, relief: 4, warp: 2 },
+      outline: "soft",
       /**
        * Cut across the grain, which is how a band is cut — it has to bend round
        * a throat without dragging, and a crossgrain strip does that where a
@@ -56,23 +47,9 @@ export const mandarinCollarFront: GarmentArt = {
        */
       grain: { turn: 90 },
       shape: (fill) => <path d={BAND_PATH} fill={fill} />,
-      defs: (uid) => (
-        <>
-          {softShadow(uid("soft"), 3)}
-        </>
-      ),
-      cast: (uid) => (
-        <path
-          d={BAND_CAST_PATH}
-          fill="#7a7a7a"
-          opacity="0.4"
-          filter={`url(#${uid("soft")})`}
-        />
-      ),
-      shading: (uid) => (
-        <>
-        </>
-      ),
+      defs: edgeLightDefs,
+      shading: collarTone,
+      light: (uid) => edgeLight(uid, TOP_EDGE),
     },
   },
 };
