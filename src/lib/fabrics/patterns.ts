@@ -92,6 +92,14 @@ export interface MotifSpec {
    * weighted average of the colors the motif actually covers.
    */
   averageColor: (p: FabricPalette) => string;
+  /**
+   * Whether the way it is laid on the cloth shows: a stripe runs one way, a
+   * check or a lattice turns to diamonds on the bias, a stemmed flower stands
+   * up or lies down. Only these are offered a pattern direction in the
+   * visualizer; a plain weave, scattered dots or a symmetric medallion look
+   * the same whichever way they are cut, and the choice would change nothing.
+   */
+  directional: boolean;
 }
 
 const hi = (p: FabricPalette) => p.highlight ?? p.accent;
@@ -102,6 +110,7 @@ const hi = (p: FabricPalette) => p.highlight ?? p.accent;
  */
 export const MOTIFS: Record<FabricMotif, MotifSpec> = {
   solid: {
+    directional: false,
     repeatCm: 1, // plain weave — a texture, not a pattern
     draw: (p, T) => `
       <path d="M0 0 H${T} V${T} H0 Z" fill="${withAlpha(hi(p), 0.04)}"/>
@@ -111,6 +120,7 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
   },
 
   herringbone: {
+    directional: true,
     repeatCm: 1, // a genuinely small weave — fine texture, never a bold pattern
     draw: (p, T) => {
       // Tiling chevron rows.
@@ -135,6 +145,7 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
   },
 
   stripe: {
+    directional: true,
     repeatCm: 2,
     draw: (p, T) => {
       const w = T * 0.34;
@@ -151,6 +162,7 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
   },
 
   dots: {
+    directional: false,
     repeatCm: 3,
     draw: (p, T) => {
       const r = T * 0.1;
@@ -168,6 +180,7 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
   },
 
   floral: {
+    directional: true,
     repeatCm: 4, // a small ditsy print
     /**
      * A stemmed ditsy flower. The stem and its single leaf are what make this
@@ -229,6 +242,7 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
   },
 
   plaid: {
+    directional: true,
     repeatCm: 8, // a tartan sett
     draw: (p, T) => {
       const band = T * 0.34;
@@ -250,6 +264,7 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
   },
 
   geometric: {
+    directional: true,
     repeatCm: 12,
     draw: (p, T) => {
       const c = T / 2;
@@ -271,6 +286,7 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
   },
 
   damask: {
+    directional: false,
     repeatCm: 20, // a full damask panel — the largest repeat we carry
     draw: (p, T) => {
       const c = T / 2;
@@ -350,6 +366,16 @@ export function fabricRepeatCm(fabric: Fabric): number {
     return px * fabric.cmPerPixel;
   }
   return MOTIFS[fabric.motif].repeatCm;
+}
+
+/**
+ * Whether the fabric's pattern has a direction worth choosing — see
+ * `MotifSpec.directional`. A photographed one says so on its record; one
+ * that does not is taken to have none.
+ */
+export function fabricHasDirection(fabric: Fabric): boolean {
+  if (fabric.source === "image") return fabric.directional ?? false;
+  return MOTIFS[fabric.motif].directional;
 }
 
 /** How this fabric reads once its repeat is too small to resolve on screen. */

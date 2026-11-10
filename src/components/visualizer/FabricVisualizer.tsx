@@ -9,7 +9,6 @@ import {
   Check,
   Download,
   Ruler,
-  Scissors,
   Loader2,
   ZoomIn,
   Move,
@@ -38,7 +37,6 @@ import {
 } from "@/lib/data/sleeves";
 import { fabrics, fabricById } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE, skinToneById, skinTones } from "@/lib/data/skinTones";
-import { stitchColors } from "@/lib/data/stitches";
 import { regionLabel } from "@/lib/data/fabricRegions";
 import { BODY_CANVAS, bodyTypes } from "@/lib/mannequin/bodies";
 import { productByKind } from "@/lib/products/registry";
@@ -76,6 +74,7 @@ import {
   wornOn,
 } from "@/lib/garments/outfit";
 import { fabricBackground, fabricRepeatCm } from "@/lib/fabrics/artwork";
+import { fabricHasDirection } from "@/lib/fabrics/patterns";
 import { exportShareCard, type ShareEntry } from "@/lib/share/shareCard";
 import { ProductTemplate, productPanBy } from "./ProductTemplate";
 import { MannequinStage } from "./MannequinStage";
@@ -99,7 +98,6 @@ import type {
   SkirtChoice,
   LegId,
   SleeveChoice,
-  StitchId,
 } from "@/types";
 
 /**
@@ -108,8 +106,12 @@ import type {
  */
 const STAGE_ROOM = 24;
 
-/** Grain angles worth one click: straight, true bias, cross grain. */
-const GRAIN_PRESETS = [0, 45, 90];
+/**
+ * The ways a pattern can be laid on the body, in degrees: lengthwise, across,
+ * and on the bias — the three a tailor actually cuts. A free 0–360 slider
+ * offered every angle in between, and none of them is a cut anyone makes.
+ */
+const GRAIN_PRESETS = [0, 90, 45];
 
 const GRAIN_LABELS: Record<
   number,
@@ -299,13 +301,6 @@ export function FabricVisualizer() {
       ? outfitFabrics[cutting.garmentId]?.[cutting.region]
       : partFabrics[activePart]) ?? fabric;
 
-  const activeStitch =
-    subject === "wardrobe"
-      ? outfit.worn.find((w) => w.garmentId === cutting.garmentId)?.stitch[
-          cutting.region
-        ] ?? "tonal"
-      : design.stitch[activePart] ?? "tonal";
-
   /**
    * Change the mannequin.
    *
@@ -462,21 +457,6 @@ export function FabricVisualizer() {
       }));
     }
     setFabric(f);
-  };
-
-  const setStitch = (id: StitchId) => {
-    if (subject === "wardrobe") {
-      setOutfit((o) => ({
-        ...o,
-        worn: o.worn.map((w) =>
-          w.garmentId === cutting.garmentId
-            ? { ...w, stitch: { ...w.stitch, [cutting.region]: id } }
-            : w
-        ),
-      }));
-    } else {
-      setDesign((d) => ({ ...d, stitch: { ...d.stitch, [activePart]: id } }));
-    }
   };
 
   const direction = subject === "wardrobe" ? outfit.direction : design.direction;
@@ -1597,58 +1577,35 @@ export function FabricVisualizer() {
 
             {/* finishing */}
             <div className="space-y-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {t("viz.controls")}
-              </p>
-
               {/*
-                Free 0–360 rotation: straight grain, true bias and cross grain
-                are all real cuts, so the control is not restricted to a few.
+                Which way the pattern is laid, for a pattern that has a way:
+                lengthwise, across or on the bias. A plain cloth or a print
+                that looks the same any way round is not asked — the choice
+                would change nothing on the figure.
               */}
-              <Field
-                icon={<Compass className="h-4 w-4" />}
-                label={t("viz.rotation")}
-                value={`${direction}°`}
-              >
-                <input
-                  type="range"
-                  min={0}
-                  max={360}
-                  step={1}
-                  value={direction}
-                  onChange={(e) => setDirection(Number(e.target.value))}
-                  aria-label={t("viz.rotation")}
-                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-apricot-500"
-                />
-                <div className="mt-2 flex gap-2">
-                  {GRAIN_PRESETS.map((d) => (
-                    <Choice
-                      key={d}
-                      active={direction === d}
-                      onClick={() => setDirection(d)}
-                    >
-                      {`${d}° · ${t(GRAIN_LABELS[d])}`}
-                    </Choice>
-                  ))}
-                </div>
-              </Field>
-
-              <Field
-                icon={<Scissors className="h-4 w-4" />}
-                label={t("viz.stitch")}
-              >
-                <div className="flex flex-wrap gap-2">
-                  {stitchColors.map((s) => (
-                    <StitchChoice
-                      key={s.id}
-                      label={pick(s.label)}
-                      color={s.id === "tonal" ? activeFabric.color : s.color}
-                      active={activeStitch === s.id}
-                      onClick={() => setStitch(s.id)}
-                    />
-                  ))}
-                </div>
-              </Field>
+              {fabricHasDirection(activeFabric) && (
+                <>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {t("viz.controls")}
+                  </p>
+                  <Field
+                    icon={<Compass className="h-4 w-4" />}
+                    label={t("viz.rotation")}
+                  >
+                    <div role="group" aria-label={t("viz.rotation")} className="flex gap-2">
+                      {GRAIN_PRESETS.map((d) => (
+                        <Choice
+                          key={d}
+                          active={direction === d}
+                          onClick={() => setDirection(d)}
+                        >
+                          {t(GRAIN_LABELS[d])}
+                        </Choice>
+                      ))}
+                    </div>
+                  </Field>
+                </>
+              )}
 
               <button
                 onClick={reset}
@@ -1673,27 +1630,19 @@ export function FabricVisualizer() {
 function Field({
   icon,
   label,
-  value,
   children,
 }: {
   icon: React.ReactNode;
   label: string;
-  /** Optional read-out shown opposite the label — e.g. the current angle. */
-  value?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex items-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
           <span className="text-apricot-500">{icon}</span>
           {label}
         </span>
-        {value && (
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {value}
-          </span>
-        )}
       </div>
       {children}
     </div>
@@ -1818,41 +1767,3 @@ function useElementSize(el: HTMLElement | null) {
   return size;
 }
 
-function StitchChoice({
-  label,
-  color,
-  active,
-  onClick,
-}: {
-  label: string;
-  color: string | null;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      title={label}
-      className={cn(
-        "btn-focus inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
-        active
-          ? "border-apricot-500 bg-apricot-500/10 text-foreground"
-          : "border-border bg-card text-muted-foreground hover:border-apricot-400"
-      )}
-    >
-      <span
-        className="h-3.5 w-3.5 rounded-full border border-border"
-        style={
-          color
-            ? { backgroundColor: color }
-            : {
-                backgroundImage:
-                  "linear-gradient(45deg, transparent 45%, currentColor 45%, currentColor 55%, transparent 55%)",
-              }
-        }
-      />
-      {label}
-    </button>
-  );
-}

@@ -106,6 +106,12 @@ export interface ImageFabric extends FabricCommon {
   imageUrl: string;
   /** Measured: real-world centimetres covered by one pixel of the photo. */
   cmPerPixel: number;
+  /**
+   * Whether its pattern has a direction worth choosing — a stripe, a check, a
+   * one-way print. Only then is it offered a pattern direction; absent, it has
+   * none, as a procedural fabric's motif says for it.
+   */
+  directional?: boolean;
   motif?: never;
   palette?: never;
 }
