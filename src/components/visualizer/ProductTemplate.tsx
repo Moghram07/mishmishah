@@ -227,6 +227,7 @@ export const ProductTemplate = forwardRef<SVGSVGElement, Props>(
               beneath={beneath}
               // Real pieces are topstitched; `hidden` is the deliberate choice.
               stitch={stitch?.[part.id] ?? "tonal"}
+              zoom={zoom}
             />
           );
         })}

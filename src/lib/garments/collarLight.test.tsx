@@ -9,6 +9,11 @@ import { FLAT_LIT } from "./shading";
 import { BODY_CANVAS } from "../mannequin/bodies";
 import { FabricRegion, beneathMasks, type RegionDrawing } from "@/components/visualizer/FabricRegion";
 import { fabrics } from "@/lib/data/fabrics";
+import { MannequinStage } from "@/components/visualizer/MannequinStage";
+import { garmentById } from "@/lib/data/garments";
+import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
+import { cutFrom, wear } from "./outfit";
+import type { Outfit } from "@/types";
 
 /**
  * Round 13: every collar, on either body, lit as a seam is — and her
@@ -105,6 +110,45 @@ describe("a soft outline", () => {
     const soft = opacity(draw({ shape: square, outline: "soft" }));
     expect(soft).toBeGreaterThan(0);
     expect(soft).toBeLessThan(plain);
+  });
+
+  /*
+    Round 14: on a busy print the Peter Pan all but disappeared at whole-figure
+    size. Its shadow is the one edge it has, so it is stronger — and thrown
+    only from its free edges, never along the neckline, which is a seam.
+  */
+  it("under a Peter Pan, stronger and wider than a soft outline's, from its free edges only, still no line", () => {
+    /* each piece's shadow, drawn just before it: its strength, and the edges it is thrown from */
+    const shadowOf = (markup: string) => {
+      const gs = [...markup.matchAll(/<g filter="url\(#t-contact\)" fill="none" stroke="#5c4a3e" stroke-opacity="([\d.]+)" stroke-width="([\d.]+)"[^>]*>(.*?)<\/g>/g)];
+      return gs.length ? { opacity: Number(gs[0][1]), width: Number(gs[0][2]), edges: gs.flatMap((g) => pathOf(g[3])) } : null;
+    };
+    const soft = shadowOf(draw({ shape: square, outline: "soft" }))!;
+    const art = collarArt("female-peter-pan-collar-front")!;
+    for (const neckline of [undefined, "round", "scoop", "boat"]) {
+      const pp = (neckline ? art.cut?.({ neckline })?.collar : undefined) ?? art.regions.collar!;
+      const markup = draw(pp);
+      const s = shadowOf(markup)!;
+      expect(s.opacity, neckline).toBeGreaterThan(soft.opacity);
+      expect(s.opacity, neckline).toBeLessThanOrEqual(0.55);
+      expect(s.width, neckline).toBeGreaterThan(soft.width);
+      // still a soft outline: no rim, no dark edge
+      expect(markup, neckline).not.toContain(`stroke="currentColor"`);
+      expect(markup, neckline).not.toContain(`stroke="#241e19"`);
+      // two open free edges, one a half, neither closed back along the neckline
+      const halves = pathOf(renderToStaticMarkup(<>{pp.shape("#fff")}</>));
+      expect(s.edges, neckline).toHaveLength(2);
+      for (const [i, d] of s.edges.entries()) {
+        expect(d, neckline).not.toMatch(/Z\s*$/);
+        expect(points(d).length, neckline).toBeLessThan(points(halves[i]).length);
+      }
+      // each free edge ends at centre front, and starts out on the shoulder, not at the neck
+      for (const d of s.edges) {
+        const p = points(d);
+        expect(Math.abs(p.at(-1)![0] - 297.6), neckline).toBeLessThan(2);
+        expect(Math.abs(p[0][0] - 297.6), neckline).toBeGreaterThan(40);
+      }
+    }
   });
 });
 
@@ -325,7 +369,8 @@ describe("a region with one soft piece", () => {
 });
 
 describe("topstitch in tonal thread", () => {
-  const draw = (stitch: "tonal" | "cream", fabricId: string) =>
+  /* at 5× unless said: a close-up, where a thread shows — see `TONAL_THREAD.seen` */
+  const draw = (stitch: "tonal" | "cream", fabricId: string, zoom = 5) =>
     renderToStaticMarkup(
       <svg>
         <FabricRegion
@@ -334,6 +379,7 @@ describe("topstitch in tonal thread", () => {
           fabric={fabrics.find((f) => f.id === fabricId)!}
           cmPerUnit={CM}
           pxPerUnit={1}
+          zoom={zoom}
           direction={0}
           pivot={[300, 500]}
           canvas={[600, 1000]}
@@ -358,9 +404,52 @@ describe("topstitch in tonal thread", () => {
     }
   });
 
-  it("leaves a thread picked to show in its own colour", () => {
+  it("is seen only close up: none at whole-figure size or 2×, fading in to full strength by 4×", () => {
+    const opacityAt = (zoom: number) => {
+      const t = threadOf(draw("tonal", "fb-apricot-linen", zoom));
+      return t ? Number(/stroke-opacity="([\d.]+)"/.exec(t[0])![1]) : 0;
+    };
+    // the whole figure, and up to 2.5×: not drawn at all
+    for (const zoom of [1, 1.5, 2, 2.5]) {
+      expect(threadOf(draw("tonal", "fb-apricot-linen", zoom)), `${zoom}`).toBeNull();
+    }
+    // a close-up: there at full strength, and never more
+    for (const zoom of [4, 5, 8]) expect(opacityAt(zoom), `${zoom}`).toBeCloseTo(0.22, 3);
+    // and between, growing with the close-up
+    const between = [2.75, 3, 3.25, 3.5].map(opacityAt);
+    expect(between[0]).toBeGreaterThan(0);
+    for (let i = 1; i < between.length; i++) expect(between[i]).toBeGreaterThan(between[i - 1]);
+    expect(between.at(-1)!).toBeLessThan(0.22);
+  });
+
+  it("leaves a thread picked to show in its own colour, at any size", () => {
+    expect(threadOf(draw("cream", "fb-midnight-floral", 1))).not.toBeNull();
     const t = threadOf(draw("cream", "fb-midnight-floral"));
     expect(t![1]).toBeUndefined();
     expect(t![0]).toContain(`stroke="#FBF7F0"`);
+  });
+});
+
+describe("topstitch on the figure", () => {
+  /* her t-shirt and trousers, in one plain cloth: every hem, sleeve hem and the neckline topstitched */
+  const at = (zoom: number) => {
+    const cloth = fabrics.find((f) => f.id === "fb-apricot-linen")!;
+    let worn: Outfit["worn"] = [];
+    const by: Record<string, Record<string, typeof cloth>> = {};
+    for (const id of ["female-t-shirt", "female-trousers"]) {
+      const g = garmentById(id)!;
+      worn = wear(worn, cutFrom(g, cloth.id));
+      by[id] = Object.fromEntries(g.fabricRegions.map((r) => [r, cloth]));
+    }
+    const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    const markup = renderToStaticMarkup(<MannequinStage outfit={outfit} fabrics={by} zoom={zoom} focus={[300, 400]} />);
+    return (markup.match(/stroke-dasharray="2.6 2.2"/g) ?? []).length;
+  };
+
+  it("is drawn by the stage only in a close-up, the zoom passed down to every region", () => {
+    expect(at(1)).toBe(0);
+    expect(at(2)).toBe(0);
+    // the t-shirt body, its sleeves and the trousers, each its own region
+    expect(at(5)).toBeGreaterThanOrEqual(3);
   });
 });

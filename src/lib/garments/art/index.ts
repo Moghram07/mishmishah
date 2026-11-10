@@ -146,6 +146,8 @@ export interface RegionArt {
   outline?: "soft";
   /** Pieces drawn so on their own, by index — a placket on its bodice: see `RegionDrawing`. */
   softPieces?: readonly number[];
+  /** The soft shadow under its edges, where it differs from what its outline gives — a Peter Pan's: see `RegionDrawing`. */
+  shadow?: { opacity?: number; width?: number; soft?: number };
   /** Where a close-up should centre. */
   focus?: [x: number, y: number];
 }

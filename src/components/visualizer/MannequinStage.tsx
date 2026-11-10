@@ -281,6 +281,7 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
           canvas={CANVAS}
           // Real garments are topstitched; `hidden` is the choice.
           stitch={worn.stitch[region] ?? "tonal"}
+          zoom={zoom}
         />
       );
     };

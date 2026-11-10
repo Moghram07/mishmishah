@@ -74,8 +74,14 @@ export const collars: Collar[] = [
     coverage: [],
     fabricRegions: ["collar"],
     compatibleWith: ROUND_NECK,
-    /** Flat, and out onto the shoulders: the widest of the shallow ones. */
-    footprint: { width: [13, 18], drop: [8, 13] },
+    /**
+     * Small and flat, right round the neckline: about 5.7 cm of cloth from
+     * the seam, its rounded front ends meeting at the neck and its back ends
+     * lying along the shoulders — so wide across, about 21 cm on a crew
+     * neck, and shallow, about 10 cm from the collar points to the foot of
+     * its curves. It was 16.5 × 12.7 cm, 6.5 deep at centre front: a bib.
+     */
+    footprint: { width: [19, 23], drop: [8, 12] },
     build: { stand: 0, fall: "flat" },
     opening: "round",
     asset: { front: "female-peter-pan-collar-front" },

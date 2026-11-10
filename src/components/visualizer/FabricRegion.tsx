@@ -119,6 +119,23 @@ export interface RegionDrawing {
    * cloth reads as the same colour as what it lies on.
    */
   softPieces?: readonly number[];
+  /**
+   * The soft shadow under this region's edges, where it should differ from
+   * what its outline gives — `CONTACT`, or `SOFT_CONTACT` for a soft one. A
+   * Peter Pan's is stronger: two layers of cloth lying flat on a busy print,
+   * whose only edge is that shadow, and at the soft outline's own strength the
+   * collar all but disappeared into the print at whole-figure size.
+   */
+  shadow?: Partial<ContactShadow>;
+}
+
+/** The soft shadow a cloth edge throws on what it lies on: a warm line, blurred. */
+interface ContactShadow {
+  color: string;
+  width: number;
+  opacity: number;
+  /** Its blur, as a standard deviation in canvas units. */
+  soft: number;
 }
 
 interface Props {
@@ -146,6 +163,11 @@ interface Props {
   /** The canvas box the mask covers. */
   canvas: readonly [width: number, height: number];
   stitch: StitchId;
+  /**
+   * How far the view is zoomed in: 1 is the whole figure, or the whole
+   * product. The tonal thread shows only in a close-up — see `TONAL_THREAD`.
+   */
+  zoom?: number;
   /**
    * What lies under the cloth's edges, as mask ids — see `MannequinStage`.
    * With it, an edge lying on anything — skin, or another piece of cloth — is
@@ -229,13 +251,13 @@ const EDGE_DARK = "#241e19";
  * stands a little off whatever is under it at its edge. A thin warm line,
  * blurred — as close to nothing as still reads as the cloth lying there.
  */
-const CONTACT = { color: "#5c4a3e", width: 3.2, opacity: 0.5, soft: 1.6 } as const;
+const CONTACT: ContactShadow = { color: "#5c4a3e", width: 3.2, opacity: 0.5, soft: 1.6 };
 
 /**
  * The same shadow under a piece drawn with a `"soft"` outline: lighter and a
  * little wider, a soft step in the cloth's own colour rather than a line.
  */
-const SOFT_CONTACT = { color: "#5c4a3e", width: 3.2, opacity: 0.3, soft: 2 } as const;
+const SOFT_CONTACT: ContactShadow = { color: "#5c4a3e", width: 3.2, opacity: 0.3, soft: 2 };
 
 /**
  * Topstitch in thread the colour of the cloth — "tonal", every garment's
@@ -246,8 +268,26 @@ const SOFT_CONTACT = { color: "#5c4a3e", width: 3.2, opacity: 0.3, soft: 2 } as 
  * It used to be the fabric's accent colour at over half strength, and on a
  * print that is the motif's colour — orange dashes round every neckline and
  * down every placket of a navy floral, plain to see from across the room.
+ *
+ * And seen only close up: `seen` is the zoom over which it fades in, from
+ * none to `darken`. A thread is far too fine to see from where the whole
+ * figure is in view, and drawn at any strength there it read as a dotted line
+ * round every sleeve hem, hem and placket even at 2×. Up to 2.5× it is not
+ * drawn at all, and from 4× it is at full strength.
+ *
+ * The zoom rather than the pixels a unit gets on screen, though the eye goes
+ * by the second: a phone's stage is 0.24 px a unit at 1× against a desktop's
+ * 0.6, so a thread faded by its pixels never showed on a phone even at 8×. A
+ * close-up is a close-up on either.
  */
-const TONAL_THREAD = { width: 0.7, darken: 0.22, dash: "2.6 2.2" } as const;
+const TONAL_THREAD = { width: 0.7, darken: 0.22, dash: "2.6 2.2", seen: [2.5, 4] } as const;
+
+/** How much of the tonal thread shows at this zoom: 0 to 1 — see `TONAL_THREAD.seen`. */
+export const threadSeen = (zoom: number) => {
+  const [from, to] = TONAL_THREAD.seen;
+  const t = Math.min(1, Math.max(0, (zoom - from) / (to - from)));
+  return t * t * (3 - 2 * t);
+};
 
 /**
  * Apply a filter to each piece of a region separately, rather than once to the
@@ -288,6 +328,7 @@ export function FabricRegion({
   canvas,
   stitch,
   beneath,
+  zoom = 1,
 }: Props) {
   const uid = (name: string) => `${uidBase}-${name}`;
 
@@ -302,7 +343,9 @@ export function FabricRegion({
   /* a thread picked to show keeps its own colour; the tonal one is the cloth's — see `TONAL_THREAD` */
   const thread = stitchById(stitch);
   const tonal = stitch === "tonal";
-  const threadColor = stitch === "hidden" ? null : tonal ? "#000000" : thread.color;
+  /* the tonal thread fades in with the close-up — see `TONAL_THREAD` */
+  const seen = tonal ? threadSeen(zoom) : 1;
+  const threadColor = stitch === "hidden" || seen === 0 ? null : tonal ? "#000000" : thread.color;
 
   const fill = drawing.solid ?? `url(#${uid("pattern")})`;
   /*
@@ -332,7 +375,7 @@ export function FabricRegion({
   const over = drawing.under?.length ? drawing.under : null;
   /* a soft outline: no line round the piece, and a lighter shadow under its edge */
   const soft = drawing.outline === "soft";
-  const contact = soft ? SOFT_CONTACT : CONTACT;
+  const contact = drawing.shadow ? { ...(soft ? SOFT_CONTACT : CONTACT), ...drawing.shadow } : soft ? SOFT_CONTACT : CONTACT;
   /* a piece of a region drawn soft on its own — see `softPieces` */
   const softPieces = soft ? [] : drawing.softPieces ?? [];
   const softAt = (i: number) => soft || softPieces.includes(i);
@@ -605,7 +648,7 @@ export function FabricRegion({
               strokeWidth={tonal ? TONAL_THREAD.width : "0.9"}
               strokeLinecap="round"
               strokeDasharray={tonal ? TONAL_THREAD.dash : "2.6 2.2"}
-              strokeOpacity={tonal ? TONAL_THREAD.darken : "0.55"}
+              strokeOpacity={tonal ? +(TONAL_THREAD.darken * seen).toFixed(3) : "0.55"}
             />
           )}
         </g>

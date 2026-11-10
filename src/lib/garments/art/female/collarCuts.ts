@@ -24,54 +24,41 @@ import { COLLAR_AXIS, opening, standFront } from "./yoke.ts";
 const CREW = opening(34);
 
 /**
- * The cloth, from centre front out to the collar point. Widest
- * three-quarters of the way out, which is where a Peter Pan's lobe sits —
- * over the collarbone, not under the chin. The collar keeps it on every cut;
- * only the line it lies along changes.
+ * A Peter Pan's size, in canvas units — see `flatCollar`: 30 units, 5.7 cm,
+ * across the cloth from the seam, the whole way round; its front ends
+ * rounded on a quarter circle as wide as the collar, so they just meet at
+ * the neck; and over the shoulder at its back, through the last 45% of each
+ * half, its end lying 30 units along the shoulder. The same on every cut:
+ * on a scoop or a boat it follows that neckline at this width.
+ *
+ * It used to be 34 units deep at centre front, the halves butted square
+ * down the middle and tapering to 12 at the shoulders: a bib.
  */
-export const PETER_PAN_WIDTHS = [34, 34, 30, 18, 12];
+export const PETER_PAN = { width: 30, round: 30, reach: 30, blend: 0.45 };
 
 /** The neckline a Peter Pan lies along: the dress's own cut, or a top's crew neck. */
 const roundOpening = (cut?: NecklineId): Neckline => (cut ? bodiceFor(cut).cut.neck : undefined) ?? CREW;
 
 /**
+ * The shoulder lines each half turns over, from each collar point out: the
+ * dress's own cut's, or — on a top, whose crew neck is the round cut's
+ * opening — the round cut's, which are the yoke's.
+ */
+const shouldersOf = (cut?: NecklineId): { left: Pt[]; right: Pt[] } => {
+  const parts = (cut ? bodiceFor(cut).cut.parts : undefined) ?? bodiceFor("round").cut.parts!;
+  return { left: parts.strapLeft, right: [...parts.strapRight].reverse() };
+};
+
+/**
  * A Peter Pan's two halves, cut from the opening it is sewn to — see
  * `flatCollar`: its inner edge **is** the seam, so on a scoop it lies along
  * the scoop's low line and on a boat along its wide, shallow one, out toward
- * the shoulders, with no skin between collar and cloth. It used to be cut to
- * the crew neck whatever the cut, and on the scoop sat up on the neck above
- * the opening, and on the boat floated inside it.
+ * the shoulders, with no skin between collar and cloth; and its free edges,
+ * each from the shoulder round to centre front.
  */
 export function peterPan(cut?: NecklineId): { left: Pt[]; right: Pt[]; free: [Pt[], Pt[]] } {
-  const { left, right } = flatCollar(roundOpening(cut), { width: PETER_PAN_WIDTHS });
-  /*
-    The free edges: the outer run of each half only, from centre front round
-    to the collar point — `flatCollar` returns each half as its inner edge and
-    then its outer edge reversed. Never the neckline, which is a seam.
-  */
-  const outer = (half: Pt[]) => half.slice(Math.ceil(half.length / 2));
-  const free: [Pt[], Pt[]] = [outer(left), outer(right)];
-  if (!cut) return { left, right, free };
-  /*
-    Each collar point held square, so the outline turns there as the seam
-    does. Smoothed round the corner, the collar's inner edge swung half a unit
-    into the opening beside a scoop's steep end, where the seam runs almost
-    straight down: cloth over the opening, which a flat collar never is.
-  */
-  const near = (from: Pt, to: Pt): Pt => {
-    const d = Math.hypot(to[0] - from[0], to[1] - from[1]) || 1;
-    return [from[0] + ((to[0] - from[0]) * CORNER_HOLD) / d, from[1] + ((to[1] - from[1]) * CORNER_HOLD) / d];
-  };
-  /* the right half starts at its collar point; the left half reaches its own halfway along */
-  const lc = Math.ceil(left.length / 2) - 1;
-  return {
-    right: [...right, near(right[0], right[right.length - 1])],
-    left: [...left.slice(0, lc + 1), near(left[lc], left[lc + 1]), ...left.slice(lc + 1)],
-    free,
-  };
+  return flatCollar(roundOpening(cut), { ...PETER_PAN, shoulders: shouldersOf(cut) });
 }
-/** How close beside a collar point the outline is held square: a fraction of a unit. */
-const CORNER_HOLD = 0.5;
 
 /* ---------------------------------------------------------------- sailor */
 

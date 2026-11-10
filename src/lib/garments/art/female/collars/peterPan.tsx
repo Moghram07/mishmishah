@@ -1,56 +1,54 @@
 import { collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
-import { mirror } from "@/lib/garments/collar";
 import { line, outline, type Pt } from "@/lib/garments/fit";
 import { peterPan } from "../collarCuts";
 import type { NecklineId } from "@/lib/garments/necklines";
 import type { GarmentArt, RegionArt } from "../../index";
 
 /**
- * Peter Pan collar: two flat rounded halves meeting at centre front.
+ * Peter Pan collar: two small flat halves, rounded at the front, their ends
+ * just meeting at the neck.
  *
  * Flat is the whole of it — no stand, nothing standing up at the throat, the
- * collar lying straight out on the neckline. So **it is cut from the neckline**
- * rather than drawn near it: `flatCollar` takes the same opening the garment
- * cuts and returns the band of cloth lying outside it, which makes the collar's
- * inner edge the seam itself by construction.
+ * collar lying on the garment right round its neckline. So **it is cut from
+ * the neckline** rather than drawn near it: `flatCollar` takes the same
+ * opening the garment cuts and returns the cloth lying outside it, which makes
+ * the collar's inner edge the seam itself by construction.
  *
- * That is not a tidier way of writing the old shape; it is the fix. The old one
- * was five hand-typed corners, and the two that mattered were wrong in the same
- * direction: its ends rose to y 179, level with the throat, while its inner
- * edge dipped only to 196 — against an opening that dips to 212. A collar whose
- * inner edge sits *above* the neckline does not lie outside the opening, it
- * covers the top of it, and what the neck then comes up through is a small
- * round hole in the collar. Head-on that is a ring around the neck, which is
- * exactly how it was reported. `check:garments` now measures the drawing
- * against the seam of every garment it is sewn to, so it cannot come back.
+ * Small and even: about 5.7 cm of cloth across from the seam, the whole way
+ * round — see `PETER_PAN`. Each half's front end turns round a quarter circle
+ * from the centre-front point, so the two touch at the neck and part below it
+ * over a small V of the garment, with no line down the middle; and at its back
+ * each turns over the shoulder, its end lying along the shoulder line. It used
+ * to be a single band 6.5 cm deep at centre front, its halves butted square
+ * down the middle and narrowing toward the shoulders: a bib, with a line
+ * through it.
  *
- * The ends taper to points. A flat collar carried round at full width would
- * stand out sideways at neck height on both sides; in a front view the end of
- * one is where the cloth turns to go behind the shoulder, and it should thin
- * away there rather than stop square.
- *
- * The two halves meet at centre front and do not overlap, so each is its own
- * path — overlapping subpaths of one path cancel where they cross, and a
- * mirrored one winds the other way.
+ * The two halves are separate paths — overlapping subpaths of one path cancel
+ * where they cross, and a mirrored one winds the other way.
  */
 
 /**
- * The collar on one opening, from its two halves — see `peterPan` in
- * `collarCuts.ts`, which cuts them from the neckline it is sewn to: a top's
- * crew neck, or the dress's own cut, so that on a scoop it lies along the
- * scoop and on a boat along the boat's wide, shallow line.
- *
- * On a top, as it always was, each piece on the right is the left's
- * reflected about the canvas centre. On the dress's cuts the right half's
- * edge and shadow are its own: a cut is symmetric about her neck, three units
- * left of the centre, and the reflected ones landed beside the cloth.
+ * The shadow under a Peter Pan's free edge: stronger and a little wider than
+ * a soft outline's (0.3, 3.2 wide, blurred 2), still no line. Two layers of
+ * cloth lying flat on the dress have no other edge, and at the soft outline's
+ * strength the collar all but disappeared into a busy print at whole-figure
+ * size.
  */
-function collarOn(halves: { left: Pt[]; right: Pt[]; free: [Pt[], Pt[]] }, ownRight: boolean): RegionArt {
+const PETER_PAN_SHADOW = { opacity: 0.55, width: 5.2, soft: 2.8 };
+
+/**
+ * The collar on one opening, from its two halves — see `peterPan` in
+ * `collarCuts.ts`, which cuts them from the neckline it is sewn to and the
+ * shoulders it turns over: a top's crew neck, or the dress's own cut, so that
+ * on a scoop it lies along the scoop and on a boat along the boat's wide,
+ * shallow line.
+ */
+function collarOn(halves: { left: Pt[]; right: Pt[]; free: [Pt[], Pt[]] }): RegionArt {
   const HALF_LEFT_PATH = outline(halves.left);
   const HALF_RIGHT_PATH = outline(halves.right);
-  /* the free edge: the outer run only — see `peterPan` — never the neckline or the centre-front join */
+  /* the free edges: each half's outer run only — never the neckline, nor the shoulder it lies along */
   const FREE_EDGE = line(halves.free[0]);
-  const FREE_EDGE_RIGHT = ownRight ? line(halves.free[1]) : mirror(FREE_EDGE);
+  const FREE_EDGE_RIGHT = line(halves.free[1]);
   return {
     focus: [300, 214],
     outline: "soft",
@@ -70,12 +68,23 @@ function collarOn(halves: { left: Pt[]; right: Pt[]; free: [Pt[], Pt[]] }, ownRi
     /*
       In the garment's light, with no line round it — see `collarLight.tsx`.
       What separates a same-cloth Peter Pan from the dress is its thickness:
-      a soft shadow under its edge, which its outline throws (the right half's
-      on the left, at the centre front, where one lies a little over the
-      other), and a little light along the free edge, where it rolls.
+      a soft shadow under its edge, and a little light along its free edge,
+      where it rolls.
     */
     shading: collarTone,
     light: (uid) => edgeLight(uid, FREE_EDGE, FREE_EDGE_RIGHT),
+    /*
+      The shadow under its free edges only: the neckline is a seam, and a
+      seam throws none — round the throat it is the dress's own edge that
+      lies on the skin.
+    */
+    edge: () => (
+      <>
+        <path d={FREE_EDGE} />
+        <path d={FREE_EDGE_RIGHT} />
+      </>
+    ),
+    shadow: PETER_PAN_SHADOW,
   };
 }
 
@@ -85,7 +94,7 @@ const collarFor = (cut?: string): RegionArt => {
   const key = cut ?? "";
   let r = onCut.get(key);
   if (!r) {
-    r = collarOn(peterPan(cut as NecklineId | undefined), cut !== undefined);
+    r = collarOn(peterPan(cut as NecklineId | undefined));
     onCut.set(key, r);
   }
   return r;

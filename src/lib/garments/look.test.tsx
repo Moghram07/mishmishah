@@ -3803,3 +3803,177 @@ describe("round 13 fixes, light and dark", () => {
     );
   }, 60_000);
 });
+
+describe("round 14, the Peter Pan, light and dark", () => {
+  /*
+    The Peter Pan on everything that offers it — her dress's round, scoop
+    and boat cuts, her t-shirt and her blouse — plain and print: close at 4×,
+    at 2× as it reads on the figure, and its front ends at 8×, where the two
+    halves meet.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  type On = { label: string; ids: string[]; neckline?: string; front: [number, number] };
+  const ON: On[] = [
+    { label: "dress · round", ids: ["female-dress"], neckline: "female-round-neckline", front: [297, 214] },
+    { label: "dress · scoop", ids: ["female-dress"], neckline: "female-scoop-neckline", front: [298, 243] },
+    { label: "dress · boat", ids: ["female-dress"], neckline: "female-boat-neckline", front: [299, 211] },
+    { label: "t-shirt", ids: ["female-t-shirt", "female-trousers"], front: [297, 214] },
+    { label: "blouse", ids: ["female-blouse", "female-skirt"], front: [297, 214] },
+  ];
+  const stage = (on: On, clothId: string, zoom: number, focus: [number, number]) => {
+    const cloth = f(clothId);
+    let worn: WornGarment[] = [];
+    const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const gid of on.ids) {
+      const g = garmentById(gid)!;
+      worn = wear(worn, cutFrom(g, cloth.id));
+      const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+      for (const r of g.fabricRegions) regions[r] = cloth;
+      by[gid] = regions;
+    }
+    if (on.neckline) worn = setNeckline(worn, on.ids[0], on.neckline);
+    worn = setCollar(worn, on.ids[0], "female-peter-pan-collar");
+    const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={by} zoom={zoom} focus={focus} />;
+  };
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/round14-peter-pan-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const rows: { on: On; cloth: string; zoom: number; focus: [number, number]; caption: string }[][] = [];
+    for (const [zoom, kind] of [[4, "close"], [2, "on the figure"], [8, "front ends"]] as const) {
+      for (const [cloth, name] of [[PLAIN, "plain"], [PRINT, "print"]] as const) {
+        rows.push(
+          ON.map((on) => ({
+            on,
+            cloth,
+            zoom,
+            focus: kind === "front ends" ? on.front : kind === "close" ? ([300, 222] as [number, number]) : ([300, 300] as [number, number]),
+            caption: `${on.label} · Peter Pan, ${name}, ${zoom}×`,
+          }))
+        );
+      }
+    }
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((tile) => (
+              <figure key={tile.caption}>
+                {stage(tile.on, tile.cloth, tile.zoom, tile.focus)}
+                <figcaption>{tile.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+      `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/round14-peter-pan-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  }, 60_000);
+});
+
+describe("round 14 fixes, light and dark", () => {
+  /*
+    Two fixes asked before round 14's commit: the Peter Pan's soft shadow a
+    little stronger, so it reads on a busy print at whole-figure size; and
+    topstitch seen only in close-ups — none at 2× on sleeve hems, a hem or a
+    placket.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Tile = { caption: string; body: BodyType; ids: string[]; neckline?: string; collar?: string; zoom: number; focus: [number, number] };
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  const stage = (t: Tile, clothId: string) => {
+    const cloth = f(clothId);
+    let worn: WornGarment[] = [];
+    const by: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const gid of t.ids) {
+      const g = garmentById(gid)!;
+      worn = wear(worn, cutFrom(g, cloth.id));
+      const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth };
+      for (const r of g.fabricRegions) regions[r] = cloth;
+      by[gid] = regions;
+    }
+    if (t.neckline) worn = setNeckline(worn, t.ids[0], t.neckline);
+    if (t.collar) worn = setCollar(worn, t.ids[0], t.collar);
+    const outfit: Outfit = { bodyType: t.body, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={by} zoom={t.zoom} focus={t.focus} />;
+  };
+  const her = (caption: string, ids: string[], zoom: number, focus: [number, number], more: Partial<Tile> = {}): Tile => ({ caption, body: "female", ids, zoom, focus, ...more });
+  const his = (caption: string, ids: string[], zoom: number, focus: [number, number]): Tile => ({ ...her(caption, ids, zoom, focus), body: "male" });
+  const dress = (cut: string) => `female-${cut}-neckline`;
+  const PP = "female-peter-pan-collar";
+  const peterPans = (zoom: number, focus: [number, number]) => [
+    her("dress · round · Peter Pan", ["female-dress"], zoom, focus, { neckline: dress("round"), collar: PP }),
+    her("dress · scoop · Peter Pan", ["female-dress"], zoom, focus, { neckline: dress("scoop"), collar: PP }),
+    her("dress · boat · Peter Pan", ["female-dress"], zoom, focus, { neckline: dress("boat"), collar: PP }),
+    her("t-shirt · Peter Pan", ["female-t-shirt", "female-trousers"], zoom, focus, { collar: PP }),
+    her("blouse · Peter Pan", ["female-blouse", "female-skirt"], zoom, focus, { collar: PP }),
+  ];
+  const ROWS: Tile[][] = [
+    /* the Peter Pan as it reads on the figure */
+    peterPans(1, [300, 500]),
+    peterPans(2, [300, 300]),
+    /* topstitch at 2×: sleeve hems, hems, a placket — none */
+    [
+      her("t-shirt", ["female-t-shirt", "female-trousers"], 2, [280, 380]),
+      her("blouse", ["female-blouse", "female-skirt"], 2, [280, 380]),
+      her("dress · round", ["female-dress"], 2, [280, 330], { neckline: dress("round") }),
+      his("shirt", ["male-shirt", "male-trousers"], 2, [280, 380]),
+      his("thobe", ["male-thobe"], 2, [280, 330]),
+    ],
+    /* and close: there, faint */
+    [
+      her("t-shirt · hem", ["female-t-shirt", "female-trousers"], 5, [300, 470]),
+      her("t-shirt · sleeve hem", ["female-t-shirt", "female-trousers"], 5, [205, 296]),
+      her("blouse · placket", ["female-blouse", "female-skirt"], 5, [300, 300]),
+      her("blouse · cuff", ["female-blouse", "female-skirt"], 5, [180, 470]),
+      her("dress · short sleeve's hem", ["female-dress"], 5, [205, 296], { neckline: dress("round") }),
+    ],
+  ];
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/round14-fixes-%s.html", (theme) => {
+    const t = THEMES[theme];
+    /* each row plain, then print */
+    const all = ROWS.flatMap((row) => [
+      row.map((tile) => ({ tile, cloth: PLAIN, caption: `${tile.caption}, plain, ${tile.zoom}×` })),
+      row.map((tile) => ({ tile, cloth: PRINT, caption: `${tile.caption}, print, ${tile.zoom}×` })),
+    ]);
+    const html = renderToStaticMarkup(
+      <>
+        {all.map((row, r) => (
+          <div key={r} className="row">
+            {row.map(({ tile, cloth, caption }) => (
+              <figure key={caption}>
+                {stage(tile, cloth)}
+                <figcaption>{caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+      `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/round14-fixes-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  }, 60_000);
+});

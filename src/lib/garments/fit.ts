@@ -2394,68 +2394,150 @@ export function neckline(
  * from the cut itself it cannot disagree with it.
  */
 /**
- * A flat collar: the cloth lying on a garment **outside** its neckline.
+ * A flat collar: the cloth lying on a garment **outside** its neckline, in
+ * two halves — left and right — cut from the opening they are sewn to rather
+ * than drawn beside it, so each half's inner edge **is** the seam.
  *
- * The two halves of one, as point lists — left and right, meeting at centre
- * front — cut from the opening they are sewn to rather than drawn beside it.
- * That is the whole of the fix this exists for. Drawn by hand, the Peter Pan's
- * inner edge dipped only to y 196 while its ends rose to 179, so instead of
- * lying outside a 34-unit opening it *covered the top of it* and left a small
- * round hole of its own — and a neck coming up through a hole in a collar is
- * the "complete circle around the mannequin's neck" it was reported as. Built
- * from `neck.points`, the inner edge simply **is** the seam, and cannot.
+ * Built as a Peter Pan is cut:
  *
- * The outer edge is the same arc pushed out along its own normal, widest at
- * centre front and tapering to `point` at the two collar points. Tapering is
- * not decoration: this is a front view, and the end of a flat collar is where
- * the cloth turns to go behind the shoulder. Carried round at full width it
- * would stand out sideways at neck height on both sides — which is the other
- * half of what reads as a ring.
+ * - **Even and narrow.** The cloth is `width` across, measured square off
+ *   the seam, the whole way round — about 5–7 cm on a real one, lying flat
+ *   right round the neckline. It used to be widest at centre front and
+ *   tapered toward the shoulders, which is a bib.
+ * - **Rounded at the front, the two ends just meeting.** From the seam's
+ *   centre-front point each half's outer edge drops straight down and turns
+ *   out round a quarter circle `round` units across, so the halves touch at
+ *   the neck and part below it over a small V of the garment — no line down
+ *   the middle. They used to butt square along a seam from the neckline to
+ *   the collar's foot: one bib, with a line through it.
+ * - **Over the shoulder at its back.** In a front view a flat collar's far
+ *   end is where it turns over the shoulder to go behind the neck. So the
+ *   cloth's direction turns from square off the seam to along the shoulder
+ *   line over the last `blend` share of each half, and its end lies along the
+ *   shoulder, `reach` units of it, rather than standing out level with the
+ *   neck point above a shoulder that slopes away below it.
+ *
+ * `shoulders` are the garment's shoulder lines, each from its collar point
+ * out — the left from the opening's left end, the right from its right.
+ * `free` is each half's outer edge alone, from its end on the shoulder round
+ * to centre front: never the seam, nor the shoulder it lies along.
  */
 export function flatCollar(
   neck: Neckline,
-  spec: { width: number[] }
-): { left: Pt[]; right: Pt[] } {
-  const { width } = spec;
-  const { center, seamY, dip, half, points } = neck;
-  const last = points.length - 1;
-
-  /**
-   * How wide the cloth is at one point along the arc, `u` running 0 at centre
-   * front to 1 at the collar point.
-   *
-   * A list rather than a taper, because the widest part of a flat collar is
-   * neither of its ends: it is the lobe over the collarbone, about three
-   * quarters of the way out. Tapered from centre front the collar comes out a
-   * bib; held at full width it stands out sideways at neck height, which in a
-   * front view is the part that is behind the shoulder and not visible at all.
-   */
-  const widthAt = (u: number) => {
-    const span = (width.length - 1) * Math.min(Math.max(u, 0), 1);
-    const i = Math.min(Math.floor(span), width.length - 2);
-    return width[i] + (width[i + 1] - width[i]) * (span - i);
-  };
-
-  const outer = points.map(([x, y], i) => {
-    const t = (i / last) * Math.PI;
-    const w = widthAt(Math.abs(t - Math.PI / 2) / (Math.PI / 2));
-    // the outward normal of the ellipse the opening is cut on
-    const nx = (x - center) / (half * half);
-    const ny = dip === 0 ? 1 : (y - seamY) / (dip * dip);
+  spec: { width: number; round: number; reach: number; blend: number; shoulders: { left: Pt[]; right: Pt[] } }
+): { left: Pt[]; right: Pt[]; free: [Pt[], Pt[]] } {
+  const { center, seamY, dip, half } = neck;
+  const at = (t: number): Pt => [center + half * Math.cos(t), seamY + dip * Math.sin(t)];
+  /* the outward normal of the ellipse the opening is cut on: the side the cloth is on */
+  const normal = (t: number): Pt => {
+    const nx = Math.cos(t) / half;
+    const ny = dip === 0 ? 1 : Math.sin(t) / dip;
     const len = Math.hypot(nx, ny) || 1;
-    return [x + (nx / len) * w, y + (ny / len) * w] as Pt;
-  });
-
-  /* `points` runs right collar point → centre front → left, so the middle
-     index is centre front and each half is one side of it. They butt together
-     there rather than overlapping: two subpaths that cross cancel where they
-     do, and a mirrored one winds the other way. */
-  const mid = Math.floor(last / 2);
-  return {
-    right: [...points.slice(0, mid + 1), ...reverse(outer.slice(0, mid + 1))],
-    left: [...points.slice(mid), ...reverse(outer.slice(mid))],
+    return [nx / len, ny / len];
   };
+  const length = (pts: Pt[]) => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
+
+  const halfOf = (end: number, shoulder: Pt[]): { ring: Pt[]; free: Pt[] } => {
+    /* the seam from centre front to the collar point, by length along it */
+    const table: [t: number, s: number][] = [[Math.PI / 2, 0]];
+    for (let i = 1; i <= FLAT_TABLE; i++) {
+      const t = Math.PI / 2 + ((end - Math.PI / 2) * i) / FLAT_TABLE;
+      const [a, b] = [at(table[i - 1][0]), at(t)];
+      table.push([t, table[i - 1][1] + Math.hypot(b[0] - a[0], b[1] - a[1])]);
+    }
+    const L = table[FLAT_TABLE][1];
+    const tAt = (s: number) => {
+      let i = 1;
+      while (i < FLAT_TABLE && table[i][1] < s) i++;
+      const [[t0, s0], [t1, s1]] = [table[i - 1], table[i]];
+      return t0 + ((t1 - t0) * (s - s0)) / (s1 - s0 || 1);
+    };
+
+    /* where the end lies on the shoulder: `reach` along it, and the shoulder up to there */
+    const reach = Math.min(spec.reach, FLAT_SHOULDER_SHARE * length(shoulder));
+    const along: Pt[] = [shoulder[0]];
+    let walked = 0;
+    for (let i = 1; i < shoulder.length; i++) {
+      const [a, b] = [shoulder[i - 1], shoulder[i]];
+      const step = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (walked + step >= reach) {
+        const f = (reach - walked) / (step || 1);
+        along.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+        break;
+      }
+      walked += step;
+      along.push(b);
+    }
+    const tip = along[along.length - 1];
+    const corner = at(end);
+    /* straight from the collar point to there: the way the cloth runs at the very end */
+    const span = Math.hypot(tip[0] - corner[0], tip[1] - corner[1]) || 1;
+    const chord: Pt = [(tip[0] - corner[0]) / span, (tip[1] - corner[1]) / span];
+
+    /* samples along the seam: round the front end by angle, so the quarter circle is drawn evenly, then every few units */
+    const R = Math.min(spec.round, L / 2);
+    const S: number[] = [];
+    for (let j = 0; j <= FLAT_ROUND_STEPS; j++) S.push(R * (1 - Math.cos((j / FLAT_ROUND_STEPS) * (Math.PI / 2))));
+    for (let s = R + FLAT_STEP; s < L - FLAT_STEP / 2; s += FLAT_STEP) S.push(s);
+    S.push(L);
+
+    const B = spec.blend * L;
+    const inner = S.map((s) => at(tAt(s)));
+    const outer = S.map((s): Pt => {
+      const t = tAt(s);
+      const p = at(t);
+      const nm = normal(t);
+      const w = s < R ? spec.width * Math.sqrt(Math.max(0, 1 - (1 - s / R) ** 2)) : spec.width;
+      const u = Math.min(Math.max((s - (L - B)) / B, 0), 1);
+      const b = u * u * (3 - 2 * u);
+      const d: Pt = [nm[0] + (chord[0] - nm[0]) * b, nm[1] + (chord[1] - nm[1]) * b];
+      const dl = Math.hypot(d[0], d[1]) || 1;
+      const reachHere = w + (span - w) * b;
+      return [p[0] + (d[0] / dl) * reachHere, p[1] + (d[1] / dl) * reachHere];
+    });
+
+    /*
+      Each corner held square — the collar point, where the seam turns onto
+      the shoulder, and the centre-front point, where the seam meets the
+      rounded end — or the curve drawn through them swings across the
+      opening there; see `segments`.
+    */
+    const near = (from: Pt, to: Pt): Pt => {
+      const d = Math.hypot(to[0] - from[0], to[1] - from[1]) || 1;
+      return [from[0] + ((to[0] - from[0]) * FLAT_CORNER) / d, from[1] + ((to[1] - from[1]) * FLAT_CORNER) / d];
+    };
+    const free = [...outer].reverse();
+    const ring = [
+      inner[0],
+      near(inner[0], inner[1]),
+      ...inner.slice(1, -1),
+      near(corner, inner[inner.length - 2]),
+      corner,
+      near(corner, along[1]),
+      ...along.slice(1, -1),
+      ...free.slice(0, -1),
+      near(inner[0], free[free.length - 2]),
+    ];
+    return { ring, free };
+  };
+
+  const left = halfOf(Math.PI, spec.shoulders.left);
+  const right = halfOf(0, spec.shoulders.right);
+  return { left: left.ring, right: right.ring, free: [left.free, right.free] };
 }
+
+/** How finely a flat collar's seam is measured along, and sampled: every few units, and its rounded end in even turns. */
+const FLAT_TABLE = 400;
+const FLAT_STEP = 3;
+const FLAT_ROUND_STEPS = 10;
+/** How close beside a corner the outline is held square: a fraction of a unit. */
+const FLAT_CORNER = 0.5;
+/**
+ * How far along its shoulder a flat collar's end may lie, at most: three
+ * quarters of the way. A boat neck's ends are out on the shoulders already,
+ * and a whole width along from there reached the armhole.
+ */
+const FLAT_SHOULDER_SHARE = 0.75;
 
 /**
  * A knit neckband's depth: 9 units, about 1.7 cm — a rib band, not a collar.
