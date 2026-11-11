@@ -378,8 +378,8 @@ describe("every garment record matches its drawing", () => {
     it(`${collar.id} is drawn as one region of cloth`, () => {
       const art = collarArt(collar.asset.front);
       expect(art).toBeDefined();
-      // and its trim, for a collar that takes one — the sailor's stripes, in their own cloth
-      expect(Object.keys(art!.regions)).toEqual(collar.trims ? ["collar", "trim"] : ["collar"]);
+      // its stripes and its tie are drawn on and over it, as chosen — see `cut`
+      expect(Object.keys(art!.regions)).toEqual(["collar"]);
       expect(collar.asset.front).toBe(`${collar.id}-front`);
     });
   }

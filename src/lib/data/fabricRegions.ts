@@ -17,7 +17,8 @@ const LABELS: Record<FabricRegionId, Localized> = {
   sleeve: { en: "Sleeve", ar: "الكم" },
   cuff: { en: "Cuff", ar: "الكبك" },
   waistband: { en: "Waistband", ar: "الحزام" },
-  trim: { en: "Collar trim", ar: "شريط الياقة" },
+  trim: { en: "Stripes", ar: "الشرائط" },
+  tie: { en: "Tie", ar: "الربطة" },
 };
 
 export const regionLabel = (id: FabricRegionId): Localized =>

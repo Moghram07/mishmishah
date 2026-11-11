@@ -22,7 +22,8 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, frontButtons, seamAt, skirtFor, skirtPlacketFor } from "./dressCut";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, dressStripes, frontButtons, seamAt, skirtFor, skirtPlacketFor } from "./dressCut";
+import type { Inlay } from "@/lib/garments/stripes";
 import { BELTLESS_CUTS, LEATHER } from "@/lib/garments/closures";
 import { Buckle } from "../buckle";
 import { besideArms, fallOf, hangs, sameSkirt, skirtKey, type CutSkirt } from "@/lib/garments/skirts";
@@ -1070,10 +1071,55 @@ const bottomRegion = (
 
 const bottoms = new Map<string, RegionArt>();
 
+/** The skirt as the dress arrives in it. */
+const BOTTOM = bottomRegion();
+
+/**
+ * The dress recut to a neckline, a sleeve and a skirt. The skirt changes with
+ * its own style, or a jacket over it — and, hung from above her waist, with
+ * the sleeves: it falls beside her arms there, and a sleeve hangs in front of
+ * it, so it is drawn behind whatever cloth lies over them. No `bottom` when
+ * the skirt is the one the dress arrives in.
+ */
+function cutRegions(choice: GarmentChoice): { top: RegionArt; bottom?: RegionArt } {
+  const { inside, skirt = DEFAULT_SKIRT } = choice;
+  const id = cutOf(choice.neckline);
+  /* buttoned to the hem, the placket runs on down the skirt; a belt lies over both */
+  const placket = buttonedToHem(choice);
+  const belt = beltOn(choice);
+  if (!inside && sameSkirt(skirt, DEFAULT_SKIRT) && !placket && !belt) return { top: topFor(choice) };
+  const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
+  const arms = bodiceFor(id, sleeve, skirt.waist).armCover;
+  const under = besideArms(skirt) ? arms : [];
+  const sleeveKey = `|${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}`;
+  const key =
+    `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}` +
+    (under.length ? sleeveKey : "") +
+    (placket ? "|placket" : "") +
+    /* the belt lies behind the sleeves at every waist */
+    (belt ? `|belt-${belt}${sleeveKey}` : "");
+  if (!bottoms.has(key)) bottoms.set(key, bottomRegion(inside, skirt, under, placket, belt ? beltArt(skirt, belt, arms) : undefined));
+  return { top: topFor(choice), bottom: bottoms.get(key)! };
+}
+
+/**
+ * A region with stripes sewn on it — see `dressStripes` — kept once per
+ * region and stripes, so the stage is handed the same object every render.
+ */
+const inlaid = new WeakMap<RegionArt, Map<string, RegionArt>>();
+const withStripes = (region: RegionArt, inlay: Inlay[], key: string): RegionArt => {
+  if (!inlay.length) return region;
+  let by = inlaid.get(region);
+  if (!by) inlaid.set(region, (by = new Map()));
+  let r = by.get(key);
+  if (!r) by.set(key, (r = { ...region, inlay }));
+  return r;
+};
+
 export const dressFront: GarmentArt = {
   regions: {
     top: topFor({}),
-    bottom: bottomRegion(),
+    bottom: BOTTOM,
   },
   /**
    * Recut to a neckline, a sleeve and a skirt. The skirt changes with its own
@@ -1082,25 +1128,16 @@ export const dressFront: GarmentArt = {
    * it, so it is drawn behind whatever cloth lies over them.
    */
   cut: (choice): Partial<Record<FabricRegionId, RegionArt>> => {
-    const { inside, skirt = DEFAULT_SKIRT } = choice;
-    const id = cutOf(choice.neckline);
-    /* buttoned to the hem, the placket runs on down the skirt; a belt lies over both */
-    const placket = buttonedToHem(choice);
-    const belt = beltOn(choice);
-    if (!inside && sameSkirt(skirt, DEFAULT_SKIRT) && !placket && !belt) return { top: topFor(choice) };
-    const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
-    const arms = bodiceFor(id, sleeve, skirt.waist).armCover;
-    const under = besideArms(skirt) ? arms : [];
-    const sleeveKey = `|${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}`;
-    const key =
-      `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}` +
-      (under.length ? sleeveKey : "") +
-      (placket ? "|placket" : "") +
-      /* the belt lies behind the sleeves at every waist */
-      (belt ? `|belt-${belt}${sleeveKey}` : "");
-    if (!bottoms.has(key)) bottoms.set(key, bottomRegion(inside, skirt, under, placket, belt ? beltArt(skirt, belt, arms) : undefined));
-    return { top: topFor(choice), bottom: bottoms.get(key)! };
+    /* its stripes — round the sleeves' and the skirt's hems, or along a boat neckline — on the regions they lie on */
+    const stripes = dressStripes(choice);
+    const stripesKey = choice.stripes ? `${choice.stripes.count}|${choice.stripes.at}|${choice.stripes.on}` : "";
+    const cut = cutRegions(choice);
+    return {
+      top: withStripes(cut.top, stripes.top, stripesKey),
+      ...(cut.bottom || stripes.bottom.length ? { bottom: withStripes(cut.bottom ?? BOTTOM, stripes.bottom, stripesKey) } : {}),
+    };
   },
+
   /** The cuffs' hardware — the near side's only, on a cut with one sleeve. */
   cuffTrim: (choice) => {
     const id = (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")

@@ -1,4 +1,4 @@
-import type { BodyType, Collar, Garment, Localized, TrimId } from "@/types";
+import type { BodyType, Collar, Garment, Localized, StripesAtId, StripesId, StripesOffer, TieId } from "@/types";
 
 /**
  * The collars.
@@ -39,6 +39,16 @@ import type { BodyType, Collar, Garment, Localized, TrimId } from "@/types";
  * Adding his four cost four records and four drawings against his yoke. No code
  * changed, which was the whole point of the exercise.
  */
+
+/**
+ * Every count of stripes, none first: what a collar or a neckline that takes
+ * them offers. Here, not with the necklines, because `check:garments` reads
+ * this file as it is.
+ */
+export const STRIPE_COUNTS: StripesId[] = ["none", "one", "two", "three"];
+
+/** How far stripes can go, the neck alone first — see `StripesAtId`. */
+export const STRIPE_REACH: StripesAtId[] = ["neck", "sleeves", "hem"];
 
 /** Everything that closes a round neckline: the eight with a neckband. */
 const ROUND_NECK: Collar["compatibleWith"] = ["top", "dress"];
@@ -180,8 +190,14 @@ export const collars: Collar[] = [
      */
     opening: "v",
     asset: { front: "female-sailor-collar-front" },
-    /** Plain, or two thin stripes along its outer edge in a second cloth. */
-    trims: { offered: ["none", "stripes"], default: "none" },
+    /**
+     * Plain, or one, two or three thin stripes along its outer edge in a
+     * second cloth — on the collar alone, or round the sleeves' hems as
+     * well, or the skirt's too, every stripe the same.
+     */
+    stripes: { offered: STRIPE_COUNTS, default: "none", at: STRIPE_REACH },
+    /** And at the point of its V, nothing, a small tied bow, or a necktie. */
+    ties: { offered: ["none", "knot", "necktie"], default: "none" },
   },
   {
     id: "female-ruffled-collar",
@@ -406,12 +422,36 @@ export const defaultCollar = (garment: Garment): Collar | undefined => {
     : undefined;
 };
 
-/** A collar's trims, by name. */
-const TRIM_NAMES: Record<TrimId, Localized> = {
+/** Stripe counts, by name. */
+const STRIPE_NAMES: Record<StripesId, Localized> = {
   none: { en: "None", ar: "بدون" },
-  stripes: { en: "Two stripes", ar: "شريطان" },
+  one: { en: "One", ar: "شريط" },
+  two: { en: "Two", ar: "شريطان" },
+  three: { en: "Three", ar: "ثلاثة شرائط" },
 };
 
-/** The trims a collar can be finished with, by name — none for a collar that takes none. */
-export const trimsFor = (collar: Collar | undefined): { id: TrimId; name: Localized }[] =>
-  collar?.trims ? collar.trims.offered.map((id) => ({ id, name: TRIM_NAMES[id] })) : [];
+/** How far stripes go, by name — the same on a collar and on a neckline. */
+const STRIPES_AT_NAMES: Record<StripesAtId, Localized> = {
+  neck: { en: "Neck only", ar: "الرقبة فقط" },
+  sleeves: { en: "With sleeves", ar: "مع الأكمام" },
+  hem: { en: "With sleeves & hem", ar: "مع الأكمام والذيل" },
+};
+
+/** Ties, by name. */
+const TIE_NAMES: Record<TieId, Localized> = {
+  none: { en: "None", ar: "بدون" },
+  knot: { en: "Knot", ar: "عقدة" },
+  necktie: { en: "Necktie", ar: "ربطة عنق" },
+};
+
+/** The stripe counts on offer, by name, from a collar's or a neckline's offer — none for one that takes none. */
+export const stripesFor = (offer: { offered: StripesId[] } | undefined): { id: StripesId; name: Localized }[] =>
+  offer ? offer.offered.map((id) => ({ id, name: STRIPE_NAMES[id] })) : [];
+
+/** How far stripes can go, by name, from a collar's or a neckline's offer — none where they stay along the neck. */
+export const stripesAtFor = (offer: StripesOffer | undefined): { id: StripesAtId; name: Localized }[] =>
+  offer?.at ? offer.at.map((id) => ({ id, name: STRIPES_AT_NAMES[id] })) : [];
+
+/** The ties a collar can be worn with, by name — none for a collar that takes none. */
+export const tiesFor = (collar: Collar | undefined): { id: TieId; name: Localized }[] =>
+  collar?.ties ? collar.ties.offered.map((id) => ({ id, name: TIE_NAMES[id] })) : [];

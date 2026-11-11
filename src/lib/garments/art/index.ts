@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { BeltId, ButtonsId, FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice } from "@/types";
+import type { BeltId, ButtonsId, FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice, StripesAtId, StripesId, TieId } from "@/types";
 import type { Uid } from "@/lib/garments/shading";
 import type { Encloses } from "@/lib/garments/sleeves";
 import type { Tuck } from "@/lib/garments/fit";
@@ -145,6 +145,8 @@ export interface RegionArt {
   softPieces?: readonly number[];
   /** The soft shadow under its edges, where it differs from what its outline gives — a Peter Pan's: see `RegionDrawing`. */
   shadow?: { opacity?: number; width?: number; soft?: number };
+  /** Stripes of a second cloth sewn flat on its pieces, each with the piece it lies on — see `RegionDrawing`. */
+  inlay?: readonly { piece: number; d: string }[];
   /** Where a close-up should centre. */
   focus?: [x: number, y: number];
 }
@@ -169,6 +171,14 @@ export interface GarmentChoice {
   buttons?: ButtonsId;
   /** The belt worn on a dress's waist seam. */
   belt?: BeltId;
+  /**
+   * Its stripes, if it wears any: how many, how far they go — see
+   * `StripesAtId` — and whether they run along its collar or along its own
+   * neckline, a boat's.
+   */
+  stripes?: { count: Exclude<StripesId, "none">; at: StripesAtId; on: "collar" | "neckline" };
+  /** The tie at its collar's V, if it wears one. */
+  tie?: Exclude<TieId, "none">;
   /**
    * The hem of a jacket it is worn under, if it is: it comes out from under it
    * no wider than the jacket — see `tucked` in `garments/fit.ts`.

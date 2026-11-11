@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SAILOR_STRIPES, insideRing, sailor, type SailorPanel } from "./art/female/collarCuts";
+import { insideRing, panelStripes, sailor, type SailorPanel } from "./art/female/collarCuts";
+import { STRIPES } from "./stripes";
 import { bodiceFor } from "./art/female/dressCut";
-import { collarOf, cutFrom, regionsOf, setCollar, setNeckline, setTrim, trimOf, wear } from "./outfit";
+import { collarOf, cutFrom, regionsOf, setCollar, setNeckline, setStripes, stripesOf, wear } from "./outfit";
 import { BODY_CANVAS } from "../mannequin/bodies";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
-import { collarById, trimsFor } from "@/lib/data/collars";
+import { collarById, stripesFor } from "@/lib/data/collars";
 import { contrastingPlain, fabricById, fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
@@ -160,44 +161,56 @@ describe("the sailor collar's panels", () => {
   });
 });
 
-describe("its trim", () => {
-  it("is two thin stripes on each panel, parallel to its outer edge", () => {
-    for (const { side, panel } of SIDES) {
-      expect(panel.stripes, side).toHaveLength(2);
-      expect(panel.stripeEdges, side).toHaveLength(2);
-      const outer = fine(panel.outer);
-      panel.stripeEdges.forEach(([near, far], i) => {
-        const [from, to] = SAILOR_STRIPES[i];
-        // every point of each long edge at its own distance in from the outer edge
-        for (const p of near.slice(1, -1)) expect(distanceTo(outer, p), `${side} ${i} near ${p}`).toBeCloseTo(from, 0);
-        for (const p of far.slice(1, -1)) expect(distanceTo(outer, p), `${side} ${i} far ${p}`).toBeCloseTo(to, 0);
-        // thin: 0.5–0.8 cm wide, the first set in from the edge
-        expect((to - from) * CM).toBeGreaterThan(0.5);
-        expect((to - from) * CM).toBeLessThan(0.8);
-      });
-      expect(SAILOR_STRIPES[0][0] * CM).toBeGreaterThan(0.6);
+describe("its stripes", () => {
+  it("are one, two or three thin stripes on each panel, parallel to its outer edge", () => {
+    for (const count of ["one", "two", "three"] as const) {
+      const bands = STRIPES[count];
+      expect(bands).toHaveLength({ one: 1, two: 2, three: 3 }[count]);
+      for (const { side, panel } of SIDES) {
+        const { paths, edges } = panelStripes(panel, bands);
+        expect(paths, `${count} ${side}`).toHaveLength(bands.length);
+        const outer = fine(panel.outer);
+        edges.forEach(([near, far], i) => {
+          const [from, to] = bands[i];
+          // every point of each long edge at its own distance in from the outer edge
+          for (const p of near.slice(1, -1)) expect(distanceTo(outer, p), `${count} ${side} ${i} near ${p}`).toBeCloseTo(from, 0);
+          for (const p of far.slice(1, -1)) expect(distanceTo(outer, p), `${count} ${side} ${i} far ${p}`).toBeCloseTo(to, 0);
+          // thin: 0.5–0.8 cm wide, apart, the first set in from the edge
+          expect((to - from) * CM).toBeGreaterThan(0.5);
+          expect((to - from) * CM).toBeLessThan(0.8);
+          if (i > 0) expect((from - bands[i - 1][1]) * CM).toBeGreaterThan(0.35);
+        });
+        expect(bands[0][0] * CM).toBeGreaterThan(0.7);
+      }
     }
+    // two is the pair the collar was approved with
+    expect(STRIPES.two).toEqual([
+      [4.5, 7.9],
+      [10.7, 14.1],
+    ]);
   });
 
-  it("lies on the panel, running over the shoulder at the top and cut off by the V near the point", () => {
-    for (const { side, panel, edge, shoulder } of SIDES) {
-      const ring = fine([...panel.ring, panel.ring[0]]);
-      for (const [near, far] of panel.stripeEdges) {
-        for (const p of [...near, ...far]) {
-          expect(insideRing(panel.ring, p) || distanceTo(ring, p) < 0.1, `${side} ${p}`).toBe(true);
-        }
-        for (const run of [near, far]) {
-          expect(distanceTo(fine(shoulder), run[0]), `${side} top`).toBeLessThan(0.6);
-          expect(distanceTo(fine(edge), run.at(-1)!), `${side} foot`).toBeLessThan(0.6);
-          // long: most of the way down the panel
-          expect(length(run) * CM, side).toBeGreaterThan(10);
+  it("lie on the panel, running over the shoulder at the top and cut off by the V near the point", () => {
+    for (const count of ["one", "two", "three"] as const) {
+      for (const { side, panel, edge, shoulder } of SIDES) {
+        const ring = fine([...panel.ring, panel.ring[0]]);
+        for (const [near, far] of panelStripes(panel, STRIPES[count]).edges) {
+          for (const p of [...near, ...far]) {
+            expect(insideRing(panel.ring, p) || distanceTo(ring, p) < 0.1, `${count} ${side} ${p}`).toBe(true);
+          }
+          for (const run of [near, far]) {
+            expect(distanceTo(fine(shoulder), run[0]), `${count} ${side} top`).toBeLessThan(0.6);
+            expect(distanceTo(fine(edge), run.at(-1)!), `${count} ${side} foot`).toBeLessThan(0.6);
+            // long: most of the way down the panel
+            expect(length(run) * CM, `${count} ${side}`).toBeGreaterThan(9);
+          }
         }
       }
     }
   });
 });
 
-describe("choosing the trim", () => {
+describe("choosing the stripes", () => {
   const dress = garmentById("female-dress")!;
   const linen = fabricById("fb-apricot-linen")!;
   const sewn = (collar = "female-sailor-collar") => {
@@ -207,50 +220,51 @@ describe("choosing the trim", () => {
   };
   const one = (worn: WornGarment[]) => worn.find((w) => w.garmentId === dress.id)!;
 
-  it("is offered on the sailor collar only, plain by default", () => {
+  it("are offered on the sailor collar — none, one, two or three — plain by default", () => {
     for (const id of ["female-peter-pan-collar", "female-shirt-collar", "female-mandarin-collar"]) {
-      expect(trimsFor(collarById(id)), id).toEqual([]);
+      expect(stripesFor(collarById(id)?.stripes), id).toEqual([]);
     }
-    expect(trimsFor(collarById("female-sailor-collar")).map((t) => t.id)).toEqual(["none", "stripes"]);
+    expect(stripesFor(collarById("female-sailor-collar")?.stripes).map((t) => t.id)).toEqual(["none", "one", "two", "three"]);
     expect(collarOf(one(sewn()))?.id).toBe("female-sailor-collar");
-    expect(trimOf(one(sewn()))).toBe("none");
+    expect(stripesOf(one(sewn()))).toBe("none");
     expect(regionsOf(dress, one(sewn()))).not.toContain("trim");
   });
 
-  it("puts the stripes in a cloth of their own, a region of the garment, and takes them off again", () => {
+  it("put the stripes in a cloth of their own, a region of the garment, and take them off again", () => {
     const black = fabricById("fb-black-crepe")!;
-    const on = one(setTrim(sewn(), dress.id, "stripes", black.id));
-    expect(trimOf(on)).toBe("stripes");
+    const on = one(setStripes(sewn(), dress.id, "two", black.id));
+    expect(stripesOf(on)).toBe("two");
     expect(regionsOf(dress, on)).toContain("trim");
     expect(on.fabrics.trim).toBe(black.id);
     expect(on.fabrics.collar).toBe(linen.id);
-    // a cloth already chosen for them is kept
-    const again = one(setTrim([on], dress.id, "stripes", "fb-rose-silk"));
+    // a new count keeps the cloth already chosen for them
+    const again = one(setStripes([on], dress.id, "three", "fb-rose-silk"));
+    expect(stripesOf(again)).toBe("three");
     expect(again.fabrics.trim).toBe(black.id);
-    const off = one(setTrim([on], dress.id, "none"));
-    expect(trimOf(off)).toBe("none");
+    const off = one(setStripes([on], dress.id, "none"));
+    expect(stripesOf(off)).toBe("none");
     expect(regionsOf(dress, off)).not.toContain("trim");
     expect(off.fabrics.trim).toBeUndefined();
   });
 
-  it("comes off with the collar, or when the collar changes to one that takes none", () => {
-    const on = setTrim(sewn(), dress.id, "stripes", "fb-black-crepe");
+  it("come off with the collar, or when the collar changes to one that takes none", () => {
+    const on = setStripes(sewn(), dress.id, "two", "fb-black-crepe");
     const bare = one(setCollar(on, dress.id, undefined));
-    expect(bare.trim).toBeUndefined();
+    expect(bare.stripes).toBeUndefined();
     expect(bare.fabrics.trim).toBeUndefined();
-    // changed straight to a collar that takes no trim
+    // changed straight to a collar that takes no stripes
     const swapped = one(setCollar(on, dress.id, "female-peter-pan-collar"));
-    expect(swapped.trim).toBeUndefined();
+    expect(swapped.stripes).toBeUndefined();
     expect(swapped.fabrics.trim).toBeUndefined();
     // and as the panel does it: the V offers the sailor alone, so cut it round — which takes the collar off — and sew a Peter Pan on
     const round = setNeckline(on, dress.id, "female-round-neckline");
     const pp = one(setCollar(round, dress.id, "female-peter-pan-collar"));
-    expect(pp.trim).toBeUndefined();
+    expect(pp.stripes).toBeUndefined();
     expect(pp.fabrics.trim).toBeUndefined();
-    expect(trimOf(pp)).toBeUndefined();
+    expect(stripesOf(pp)).toBeUndefined();
   });
 
-  it("arrives in the plain cloth that stands out most against the collar's: white on dark cloth", () => {
+  it("arrive in the plain cloth that stands out most against the collar's: white on dark cloth", () => {
     const L = (f: Fabric) => hexToLab(fabricAverageColor(f))[0];
     for (const cloth of fabrics) {
       const stripes = contrastingPlain(cloth);
@@ -266,22 +280,24 @@ describe("choosing the trim", () => {
     for (const f of dark) expect(contrastingPlain(f).id, f.id).toBe("fb-white");
   });
 
-  it("is drawn on the figure only when it is on", () => {
-    const draw = (trimmed: boolean) => {
+  it("are drawn on the collar, in their own cloth, only when they are on", () => {
+    const draw = (count?: "one" | "two" | "three") => {
       const stripes = fabricById("fb-black-crepe")!;
       let worn = sewn();
-      if (trimmed) worn = setTrim(worn, dress.id, "stripes", stripes.id);
+      if (count) worn = setStripes(worn, dress.id, count, stripes.id);
       const regions: Partial<Record<FabricRegionId, Fabric>> = {};
       for (const r of regionsOf(dress, one(worn))) regions[r] = r === "trim" ? stripes : linen;
       const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
       return renderToStaticMarkup(<MannequinStage outfit={outfit} fabrics={{ [dress.id]: regions }} zoom={4} focus={[300, 222]} />);
     };
-    const plain = draw(false);
-    const trimmed = draw(true);
-    expect(plain).not.toContain("female-sailor-collar-trim-pattern");
-    expect(trimmed).toContain("female-sailor-collar-trim-pattern");
-    // all four stripes, each its own piece
-    const stripeD = [...panels.left.stripes, ...panels.right.stripes];
-    for (const d of stripeD) expect(trimmed).toContain(`d="${d}"`);
+    expect(draw()).not.toContain("female-sailor-collar-inlay-pattern");
+    for (const count of ["one", "two", "three"] as const) {
+      const markup = draw(count);
+      expect(markup, count).toContain("female-sailor-collar-inlay-pattern");
+      // every stripe on both panels, each its own piece
+      for (const panel of [panels.left, panels.right]) {
+        for (const d of panelStripes(panel, STRIPES[count]).paths) expect(markup, count).toContain(`d="${d}"`);
+      }
+    }
   });
 });

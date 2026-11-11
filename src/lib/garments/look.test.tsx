@@ -5,12 +5,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { contrastingPlain, fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
-import { collarOf, collarsFitting, cutFrom, setBelt, setButtons, setCollar, setFront, setLeg, setNeckline, setSleeve, setTrim, skirtOf, wear } from "@/lib/garments/outfit";
+import { collarOf, collarsFitting, cutFrom, setBelt, setButtons, setCollar, setFront, setLeg, setNeckline, setSkirt, setSleeve, setStripes, setStripesAt, setTie, regionsOf, skirtOf, wear } from "@/lib/garments/outfit";
 import { ROBE_TYPES, SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
 import { collars, collarsForGarment } from "@/lib/data/collars";
 import { sleeveLengthsFor, sleeveTypesFor } from "@/lib/data/sleeves";
-import type { BeltId, BodyType, ButtonsId, Fabric, FabricRegionId, FrontId, LegId, Outfit, SkirtLengthId, SkirtShapeId, SleeveChoice, WaistId, WornGarment } from "@/types";
+import type { BeltId, BodyType, ButtonsId, Fabric, FabricRegionId, FrontId, LegId, Outfit, SkirtChoice, SkirtLengthId, SkirtShapeId, SleeveChoice, StripesAtId, StripesId, TieId, WaistId, WornGarment } from "@/types";
 import { DEFAULT_SKIN_TONE, skinTones } from "@/lib/data/skinTones";
 import { chroma, ciede2000, hexToRgb, hue, ita, itaClass } from "@/lib/color/cielab";
 import { frameFor } from "@/lib/mannequin/frame";
@@ -18,7 +18,7 @@ import { bodyById } from "@/lib/mannequin/bodies";
 import { garments } from "@/lib/data/garments";
 import { focusOf } from "@/lib/garments/closeUp";
 import { draft } from "@/lib/garments/fit";
-import { shapeLengths } from "@/lib/garments/skirts";
+import { SKIRT_SHAPES, shapeLengths } from "@/lib/garments/skirts";
 
 /**
  * The wardrobe, dressed and photographed.
@@ -4008,7 +4008,7 @@ describe("round 15, the sailor collar, light and dark", () => {
     worn = setNeckline(worn, g.id, "female-v-neckline");
     if (look.sleeveless) worn = setSleeve(worn, g.id, { type: "set-in", length: "sleeveless" });
     worn = setCollar(worn, g.id, "female-sailor-collar");
-    if (look.trim) worn = setTrim(worn, g.id, "stripes", stripes.id);
+    if (look.trim) worn = setStripes(worn, g.id, "two", stripes.id);
     const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth, ...(look.trim ? { trim: stripes } : {}) };
     for (const r of g.fabricRegions) regions[r] = cloth;
     const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
@@ -4050,4 +4050,147 @@ describe("round 15, the sailor collar, light and dark", () => {
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
   }, 60_000);
+});
+
+describe("round 16, sailor styles, light and dark", () => {
+  /*
+    The sailor's new options, each plain and print, whole figure and close:
+    its stripes — none, one, two, three; how far they go — the collar, the
+    sleeves too, the skirt's hem too; its tie — none, a knot, a necktie, in
+    the collar's cloth or its own; and the boat neckline's own stripes. Then
+    every sleeve and every skirt the dress offers, striped, to show each one
+    takes them.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  type Look = {
+    caption: string;
+    cloth: string;
+    neckline?: "v" | "boat";
+    sailor?: boolean;
+    stripes?: StripesId;
+    at?: StripesAtId;
+    tie?: TieId;
+    tieCloth?: string;
+    sleeve?: SleeveChoice;
+    skirt?: SkirtChoice;
+    buttons?: ButtonsId;
+    zoom: number;
+    focus: [number, number];
+  };
+  const stage = (look: Look) => {
+    const cloth = f(look.cloth);
+    const g = garmentById("female-dress")!;
+    let worn = wear([], cutFrom(g, cloth.id));
+    worn = setNeckline(worn, g.id, `female-${look.neckline ?? "v"}-neckline`);
+    if (look.sleeve) worn = setSleeve(worn, g.id, look.sleeve);
+    if (look.skirt) worn = setSkirt(worn, g.id, look.skirt);
+    if (look.buttons) worn = setButtons(worn, g.id, look.buttons);
+    if (look.sailor ?? true) worn = setCollar(worn, g.id, "female-sailor-collar");
+    const stripes = contrastingPlain(cloth);
+    if (look.stripes) worn = setStripes(worn, g.id, look.stripes, stripes.id);
+    if (look.at) worn = setStripesAt(worn, g.id, look.at);
+    if (look.tie) worn = setTie(worn, g.id, look.tie);
+    const w = worn.find((x) => x.garmentId === g.id)!;
+    const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+    for (const r of regionsOf(g, w)) regions[r] = r === "trim" ? stripes : r === "tie" ? f(look.tieCloth ?? cloth.id) : cloth;
+    const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={{ [g.id]: regions }} zoom={look.zoom} focus={look.focus} />;
+  };
+  /* one row per cloth and size: the same looks, plain then print */
+  const both = (looks: (cloth: string, name: string) => Look[]) => [looks(PLAIN, "plain"), looks(PRINT, "print")];
+  const WHOLE: [number, [number, number]] = [1, [300, 500]];
+  const SHEETS: Record<string, Look[][]> = {
+    stripes: [WHOLE, [4, [300, 228]] as [number, [number, number]]].flatMap(([zoom, focus]) =>
+      both((cloth, name) =>
+        (["none", "one", "two", "three"] as const).map((n) => ({ caption: `stripes: ${n}, ${name}, ${zoom}×`, cloth, stripes: n, zoom, focus }))
+      )
+    ),
+    placement: [
+      ...both((cloth, name) =>
+        (["neck", "sleeves", "hem"] as const).map((at) => ({ caption: `three stripes on: ${at}, ${name}, 1×`, cloth, stripes: "three" as const, at, ...{ zoom: WHOLE[0], focus: WHOLE[1] } }))
+      ),
+      ...both((cloth, name) => [
+        { caption: `on: sleeves · short sleeve, ${name}, 4×`, cloth, stripes: "three", at: "sleeves", zoom: 4, focus: [205, 290] },
+        { caption: `on: sleeves · long, plain cuff, ${name}, 4×`, cloth, stripes: "three", at: "sleeves", sleeve: { type: "set-in", length: "long", cuff: "plain" }, zoom: 4, focus: [185, 470] },
+        { caption: `on: hem · skirt hem, ${name}, 3×`, cloth, stripes: "three", at: "hem", zoom: 3, focus: [300, 760] },
+      ] as Look[]),
+    ],
+    tie: [WHOLE, [4, [297, 270]] as [number, [number, number]]].flatMap(([zoom, focus]) =>
+      both((cloth, name) => [
+        { caption: `tie: none, ${name}, ${zoom}×`, cloth, stripes: "two", zoom, focus },
+        { caption: `tie: knot, ${name}, ${zoom}×`, cloth, stripes: "two", tie: "knot", zoom, focus },
+        { caption: `tie: necktie, ${name}, ${zoom}×`, cloth, stripes: "two", tie: "necktie", zoom, focus },
+        { caption: `tie: necktie, its own cloth, ${name}, ${zoom}×`, cloth, stripes: "two", tie: "necktie", tieCloth: cloth === PLAIN ? "fb-black-crepe" : "fb-rose-silk", zoom, focus },
+        { caption: `tie: knot, plain collar, ${name}, ${zoom}×`, cloth, tie: "knot", zoom, focus },
+      ] as Look[])
+    ),
+    boat: [WHOLE, [4, [300, 212]] as [number, [number, number]]].flatMap(([zoom, focus]) =>
+      both((cloth, name) => [
+        ...(["none", "one", "two", "three"] as const).map((n) => ({ caption: `boat · stripes: ${n}, ${name}, ${zoom}×`, cloth, neckline: "boat" as const, sailor: false, stripes: n, zoom, focus })),
+        { caption: `boat · three, sleeveless, ${name}, ${zoom}×`, cloth, neckline: "boat", sailor: false, stripes: "three", sleeve: { type: "set-in", length: "sleeveless" }, zoom, focus },
+      ] as Look[])
+    ),
+  };
+  /* every sleeve the dress offers on the V, at every length, striped round its hem; every cuff on a long one */
+  const SLEEVE_LOOKS: Look[] = [];
+  for (const type of ["set-in", "drop", "raglan", "kimono", "dolman", "puff", "bishop", "bell", "flutter", "cap"] as const) {
+    for (const length of SLEEVE_KINDS[type].lengths) {
+      const y = { short: 300, elbow: 350, "three-quarter": 410, long: 470, sleeveless: 300 }[length];
+      SLEEVE_LOOKS.push({ caption: `${type} ${length}`, cloth: PRINT, stripes: "three", at: "sleeves", sleeve: { type, length }, zoom: 3, focus: [200, y] });
+    }
+  }
+  for (const cuff of ["formal", "french"] as const) {
+    SLEEVE_LOOKS.push({ caption: `set-in long, ${cuff} cuff`, cloth: PRINT, stripes: "three", at: "sleeves", sleeve: { type: "set-in", length: "long", cuff }, zoom: 3, focus: [190, 470] });
+  }
+  /* every skirt shape at every length, and the other waists, striped round the hem; buttoned to the hem */
+  const SKIRT_LOOKS: Look[] = [];
+  for (const shape of SKIRT_SHAPES) {
+    for (const length of shapeLengths(shape, ["knee", "midi", "maxi"])) {
+      SKIRT_LOOKS.push({ caption: `${shape} ${length}`, cloth: PLAIN, stripes: "three", at: "hem", skirt: { shape, length, waist: "natural" }, zoom: 1, focus: [300, 500] });
+    }
+  }
+  SKIRT_LOOKS.push(
+    { caption: "flared midi, empire", cloth: PLAIN, stripes: "three", at: "hem", skirt: { shape: "flared", length: "midi", waist: "empire" }, zoom: 1, focus: [300, 500] },
+    { caption: "flared midi, dropped", cloth: PLAIN, stripes: "three", at: "hem", skirt: { shape: "flared", length: "midi", waist: "dropped" }, zoom: 1, focus: [300, 500] },
+    { caption: "flared midi, buttoned to the hem", cloth: PLAIN, stripes: "three", at: "hem", buttons: "hem", zoom: 1, focus: [300, 500] },
+    { caption: "pleated midi, buttoned to the hem, 3×", cloth: PLAIN, stripes: "three", at: "hem", buttons: "hem", skirt: { shape: "pleated", length: "midi", waist: "natural" }, zoom: 3, focus: [300, 770] },
+    { caption: "tiered maxi, 3×", cloth: PRINT, stripes: "three", at: "hem", skirt: { shape: "tiered", length: "maxi", waist: "natural" }, zoom: 3, focus: [300, 900] },
+  );
+  const rowsOf = (looks: Look[], per: number) => Array.from({ length: Math.ceil(looks.length / per) }, (_, i) => looks.slice(i * per, i * per + per));
+  SHEETS.sleeves = rowsOf(SLEEVE_LOOKS, 6);
+  SHEETS.skirts = rowsOf(SKIRT_LOOKS, 6);
+
+  for (const [name, rows] of Object.entries(SHEETS)) {
+    it.each(["light", "dark"] as const)(`writes .preview/wardrobe/round16-${name}-%s.html`, (theme) => {
+      const t = THEMES[theme];
+      const html = renderToStaticMarkup(
+        <>
+          {rows.map((row, r) => (
+            <div key={r} className="row">
+              {row.map((look) => (
+                <figure key={look.caption}>
+                  {stage(look)}
+                  <figcaption>{look.caption}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ))}
+        </>
+      );
+      const css =
+        `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+        `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+        `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+        `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+      writeFileSync(
+        `.preview/wardrobe/round16-${name}-${theme}.html`,
+        '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+      );
+    }, 120_000);
+  }
 });

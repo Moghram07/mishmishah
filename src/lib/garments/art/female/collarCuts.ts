@@ -10,6 +10,7 @@
 import { flatCollar, outline, run, type Neckline, type Pt } from "../../fit.ts";
 import { blade, mirror, nudge, type Point } from "../../collar.ts";
 import type { NecklineId } from "../../necklines.ts";
+import { band, type StripeBand } from "../../stripes.ts";
 import { bodiceFor } from "./dressCut.ts";
 import { opening, standFront } from "./yoke.ts";
 
@@ -76,16 +77,6 @@ export function peterPan(cut?: NecklineId): { left: Pt[]; right: Pt[]; free: [Pt
  */
 export const SAILOR = { reach: 0.88, bow: 13 };
 
-/**
- * The trim: two thin stripes parallel to the outer edge, as their inner and
- * outer distance in from it, in canvas units — each 3.4 units (0.65 cm) wide,
- * the first 4.5 (0.85 cm) in from the edge, 2.8 (0.5 cm) between them.
- */
-export const SAILOR_STRIPES: readonly (readonly [from: number, to: number])[] = [
-  [4.5, 7.9],
-  [10.7, 14.1],
-];
-
 /** One panel of a sailor collar, as cut: what is drawn, and the points it is drawn through. */
 export interface SailorPanel {
   /** The panel, closed: along the shoulder, down its outer edge, up the V. */
@@ -98,10 +89,11 @@ export interface SailorPanel {
   ring: Pt[];
   /** The outer edge as points, corner to point. */
   outer: Pt[];
-  /** Its trim, each stripe closed — see `SAILOR_STRIPES`. */
-  stripes: string[];
-  /** Each stripe's two long edges as points, from the shoulder down: the one nearer the free edge first. */
-  stripeEdges: [Pt[], Pt[]][];
+  /**
+   * A line `d` units in from the outer edge, carried on past both its ends
+   * and cut to the panel — where a stripe's side runs: see `panelStripes`.
+   */
+  inFrom: (d: number) => Pt[];
 }
 
 const add = (a: Pt, b: Pt, k = 1): Pt => [a[0] + b[0] * k, a[1] + b[1] * k];
@@ -225,7 +217,7 @@ function sailorPanel(apex: Pt, edge: Pt[], shoulder: Pt[]): SailorPanel {
     const n: Pt = [dir[1], -dir[0]];
     return n[0] * out[0] + n[1] * out[1] > 0 ? [-n[0], -n[1]] : n;
   };
-  const offsetBy = (d: number): Pt[] => {
+  const inFrom = (d: number): Pt[] => {
     const start = unit(cubicSlope(curve, 0));
     const end = unit(cubicSlope(curve, 1));
     const pts: Pt[] = [];
@@ -237,15 +229,19 @@ function sailorPanel(apex: Pt, edge: Pt[], shoulder: Pt[]): SailorPanel {
     for (let k = 1; k <= 12; k++) pts.push(add(add(apex, end, 2.5 * k), inward(end), d));
     return within(ring, pts);
   };
-  const stripeEdges = SAILOR_STRIPES.map(([a, b]) => [offsetBy(a), offsetBy(b)] as [Pt[], Pt[]]).filter(
-    ([a, b]) => a.length > 1 && b.length > 1
-  );
-  const stripes = stripeEdges.map(([a, b]) => {
-    const pts = [...a, ...[...b].reverse()];
-    return `M${xy1(pts[0])} ${pts.slice(1).map((p) => `L${xy1(p)}`).join(" ")} Z`;
-  });
+  return { path, free, corner, ring, outer, inFrom };
+}
 
-  return { path, free, corner, ring, outer, stripes, stripeEdges };
+/**
+ * A panel's stripes, closed, each with its two long sides as points from the
+ * shoulder down, the side nearer the free edge first — see `STRIPES` in
+ * `stripes.ts` for how many and how far in.
+ */
+export function panelStripes(panel: SailorPanel, bands: readonly StripeBand[]): { paths: string[]; edges: [Pt[], Pt[]][] } {
+  const edges = bands
+    .map(([a, b]) => [panel.inFrom(a), panel.inFrom(b)] as [Pt[], Pt[]])
+    .filter(([a, b]) => a.length > 1 && b.length > 1);
+  return { paths: edges.map(([a, b]) => band(a, b)), edges };
 }
 
 /**
@@ -261,6 +257,50 @@ export function sailor(): { left: SailorPanel; right: SailorPanel } {
     left: sailorPanel(vee!.apex, vee!.left, parts!.strapLeft),
     right: sailorPanel(vee!.apex, [...vee!.right].reverse(), [...parts!.strapRight].reverse()),
   };
+}
+
+/* ------------------------------------------------------------- the tie */
+
+/** Where a sailor collar's tie is knotted: the point of the V, where its two panels meet. */
+export const TIE_AT: Pt = bodiceFor("v").cut.vee!.apex;
+
+/** Corners and bows relative to the V's point, laid on it — see `blade` for the bows' sign. */
+const atV = (corners: Pt[]): Point[] => corners.map(([x, y]) => [TIE_AT[0] + x, TIE_AT[1] + y] as const);
+
+/**
+ * The knot: a small tied bow at the V's point, about 7 cm across — a knot
+ * 1.7 cm across, two loops pinched into it, each 2.4 cm long and twice as
+ * tall at its end as at the knot, and two short tails, 5 cm, falling from under it and cut on a
+ * slant, the outer corner lower. Written left side only and reflected about
+ * the point, each piece anticlockwise, so a positive bow is convex.
+ */
+const KNOT = { corners: atV([[-4.5, -3.6], [-3.6, 5.6], [3.6, 5.6], [4.5, -3.6]]), bows: [1.2, 0.8, 1.2, 0.8] };
+const KNOT_LOOP = { corners: atV([[-3.8, -2.6], [-16.2, -5.6], [-15, 6.2], [-3.8, 4.6]]), bows: [1.3, 3.6, 1.3, 0] };
+const KNOT_TAIL = { corners: atV([[-4.6, 3.4], [-10.6, 29.4], [-3.4, 26.6], [0.4, 3.4]]), bows: [1, 0, -0.6, 0] };
+
+/**
+ * The necktie: a knot at the V's point, 2.5 cm across at the top and
+ * narrowing under it, and its blade hanging down the centre from under the
+ * knot, widening to 5.5 cm and ending in a point 12.5 cm below the V —
+ * cut on the bias, as a tie is, and lying flat on the dress.
+ */
+const NECKTIE_KNOT = { corners: atV([[-6.6, -4], [-4.2, 7.2], [4.2, 7.2], [6.6, -4]]), bows: [0.8, 0.6, 0.8, 0.6] };
+const NECKTIE_BLADE = { corners: atV([[-4.4, 5], [-14.6, 46], [0, 66], [14.6, 46], [4.4, 5]]), bows: [1.2, 0.8, 0.8, 1.2, 0] };
+
+/** A sailor collar's tie, back to front: each piece closed, its own path. */
+export function sailorTie(kind: "knot" | "necktie"): { pieces: string[]; parts: { tails?: string[]; loops?: string[]; knot: string; blade?: string } } {
+  const piece = ({ corners, bows }: { corners: Point[]; bows: number[] }) => blade(corners, bows);
+  if (kind === "knot") {
+    const tail = piece(KNOT_TAIL);
+    const loop = piece(KNOT_LOOP);
+    const tails = [tail, mirror(tail, TIE_AT[0])];
+    const loops = [loop, mirror(loop, TIE_AT[0])];
+    const knot = piece(KNOT);
+    return { pieces: [...tails, ...loops, knot], parts: { tails, loops, knot } };
+  }
+  const bladePath = piece(NECKTIE_BLADE);
+  const knot = piece(NECKTIE_KNOT);
+  return { pieces: [bladePath, knot], parts: { blade: bladePath, knot } };
 }
 
 /* ------------------------------------------------------------------- bow */

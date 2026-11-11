@@ -347,11 +347,31 @@ export type ButtonsId = "none" | "waist" | "hem";
 export type BeltId = "none" | "self" | "brown" | "black";
 
 /**
- * A collar's trim: none, or two thin stripes along its outer edge in a
- * second cloth — a sailor collar's braid. The stripes take a fabric of their
- * own, as the `trim` region.
+ * Stripes of braid in a second cloth: none, or one, two or three thin ones
+ * along an edge — a sailor collar's outer edge, a boat neckline's. They take
+ * a fabric of their own, as the `trim` region, every stripe the same.
  */
-export type TrimId = "none" | "stripes";
+export type StripesId = "none" | "one" | "two" | "three";
+
+/**
+ * How far the stripes go, each taking in the one before: along the neck alone
+ * — a sailor collar's edge, or a boat neckline's; round each sleeve's hem as
+ * well; and round the skirt's hem too.
+ */
+export type StripesAtId = "neck" | "sleeves" | "hem";
+
+/**
+ * What a collar or a neckline offers in stripes: the counts, the one it
+ * arrives with, and how far they can go, `at` — absent, along the neck alone.
+ */
+export interface StripesOffer {
+  offered: StripesId[];
+  default: StripesId;
+  at?: StripesAtId[];
+}
+
+/** A tie at the point of a sailor collar's V: none, a small tied bow, or a necktie hanging down the centre. */
+export type TieId = "none" | "knot" | "necktie";
 
 /**
  * The drawing a body or a garment is rendered from.
@@ -465,7 +485,8 @@ export type FabricRegionId =
   | "sleeve"
   | "cuff"
   | "waistband"
-  | "trim";
+  | "trim"
+  | "tie";
 
 /**
  * A garment, as a plain data record.
@@ -683,11 +704,15 @@ export interface Collar {
    */
   asset: { front: string; behindBody?: string };
   /**
-   * The trims it can be finished with — a sailor collar's stripes along its
-   * outer edge, in a cloth of their own — and the one it arrives with.
-   * Absent, it takes none.
+   * The stripes it can be finished with along its outer edge, in a cloth of
+   * their own — a sailor collar's — and the count it arrives with; and how
+   * far they can go, `at`: on the collar alone, or round the sleeves' and
+   * the skirt's hems as well, in the same cloth and count. Absent, it takes
+   * none.
    */
-  trims?: { offered: TrimId[]; default: TrimId };
+  stripes?: StripesOffer;
+  /** The ties it can be worn with at the point of its V — a sailor collar's — and the one it arrives with. */
+  ties?: { offered: TieId[]; default: TieId };
 }
 
 /**
@@ -744,6 +769,12 @@ export interface Neckline {
    * would give two places to fix the same thing.
    */
   wants?: string;
+  /**
+   * Stripes it can take along its own edge, with no collar on — a boat
+   * neckline's, in a cloth of their own — the count it arrives with, and how
+   * far they can go, as a sailor collar's can.
+   */
+  stripes?: StripesOffer;
 }
 
 /** A garment as worn: which fabric and thread each of its regions is finished in. */
@@ -779,10 +810,14 @@ export interface WornGarment {
    */
   collarId?: string;
   /**
-   * Its collar's trim, if the collar takes one and one was chosen — see
-   * `TrimId`. The stripes' cloth lives in the maps below under `trim`.
+   * Its stripes, if its collar or its neckline takes them and a count was
+   * chosen — see `StripesId` — and how far they go. Their cloth lives
+   * in the maps below under `trim`.
    */
-  trim?: TrimId;
+  stripes?: StripesId;
+  stripesAt?: StripesAtId;
+  /** Its collar's tie, if the collar takes one and one was chosen. Its cloth lives below under `tie`. */
+  tie?: TieId;
   /** Fabric id per region. */
   fabrics: Partial<Record<FabricRegionId, string>>;
   stitch: Partial<Record<FabricRegionId, StitchId>>;

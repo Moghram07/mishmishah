@@ -20,7 +20,7 @@ import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { productTemplates } from "@/lib/data/products";
 import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
-import { collarsForGarment, trimsFor } from "@/lib/data/collars";
+import { collarsForGarment, stripesAtFor, stripesFor, tiesFor } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { legsFor } from "@/lib/data/legs";
@@ -62,8 +62,12 @@ import {
   buttonsOf,
   setBelt,
   beltOf,
-  setTrim,
-  trimOf,
+  setStripes,
+  setStripesAt,
+  setTie,
+  stripesAtOf,
+  stripesOf,
+  tieOf,
   setSleeve,
   skirtOf,
   sleeveOf,
@@ -100,7 +104,9 @@ import type {
   SkirtChoice,
   LegId,
   SleeveChoice,
-  TrimId,
+  StripesAtId,
+  StripesId,
+  TieId,
 } from "@/types";
 
 /**
@@ -359,19 +365,42 @@ export function FabricVisualizer() {
    * collar, which then stays swappable like any other.
    */
   /**
-   * Trim the collar being cut, or take its trim off. The stripes arrive in
-   * the plain cloth that stands out most against the collar's — see
-   * `contrastingPlain` — and the picker moves to them, since their cloth is
-   * what you almost always want next.
+   * Stripe the garment being cut — along its sailor collar, or its boat
+   * neckline — or take its stripes off. They arrive in the plain cloth that
+   * stands out most against the cloth they lie on — see `contrastingPlain` —
+   * and the picker moves to them, since their cloth is what you almost always
+   * want next.
    */
-  const chooseTrim = (trim: TrimId) => {
+  const chooseStripes = (stripes: StripesId) => {
     if (!cuttingGarment || !cuttingEntry) return;
-    const collarCloth = fabricById(cuttingEntry.worn.fabrics.collar ?? "") ?? fabric;
+    const w = cuttingEntry.worn;
+    const under = fabricById(w.fabrics.collar ?? w.fabrics[cuttingGarment.fabricRegions[0]] ?? "") ?? fabric;
     setOutfit((o) => ({
       ...o,
-      worn: setTrim(o.worn, cuttingGarment.id, trim, contrastingPlain(collarCloth).id),
+      worn: setStripes(o.worn, cuttingGarment.id, stripes, contrastingPlain(under).id),
     }));
-    setCutting({ garmentId: cuttingGarment.id, region: trim === "stripes" ? "trim" : "collar" });
+    if (stripes === "none") {
+      if (cutting.region === "trim") setCutting({ garmentId: cuttingGarment.id, region: cuttingGarment.fabricRegions[0] });
+    } else setCutting({ garmentId: cuttingGarment.id, region: "trim" });
+  };
+
+  /** Send the stripes as far as the sleeves' hems, or the skirt's too — the same cloth and count. */
+  const chooseStripesAt = (at: StripesAtId) => {
+    if (!cuttingGarment) return;
+    setOutfit((o) => ({ ...o, worn: setStripesAt(o.worn, cuttingGarment.id, at) }));
+  };
+
+  /**
+   * Tie the collar at its V, or untie it. The tie arrives in the stripes'
+   * cloth on a striped collar, the collar's on a plain one — see `setTie` —
+   * and the picker moves to it, to cut it from another if wanted.
+   */
+  const chooseTie = (tie: TieId) => {
+    if (!cuttingGarment) return;
+    setOutfit((o) => ({ ...o, worn: setTie(o.worn, cuttingGarment.id, tie) }));
+    if (tie === "none") {
+      if (cutting.region === "tie") setCutting({ garmentId: cuttingGarment.id, region: "collar" });
+    } else setCutting({ garmentId: cuttingGarment.id, region: "tie" });
   };
 
   const chooseNeckline = (necklineId: string) => {
@@ -775,9 +804,19 @@ export function FabricVisualizer() {
       ? collarsFitting(cuttingGarment, cuttingEntry.worn)
       : [];
   const wornCollarId = cuttingEntry && collarOf(cuttingEntry.worn)?.id;
-  /* its collar's trim, for a collar that takes one: a sailor's stripes */
-  const trimChoices = cuttingEntry ? trimsFor(collarOf(cuttingEntry.worn)) : [];
-  const wornTrim = cuttingEntry ? trimOf(cuttingEntry.worn) : undefined;
+  /*
+    Its stripes, where its collar or its neckline takes them — a sailor's, a
+    boat's — and how far they go; and, on a collar, its tie.
+  */
+  const wornCollar = cuttingEntry ? collarOf(cuttingEntry.worn) : undefined;
+  const wornNeckline = cuttingEntry ? necklineOf(cuttingEntry.worn) : undefined;
+  const stripeOffer = wornCollar ? wornCollar.stripes : wornNeckline?.stripes;
+  const stripeChoices = stripesFor(stripeOffer);
+  const wornStripes = cuttingEntry ? stripesOf(cuttingEntry.worn) : undefined;
+  const stripesAtChoices = wornStripes && wornStripes !== "none" ? stripesAtFor(stripeOffer) : [];
+  const wornStripesAt = cuttingEntry ? stripesAtOf(cuttingEntry.worn) : undefined;
+  const tieChoices = tiesFor(wornCollar);
+  const wornTie = cuttingEntry ? tieOf(cuttingEntry.worn) : undefined;
 
   const regions =
     subject === "wardrobe"
@@ -1554,34 +1593,47 @@ export function FabricVisualizer() {
               </div>
             )}
 
-            {/* a collar's trim, for one that takes it: none, or two stripes along its edge in a cloth of their own */}
-            {subject === "wardrobe" && !onBottom && trimChoices.length > 1 && wornTrim && (
+            {/*
+              Stripes in a cloth of their own: along a sailor collar's edge, or
+              a boat neckline's — how many, and how far they go; and a sailor
+              collar's tie.
+            */}
+            {subject === "wardrobe" && !onBottom && stripeChoices.length > 1 && wornStripes && (
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.trim")}
+                  {t("viz.stripes")}
                 </p>
-                <div
-                  role="group"
-                  aria-label={t("viz.trim")}
-                  className="grid gap-1 rounded-full bg-muted/60 p-1"
-                  style={{ gridTemplateColumns: `repeat(${trimChoices.length}, minmax(0, 1fr))` }}
-                >
-                  {trimChoices.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => chooseTrim(c.id)}
-                      aria-pressed={wornTrim === c.id}
-                      className={cn(
-                        "btn-focus rounded-full px-2 py-2 text-xs font-semibold transition-all",
-                        wornTrim === c.id
-                          ? "bg-card text-foreground shadow-soft"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {pick(c.name)}
-                    </button>
-                  ))}
-                </div>
+                <Segmented
+                  label={t("viz.stripes")}
+                  choices={stripeChoices.map((c) => ({ id: c.id, label: pick(c.name) }))}
+                  active={wornStripes}
+                  onPick={chooseStripes}
+                />
+                {stripesAtChoices.length > 1 && wornStripesAt && (
+                  <>
+                    <p className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("viz.stripesAt")}
+                    </p>
+                    <div role="group" aria-label={t("viz.stripesAt")} className="flex flex-wrap gap-2">
+                      {stripesAtChoices.map((c) => (
+                        <CollarChoice key={c.id} label={pick(c.name)} active={wornStripesAt === c.id} onClick={() => chooseStripesAt(c.id)} />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            {subject === "wardrobe" && !onBottom && tieChoices.length > 1 && wornTie && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("viz.tie")}
+                </p>
+                <Segmented
+                  label={t("viz.tie")}
+                  choices={tieChoices.map((c) => ({ id: c.id, label: pick(c.name) }))}
+                  active={wornTie}
+                  onPick={chooseTie}
+                />
               </div>
             )}
 
@@ -1724,6 +1776,42 @@ function Choice({
     >
       {children}
     </button>
+  );
+}
+
+/** A row of a few choices sharing one pill, one of them pressed — the panel's buttons, stripes and tie rows. */
+function Segmented<T extends string>({
+  label,
+  choices,
+  active,
+  onPick,
+}: {
+  label: string;
+  choices: { id: T; label: string }[];
+  active: T;
+  onPick: (id: T) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="grid gap-1 rounded-full bg-muted/60 p-1"
+      style={{ gridTemplateColumns: `repeat(${choices.length}, minmax(0, 1fr))` }}
+    >
+      {choices.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => onPick(c.id)}
+          aria-pressed={active === c.id}
+          className={cn(
+            "btn-focus rounded-full px-2 py-2 text-xs font-semibold transition-all",
+            active === c.id ? "bg-card text-foreground shadow-soft" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {c.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

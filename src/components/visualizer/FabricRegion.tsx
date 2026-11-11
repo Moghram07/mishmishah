@@ -127,6 +127,15 @@ export interface RegionDrawing {
    * collar all but disappeared into the print at whole-figure size.
    */
   shadow?: Partial<ContactShadow>;
+  /**
+   * Stripes of a second cloth sewn flat on this one — braid along a collar's
+   * edge, round a sleeve's or a skirt's hem — each with the index of the
+   * piece it lies on. Drawn in `inlayFabric` just after that piece's cloth
+   * and before its form, the region's shading and its light, so the folds and
+   * the form of the cloth under them fall across them too: a braid sewn on a
+   * pleated skirt pleats with it.
+   */
+  inlay?: readonly { piece: number; d: string }[];
 }
 
 /** The soft shadow a cloth edge throws on what it lies on: a warm line, blurred. */
@@ -163,6 +172,8 @@ interface Props {
   /** The canvas box the mask covers. */
   canvas: readonly [width: number, height: number];
   stitch: StitchId;
+  /** The cloth of the drawing's `inlay` — its stripes. Without it, none are drawn. */
+  inlayFabric?: Fabric;
   /**
    * How far the view is zoomed in: 1 is the whole figure, or the whole
    * product. The tonal thread shows only in a close-up — see `TONAL_THREAD`.
@@ -329,6 +340,7 @@ export function FabricRegion({
   stitch,
   beneath,
   zoom = 1,
+  inlayFabric,
 }: Props) {
   const uid = (name: string) => `${uidBase}-${name}`;
 
@@ -339,6 +351,11 @@ export function FabricRegion({
   // against the pixel grid. See `printScale.ts`.
   const tile = fabricRepeatCm(fabric) / cmPerUnit;
   const artwork = useFabricArtwork(fabric, printKeep(tile * pxPerUnit));
+  /* the stripes' own cloth, at its own true size — asked for always, as a hook must be */
+  const inlayTile = fabricRepeatCm(inlayFabric ?? fabric) / cmPerUnit;
+  const inlayArt = useFabricArtwork(inlayFabric ?? fabric, printKeep(inlayTile * pxPerUnit));
+  const inlay = inlayFabric && drawing.inlay?.length ? drawing.inlay : [];
+  const inlayOn = (i: number) => inlay.filter((s) => s.piece === i);
 
   /* a thread picked to show keeps its own colour; the tonal one is the cloth's — see `TONAL_THREAD` */
   const thread = stitchById(stitch);
@@ -405,6 +422,27 @@ export function FabricRegion({
             <rect width={tile} height={tile} fill={artwork.averageColor} opacity={artwork.veil} />
           )}
         </pattern>
+        {inlay.length > 0 && (
+          <pattern
+            id={uid("inlay-pattern")}
+            patternUnits="userSpaceOnUse"
+            width={inlayTile}
+            height={inlayTile}
+            patternTransform={spin}
+          >
+            <image
+              href={inlayArt.url}
+              x="0"
+              y="0"
+              width={inlayTile}
+              height={inlayTile}
+              preserveAspectRatio="xMidYMid slice"
+            />
+            {inlayArt.veil > 0 && (
+              <rect width={inlayTile} height={inlayTile} fill={inlayArt.averageColor} opacity={inlayArt.veil} />
+            )}
+          </pattern>
+        )}
         {/*
           A <mask>, not a <clipPath>: regions are free to be groups of shapes
           (a sofa is six rects, a collar is two leaves), and only masks accept
@@ -537,6 +575,15 @@ export function FabricRegion({
               {piece}
             </g>
           )}
+          {/* the stripes sewn on this piece, before its form: they take its light — see `inlay` */}
+          {inlayOn(i).length > 0 &&
+            behind(
+              <g fill={`url(#${uid("inlay-pattern")})`}>
+                {inlayOn(i).map((st, k) => (
+                  <path key={k} d={st.d} />
+                ))}
+              </g>
+            )}
           {/* against the page, the rim in the page's text colour; on anything else, dark in either theme */}
           {!softAt(i) && behind(
             <g

@@ -35,6 +35,7 @@ import {
 import type { ButtonsId, SkirtChoice, WaistId } from "@/types";
 import type { GarmentChoice } from "../index.ts";
 import { mirror as mirrorPath } from "../../collar.ts";
+import { STRIPES, edgeStripes, hemStripes, insideRings, ringsOf, type Inlay, type StripeBand } from "../../stripes.ts";
 import {
   ONE_SIDED,
   NECKLINE_IDS,
@@ -159,6 +160,8 @@ export interface Bodice {
   puff?: { sleeves: string[]; shapes: PuffShape[]; over: string[] };
   /** Its placket, when it is buttoned down the front and its cut has none of its own — see `withPlacket`. */
   placket?: Placket;
+  /** The sleeves as drafted, on a cut sleeved on both sides: their hems, their pieces, their bands. */
+  sleeveCut?: SleeveCut;
 }
 
 /** The sleeve the dress arrives in. Kept in step with its record by a test. */
@@ -459,6 +462,7 @@ function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Bodice {
     const s = k.seamed;
     return {
       cut,
+      sleeveCut: k,
       pieces: [k.body, ...cut.extras, ...k.sleeves, ...k.bands],
       stitch: [cut.stitch, k.stitch].join(" "),
       folds: [...cut.folds, ...k.folds],
@@ -1004,4 +1008,160 @@ export function details(id: NecklineId, waist: WaistId = "natural") {
     buttons: groups[0] ?? null,
     tie: b.cut.wrap?.tie ?? null,
   };
+}
+
+/* ------------------------------------------------------------ stripes */
+
+/**
+ * The bodice as the dress draws it for a choice: its cut, sleeve and waist,
+ * the placket it is buttoned with, and taken under a collar — see `topFor`
+ * in `dress.tsx`, which draws this same one.
+ */
+export function drawnBodice(choice: GarmentChoice): Bodice {
+  const id = cutOf(choice.neckline);
+  const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
+  const waist = choice.skirt?.waist ?? "natural";
+  const placket = bodiceFor(id, sleeve, waist, choice.buttons).placket !== undefined;
+  return bodiceFor(id, sleeve, waist, placket ? choice.buttons : "none", Boolean(choice.opening));
+}
+
+/**
+ * How far above the skirt's hem its stripes start, past the hem's own turn:
+ * 8 units, 1.5 cm, on top of each stripe's distance in — see `STRIPES`.
+ */
+export const HEM_STRIPE_INSET = 8;
+
+/**
+ * The stripes a choice wears on the dress itself, each with the piece of its
+ * region it lies on — the sailor collar's own are drawn on the collar: round
+ * each sleeve's hem and the skirt's, when its collar's stripes go so far; or
+ * along a boat neckline, with no collar on. The same count everywhere.
+ */
+export function dressStripes(choice: GarmentChoice): { top: Inlay[]; bottom: Inlay[] } {
+  const st = choice.stripes;
+  if (!st) return NO_STRIPES;
+  /* cut once per everything they are laid on, and kept: the stage asks on every render */
+  const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
+  const skirt = choice.skirt ?? DEFAULT_SKIRT;
+  const key = [
+    cutOf(choice.neckline),
+    sleeve.type,
+    sleeve.length,
+    sleeve.cuff ?? "",
+    skirtKey(skirt),
+    choice.buttons ?? "",
+    choice.opening ?? "",
+    choice.inside ? `${choice.inside.y}|${choice.inside.x}` : "",
+    st.count,
+    st.at,
+    st.on,
+  ].join("|");
+  let laid = stripesCut.get(key);
+  if (!laid) stripesCut.set(key, (laid = layStripes(choice, st)));
+  return laid;
+}
+
+const NO_STRIPES = { top: [], bottom: [] };
+const stripesCut = new Map<string, { top: Inlay[]; bottom: Inlay[] }>();
+
+function layStripes(choice: GarmentChoice, st: NonNullable<GarmentChoice["stripes"]>): { top: Inlay[]; bottom: Inlay[] } {
+  const bands = STRIPES[st.count];
+  const b = drawnBodice(choice);
+  /* along a boat neckline's own edge, a collar's are its own; then the sleeves' hems and the skirt's, as far as they go */
+  const top = [
+    ...(st.on === "neckline" ? necklineStripes(b, bands) : []),
+    ...(st.at !== "neck" ? sleeveStripes(b, choice.sleeve ?? DEFAULT_SLEEVE, bands) : []),
+  ];
+  const bottom = st.at === "hem" ? skirtStripes(choice, bands) : [];
+  return { top, bottom };
+}
+
+/** The direction from a hem onto its cloth: square to the hem, toward the piece. */
+function intoCloth(hem: Pt[], piece: string): Pt {
+  const rings = ringsOf(piece);
+  const [a, b] = [hem[0], hem[hem.length - 1]];
+  const n: Pt = [-(b[1] - a[1]), b[0] - a[0]];
+  const l = Math.hypot(n[0], n[1]) || 1;
+  const unitN: Pt = [n[0] / l, n[1] / l];
+  const mid = hem[Math.floor(hem.length / 2)];
+  for (const d of [3, 6, 10]) {
+    if (insideRings(rings, [mid[0] + unitN[0] * d, mid[1] + unitN[1] * d])) return unitN;
+    if (insideRings(rings, [mid[0] - unitN[0] * d, mid[1] - unitN[1] * d])) return [-unitN[0], -unitN[1]];
+  }
+  return [0, -1];
+}
+
+/** How much of a band the stripes on it leave clear above them, in canvas units. */
+const BAND_STRIPE_ROOM = 1.5;
+
+/**
+ * Round each sleeve's hem: a sewn or loose sleeve's own hem — or, where a
+ * band or a cuff is sewn on below it, the band's foot — on the sleeve and
+ * the band; a kimono's or a dolman's, cut on with the
+ * bodice, on the bodice; and a cap's along its free edge round the arm, which
+ * is all the hem a cap has. Nothing sleeveless.
+ */
+function sleeveStripes(b: Bodice, sleeve: SleeveChoice, bands: readonly StripeBand[]): Inlay[] {
+  const k = b.sleeveCut;
+  if (!k || sleeve.length === "sleeveless") return [];
+  const hem = k.raw?.hem ?? k.left.cutOn?.hem;
+  const out: Inlay[] = [];
+  for (const side of [0, 1]) {
+    const flip = (pts: Pt[]): Pt[] => (side === 0 ? pts : pts.map(([x, y]) => [600 - x, y] as Pt));
+    const cloth = k.sleeves[side] ?? k.body;
+    const pieces = [cloth, k.bands[side]]
+      .filter((d): d is string => Boolean(d))
+      .map((d) => ({ index: b.pieces.indexOf(d), d }))
+      .filter((p) => p.index >= 0);
+    if (hem) {
+      const at = flip(hem);
+      const into = intoCloth(at, cloth);
+      /*
+        A band or cuff hangs below the sleeve's hem, sewn to it there: the
+        sleeve's end is then the band's foot, and the stripes go round the band.
+      */
+      const band = k.bands[side];
+      const mid = at[Math.floor(at.length / 2)];
+      const up = band ? ringsOf(band).flat().map(([x, y]) => (x - mid[0]) * into[0] + (y - mid[1]) * into[1]) : [0];
+      const below = Math.max(0, -Math.min(...up));
+      /* on a band narrower than the stripes, they are drawn finer to fit it: a stripe across its seam would be lost */
+      const tall = Math.max(...up) + below;
+      const last = bands[bands.length - 1][1];
+      const fit = band && tall < last + BAND_STRIPE_ROOM ? (tall - BAND_STRIPE_ROOM) / last : 1;
+      const onBand = fit < 1 ? bands.map(([n, f]) => [n * fit, f * fit] as const) : bands;
+      out.push(...hemStripes(at.map(([x, y]) => [x - into[0] * below, y - into[1] * below] as Pt), into, onBand, pieces));
+    } else if (sleeve.type === "cap") {
+      /* along the cap's edge from its end on the arm, stopping at the underarm */
+      out.push(...edgeStripes(flip(k.left.armhole), side === 0 ? [262, 214] : [338, 214], bands, pieces, { ends: [16, 0] }));
+    }
+  }
+  return out;
+}
+
+/**
+ * Along a boat neckline and on across the shoulders either side of it, to
+ * the armholes: the bodice's whole top edge, on the bodice and its placket —
+ * a sleeve set in at the armhole lies over their ends.
+ */
+function necklineStripes(b: Bodice, bands: readonly StripeBand[]): Inlay[] {
+  const neck = b.cut.neck;
+  const parts = b.cut.parts;
+  if (!neck || !parts) return [];
+  const arc = Array.from({ length: 49 }, (_, i) => {
+    const t = Math.PI - (i / 48) * Math.PI;
+    return [neck.center + neck.half * Math.cos(t), neck.seamY + neck.dip * Math.sin(t)] as Pt;
+  });
+  const edge = [...reverse(parts.strapLeft), ...arc.slice(1, -1), ...reverse(parts.strapRight)];
+  const sleeves = new Set([...(b.sleeveCut?.sleeves ?? []), ...(b.sleeveCut?.bands ?? [])]);
+  const pieces = b.pieces.map((d, index) => ({ index, d })).filter(({ d }) => !sleeves.has(d));
+  return edgeStripes(edge, [300, 262], bands, pieces, { ends: [20, 20] });
+}
+
+/** Round the skirt's hem, on the skirt and on any placket down it to the hem. */
+function skirtStripes(choice: GarmentChoice, bands: readonly StripeBand[]): Inlay[] {
+  const skirt = choice.skirt ?? DEFAULT_SKIRT;
+  const placket = buttonedToHem(choice);
+  const sk = skirtFor(choice.inside, skirt, placket);
+  const pieces = [{ index: 0, d: sk.path }, ...(placket ? [{ index: 1, d: skirtPlacketFor(choice.inside, skirt).path }] : [])];
+  return hemStripes(sk.hem, [0, -1], bands, pieces, HEM_STRIPE_INSET);
 }
