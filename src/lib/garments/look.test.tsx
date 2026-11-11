@@ -3,9 +3,9 @@ import { describe, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
-import { fabrics } from "@/lib/data/fabrics";
+import { contrastingPlain, fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
-import { collarOf, collarsFitting, cutFrom, setBelt, setButtons, setCollar, setFront, setLeg, setNeckline, setSleeve, skirtOf, wear } from "@/lib/garments/outfit";
+import { collarOf, collarsFitting, cutFrom, setBelt, setButtons, setCollar, setFront, setLeg, setNeckline, setSleeve, setTrim, skirtOf, wear } from "@/lib/garments/outfit";
 import { ROBE_TYPES, SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
 import { collars, collarsForGarment } from "@/lib/data/collars";
@@ -3973,6 +3973,80 @@ describe("round 14 fixes, light and dark", () => {
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
     writeFileSync(
       `.preview/wardrobe/round14-fixes-${theme}.html`,
+      '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
+    );
+  }, 60_000);
+});
+
+describe("round 15, the sailor collar, light and dark", () => {
+  /*
+    The sailor collar on the V-neck dress, rebuilt from real ones: two panels
+    on the shoulders, narrowing to the V's point. Plain and print, without and
+    with its trim — the stripes in the plain cloth that stands out most, as
+    the app gives them — and once sleeveless, so the shoulder shows. The whole
+    figure, 2×, close, and its shoulder corner and point at 8×.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Look = { label: string; cloth: string; trim: boolean; sleeveless?: boolean };
+  const PLAIN = "fb-apricot-linen";
+  const PRINT = "fb-midnight-floral";
+  const LOOKS: Look[] = [
+    { label: "plain", cloth: PLAIN, trim: false },
+    { label: "plain, trim", cloth: PLAIN, trim: true },
+    { label: "print", cloth: PRINT, trim: false },
+    { label: "print, trim", cloth: PRINT, trim: true },
+    { label: "sleeveless, print, trim", cloth: PRINT, trim: true, sleeveless: true },
+  ];
+  const stage = (look: Look, zoom: number, focus: [number, number]) => {
+    const cloth = f(look.cloth);
+    const stripes = contrastingPlain(cloth);
+    const g = garmentById("female-dress")!;
+    let worn = wear([], cutFrom(g, cloth.id));
+    worn = setNeckline(worn, g.id, "female-v-neckline");
+    if (look.sleeveless) worn = setSleeve(worn, g.id, { type: "set-in", length: "sleeveless" });
+    worn = setCollar(worn, g.id, "female-sailor-collar");
+    if (look.trim) worn = setTrim(worn, g.id, "stripes", stripes.id);
+    const regions: Partial<Record<FabricRegionId, Fabric>> = { collar: cloth, ...(look.trim ? { trim: stripes } : {}) };
+    for (const r of g.fabricRegions) regions[r] = cloth;
+    const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={{ [g.id]: regions }} zoom={zoom} focus={focus} />;
+  };
+  const ROWS: [zoom: number, focus: [number, number], what: string][] = [
+    [1, [300, 500], "whole figure"],
+    [2, [300, 300], "on the figure"],
+    [4, [300, 222], "close"],
+    [8, [216, 205], "shoulder corner"],
+    [8, [297, 238], "the point"],
+  ];
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/round15-sailor-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const html = renderToStaticMarkup(
+      <>
+        {ROWS.map(([zoom, focus, what], r) => (
+          <div key={r} className="row">
+            {LOOKS.map((look) => {
+              const caption = `dress · v · sailor, ${look.label} · ${what}, ${zoom}×`;
+              return (
+                <figure key={caption}>
+                  {stage(look, zoom, focus)}
+                  <figcaption>{caption}</figcaption>
+                </figure>
+              );
+            })}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+      `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(
+      `.preview/wardrobe/round15-sailor-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
   }, 60_000);

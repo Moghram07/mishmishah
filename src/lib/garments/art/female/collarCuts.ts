@@ -8,10 +8,10 @@
   follows its garment's own neckline, and a sailor collar is sewn down a V.
 */
 import { flatCollar, outline, run, type Neckline, type Pt } from "../../fit.ts";
-import { blade, mirror, nudge, seam, type Point } from "../../collar.ts";
+import { blade, mirror, nudge, type Point } from "../../collar.ts";
 import type { NecklineId } from "../../necklines.ts";
 import { bodiceFor } from "./dressCut.ts";
-import { COLLAR_AXIS, opening, standFront } from "./yoke.ts";
+import { opening, standFront } from "./yoke.ts";
 
 /* ------------------------------------------------------------- Peter Pan */
 
@@ -63,54 +63,204 @@ export function peterPan(cut?: NecklineId): { left: Pt[]; right: Pt[]; free: [Pt
 /* ---------------------------------------------------------------- sailor */
 
 /**
- * The sailor's panel as it is cut for a high neckline, where its panels part
- * in a V over the garment's own cloth: from the collar point, out across the
- * shoulder, down the outer edge, in to the point at mid-chest, and straight
- * back up the V. Reflected about her own axis — her neck is three units left
- * of the canvas centre — so the two land on the two collar points.
+ * A sailor collar's size — see `sailorPanel`.
+ *
+ * `reach` is how far out along the shoulder each panel lies, as a share of
+ * the shoulder from the collar point to the shoulder point: 0.88, so its
+ * outer corner stops about 1.6 cm short of the shoulder point. `bow` is how
+ * far the outer edge's curve is drawn out from the straight line between that
+ * corner and the V's point, in canvas units — the handles' offset, 13 — which
+ * stands the edge itself 1.5 cm off that line at its fullest: a panel this
+ * broad hangs, and its free edge curves. At 1 cm the edge read as a straight
+ * line, and the panel as a band laid along the V.
  */
-export const SAILOR_PANEL: Point[] = [opening(10).left, [224, 214], [238, 260], [COLLAR_AXIS(290), 290]];
-/** How each edge bows, positive to the left of travel: the outside carries the cloth's weight; the V is cut straight. */
-export const SAILOR_BOWS = [3, 5, 4, 0];
+export const SAILOR = { reach: 0.88, bow: 13 };
 
 /**
- * How far above the V's point the panel's lower outer corner sits, on a V:
- * the front of the panel tapering in to the point, as the panel cut for a
- * high neckline does to its own.
+ * The trim: two thin stripes parallel to the outer edge, as their inner and
+ * outer distance in from it, in canvas units — each 3.4 units (0.65 cm) wide,
+ * the first 4.5 (0.85 cm) in from the edge, 2.8 (0.5 cm) between them.
  */
-const SAILOR_TAPER = 14;
+export const SAILOR_STRIPES: readonly (readonly [from: number, to: number])[] = [
+  [4.5, 7.9],
+  [10.7, 14.1],
+];
+
+/** One panel of a sailor collar, as cut: what is drawn, and the points it is drawn through. */
+export interface SailorPanel {
+  /** The panel, closed: along the shoulder, down its outer edge, up the V. */
+  path: string;
+  /** Its free edge: the outer edge, from its corner on the shoulder down to the V's point. */
+  free: string;
+  /** The corner where its outer edge leaves the shoulder line. */
+  corner: Pt;
+  /** The panel's outline as points, for measuring: shoulder, outer edge, V. */
+  ring: Pt[];
+  /** The outer edge as points, corner to point. */
+  outer: Pt[];
+  /** Its trim, each stripe closed — see `SAILOR_STRIPES`. */
+  stripes: string[];
+  /** Each stripe's two long edges as points, from the shoulder down: the one nearer the free edge first. */
+  stripeEdges: [Pt[], Pt[]][];
+}
+
+const add = (a: Pt, b: Pt, k = 1): Pt => [a[0] + b[0] * k, a[1] + b[1] * k];
+const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
+const len = (a: Pt) => Math.hypot(a[0], a[1]);
+const unit = (a: Pt): Pt => [a[0] / len(a), a[1] / len(a)];
+const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+const xy1 = ([x, y]: Pt) => `${Math.round(x * 10) / 10} ${Math.round(y * 10) / 10}`;
+
+/** A cubic's point at `t`. */
+const cubicAt = ([a, b, c, d]: Pt[], t: number): Pt => {
+  const s = 1 - t;
+  const k = [s * s * s, 3 * s * s * t, 3 * s * t * t, t * t * t];
+  return [k[0] * a[0] + k[1] * b[0] + k[2] * c[0] + k[3] * d[0], k[0] * a[1] + k[1] * b[1] + k[2] * c[1] + k[3] * d[1]];
+};
+/** A cubic's direction at `t`. */
+const cubicSlope = ([a, b, c, d]: Pt[], t: number): Pt => {
+  const s = 1 - t;
+  const k = [3 * s * s, 6 * s * t, 3 * t * t];
+  return [
+    k[0] * (b[0] - a[0]) + k[1] * (c[0] - b[0]) + k[2] * (d[0] - c[0]),
+    k[0] * (b[1] - a[1]) + k[1] * (c[1] - b[1]) + k[2] * (d[1] - c[1]),
+  ];
+};
+
+/** Whether a point lies inside a closed ring of points — the even-odd rule. */
+export const insideRing = (ring: Pt[], [x, y]: Pt): boolean => {
+  let hit = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+  }
+  return hit;
+};
+
+/** A run of points cut to the part of it inside a ring, its two ends found on the ring. */
+function within(ring: Pt[], pts: Pt[]): Pt[] {
+  const inn = pts.map((p) => insideRing(ring, p));
+  const first = inn.indexOf(true);
+  const last = inn.lastIndexOf(true);
+  if (first < 0) return [];
+  /* from a point inside toward one outside, halving the gap until it closes */
+  const crossing = (a: Pt, b: Pt): Pt => {
+    let [lo, hi] = [0, 1];
+    for (let k = 0; k < 20; k++) {
+      const m = (lo + hi) / 2;
+      if (insideRing(ring, lerp(a, b, m))) lo = m;
+      else hi = m;
+    }
+    return lerp(a, b, lo);
+  };
+  const out = pts.slice(first, last + 1);
+  if (first > 0) out.unshift(crossing(pts[first], pts[first - 1]));
+  if (last < pts.length - 1) out.push(crossing(pts[last], pts[last + 1]));
+  return out;
+}
+
+/** A polyline with points put in along it, no two more than `step` apart. */
+const fine = (pts: Pt[], step = 1.5): Pt[] => [
+  pts[0],
+  ...pts.slice(1).flatMap((b, i) => {
+    const a = pts[i];
+    const n = Math.max(1, Math.ceil(len(sub(b, a)) / step));
+    return Array.from({ length: n }, (_, k) => lerp(a, b, (k + 1) / n));
+  }),
+];
 
 /**
- * A sailor collar sewn down a V — the neckline it belongs on. Each panel's
- * inner edge **is** the V's edge, from the collar point down to the V's
- * point, where the two panels meet; out across the shoulder it keeps its own
- * width, and its outer edge comes in to that point. The right panel is the
- * left reflected about the V's own axis. `null` for a cut that is not a V.
+ * One panel of a sailor collar, sewn down one edge of a V.
+ *
+ * It lies **on the shoulder**: its top edge is the garment's own shoulder line,
+ * from the collar point out to `SAILOR.reach` of the way to the shoulder
+ * point, where the collar turns over to the back. Its inner edge **is** the
+ * V's edge, the whole way up to the collar point, so nothing of it stands
+ * beside the neck. And from its corner on the shoulder its outer edge comes
+ * down and in to the V's point in one bowed curve, so the panel is broadest
+ * over the shoulder and narrows smoothly to nothing at the point, where the
+ * two panels meet.
+ *
+ * It used to hang below the shoulder line from the collar point, its top
+ * edge running down the chest to a corner short of the shoulder: two flat
+ * triangles on the chest, a bib, with the back of the collar standing up at
+ * either side of the neck.
  */
-export function sailorOnV(cut?: NecklineId): { left: string; right: string; free: string; axis: number } | null {
-  const vee = cut ? bodiceFor(cut).cut.vee : undefined;
-  if (!vee) return null;
-  const { apex, left } = vee;
-  const corner = left[left.length - 1];
-  const [, shoulder, lowerDefault] = SAILOR_PANEL;
-  const lower: Point = [lowerDefault[0], apex[1] - SAILOR_TAPER];
-  /* out and round, as the high-neck panel's edges bow; then up the V's own edge, which is a seam */
-  const outer = seam([corner, shoulder, lower, apex], SAILOR_BOWS);
-  const panel = `${outer} ${run(left)} Z`;
-  return { left: panel, right: mirror(panel, apex[0]), free: outer, axis: apex[0] };
+function sailorPanel(apex: Pt, edge: Pt[], shoulder: Pt[]): SailorPanel {
+  const collarPoint = shoulder[0];
+  /* along the shoulder to its share of the way out */
+  const seg = shoulder.slice(1).map((b, i) => len(sub(b, shoulder[i])));
+  let left = SAILOR.reach * seg.reduce((a, b) => a + b, 0);
+  let i = 0;
+  while (i < seg.length - 1 && left > seg[i]) left -= seg[i++];
+  const corner = lerp(shoulder[i], shoulder[i + 1], Math.min(1, left / seg[i]));
+  const along = [...shoulder.slice(0, i + 1), corner];
+
+  /* the outer edge: one cubic from the corner to the point, bowed out away from the collar point */
+  const chord = sub(apex, corner);
+  const u = unit(chord);
+  let out: Pt = [u[1], -u[0]];
+  if (out[0] * (collarPoint[0] - corner[0]) + out[1] * (collarPoint[1] - corner[1]) > 0) out = [-out[0], -out[1]];
+  const third = len(chord) / 3;
+  const curve: Pt[] = [
+    corner,
+    add(add(corner, u, third), out, SAILOR.bow),
+    add(add(apex, u, -third), out, SAILOR.bow * 0.6),
+    apex,
+  ];
+  const outer = Array.from({ length: 61 }, (_, k) => cubicAt(curve, k / 60));
+
+  const ring = [...fine(along), ...outer.slice(1), ...fine(edge).slice(1, -1)];
+  const free = `M${xy1(corner)} C${xy1(curve[1])} ${xy1(curve[2])} ${xy1(apex)}`;
+  const path = `M${xy1(collarPoint)} ${run(along)} C${xy1(curve[1])} ${xy1(curve[2])} ${xy1(apex)} ${run(edge)} Z`;
+
+  /*
+    The trim: the outer edge, carried on past both its ends, moved in by each
+    stripe's two distances and cut to the panel — so each stripe runs on over
+    the shoulder at the top and is cut off by the V near the point, as a braid
+    is, sewn on before the collar is set.
+  */
+  const inward = (dir: Pt): Pt => {
+    const n: Pt = [dir[1], -dir[0]];
+    return n[0] * out[0] + n[1] * out[1] > 0 ? [-n[0], -n[1]] : n;
+  };
+  const offsetBy = (d: number): Pt[] => {
+    const start = unit(cubicSlope(curve, 0));
+    const end = unit(cubicSlope(curve, 1));
+    const pts: Pt[] = [];
+    for (let k = 12; k >= 1; k--) pts.push(add(add(corner, start, -2.5 * k), inward(start), d));
+    for (let k = 0; k <= 120; k++) {
+      const t = k / 120;
+      pts.push(add(cubicAt(curve, t), inward(unit(cubicSlope(curve, t))), d));
+    }
+    for (let k = 1; k <= 12; k++) pts.push(add(add(apex, end, 2.5 * k), inward(end), d));
+    return within(ring, pts);
+  };
+  const stripeEdges = SAILOR_STRIPES.map(([a, b]) => [offsetBy(a), offsetBy(b)] as [Pt[], Pt[]]).filter(
+    ([a, b]) => a.length > 1 && b.length > 1
+  );
+  const stripes = stripeEdges.map(([a, b]) => {
+    const pts = [...a, ...[...b].reverse()];
+    return `M${xy1(pts[0])} ${pts.slice(1).map((p) => `L${xy1(p)}`).join(" ")} Z`;
+  });
+
+  return { path, free, corner, ring, outer, stripes, stripeEdges };
 }
 
 /**
- * A sailor collar's two panels on whatever it is sewn to, and its free edge
- * (the left panel's): down a V on a V, and parting in a V over a high
- * neckline everywhere else — every edge of it then free but the few units at
- * the neck point.
+ * A sailor collar's two panels, sewn down the V — the only cut it is offered
+ * on. Each is cut from its own side: her neck is three units left of her
+ * shoulders' centre, so one panel mirrored would stop short of the other
+ * shoulder and leave a sliver of the dress above it.
  */
-export function sailor(cut?: NecklineId): { left: string; right: string; free: string; axis?: number } {
-  const v = sailorOnV(cut);
-  if (v) return v;
-  const left = blade(SAILOR_PANEL, SAILOR_BOWS);
-  return { left, right: mirror(left, COLLAR_AXIS), free: seam([...SAILOR_PANEL, SAILOR_PANEL[0]], SAILOR_BOWS) };
+export function sailor(): { left: SailorPanel; right: SailorPanel } {
+  const { vee, parts } = bodiceFor("v").cut;
+  return {
+    /* the V's left edge runs from its point up to the collar point, the shoulder from there out */
+    left: sailorPanel(vee!.apex, vee!.left, parts!.strapLeft),
+    right: sailorPanel(vee!.apex, [...vee!.right].reverse(), [...parts!.strapRight].reverse()),
+  };
 }
 
 /* ------------------------------------------------------------------- bow */
@@ -207,9 +357,9 @@ export const COLLAR_CLOTH: Record<string, (cut?: NecklineId) => string[]> = {
     const { left, right } = peterPan(cut);
     return [outline(left), outline(right)];
   },
-  "female-sailor-collar-front": (cut) => {
-    const { left, right } = sailor(cut);
-    return [left, right];
+  "female-sailor-collar-front": () => {
+    const { left, right } = sailor();
+    return [left.path, right.path];
   },
   "female-bow-collar-front": (cut) => {
     const b = bow(cut);

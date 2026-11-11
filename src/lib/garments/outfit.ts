@@ -15,6 +15,7 @@ import type {
   SkirtChoice,
   SleeveChoice,
   StitchId,
+  TrimId,
   WornGarment,
 } from "@/types";
 import {
@@ -346,15 +347,51 @@ export function effectiveCoverage(
   return sleeve && !oneSided ? sleeveCoverage(garment.gender, cut, sleeve) : cut;
 }
 
-/** Every area of a worn garment that takes its own fabric, collar included. */
+/** Every area of a worn garment that takes its own fabric, collar included — and its collar's trim, when it has one on. */
 export function regionsOf(
   garment: Garment,
   worn: WornGarment
 ): FabricRegionId[] {
   const collar = collarOf(worn);
-  return collar
-    ? [...garment.fabricRegions, ...collar.fabricRegions]
-    : garment.fabricRegions;
+  if (!collar) return garment.fabricRegions;
+  const trimmed: FabricRegionId[] = trimOf(worn) === "stripes" ? ["trim"] : [];
+  return [...garment.fabricRegions, ...collar.fabricRegions, ...trimmed];
+}
+
+/**
+ * The trim on a worn garment's collar, resolved against what the collar
+ * offers — see `Collar.trims`. `undefined` when it has no collar, or one that
+ * takes no trim.
+ */
+export function trimOf(worn: WornGarment): TrimId | undefined {
+  const trims = collarOf(worn)?.trims;
+  if (!trims) return undefined;
+  const wanted = worn.trim ?? trims.default;
+  return trims.offered.includes(wanted) ? wanted : trims.default;
+}
+
+/**
+ * Trim a worn garment's collar, or take its trim off.
+ *
+ * Stripes arrive in `fabricId` — a second cloth, or they would not show at
+ * all on a collar cut from the same one — unless they already have a cloth of
+ * their own. Taken off, their cloth and thread go with them.
+ */
+export function setTrim(worn: WornGarment[], garmentId: string, trim: TrimId, fabricId?: string): WornGarment[] {
+  return worn.map((w) => {
+    if (w.garmentId !== garmentId) return w;
+    if (trim === "none") return { ...unTrimmed(w), trim };
+    const cloth = w.fabrics.trim ?? fabricId ?? w.fabrics.collar ?? Object.values(w.fabrics)[0];
+    return { ...w, trim, fabrics: { ...w.fabrics, ...(cloth ? { trim: cloth } : {}) } };
+  });
+}
+
+/** A worn garment with no trim on its collar, and no cloth or thread kept for one. */
+function unTrimmed(w: WornGarment): WornGarment {
+  const { trim: _cloth, ...fabrics } = w.fabrics;
+  const { trim: _thread, ...stitch } = w.stitch;
+  const { trim: _off, ...rest } = w;
+  return { ...rest, fabrics, stitch };
 }
 
 /**
@@ -372,22 +409,26 @@ export function setCollar(
   return worn.map((w) => {
     if (w.garmentId !== garmentId) return w;
     if (!collarId) {
-      const { collar: _dropped, ...fabrics } = w.fabrics;
-      const { collar: _thread, ...stitch } = w.stitch;
+      /* its trim comes off with it */
+      const bare = unTrimmed(w);
+      const { collar: _dropped, ...fabrics } = bare.fabrics;
+      const { collar: _thread, ...stitch } = bare.stitch;
       /*
         Spread rather than rebuilt. Written out longhand this dropped every
         other field on the way past — which was invisible while `collarId` was
         the only one, and would have silently un-cut the neckline the moment a
         second arrived.
       */
-      const { collarId: _off, ...rest } = w;
+      const { collarId: _off, ...rest } = bare;
       return { ...rest, fabrics, stitch };
     }
-    const [fallback] = Object.values(w.fabrics);
+    /* a collar that takes no trim drops the one the last collar had */
+    const kept = collarById(collarId)?.trims ? w : unTrimmed(w);
+    const [fallback] = Object.values(kept.fabrics);
     return {
-      ...w,
+      ...kept,
       collarId,
-      fabrics: { ...w.fabrics, collar: w.fabrics.collar ?? fallback },
+      fabrics: { ...kept.fabrics, collar: kept.fabrics.collar ?? fallback },
     };
   });
 }

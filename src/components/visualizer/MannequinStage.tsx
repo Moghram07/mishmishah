@@ -207,7 +207,9 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
       const collarCut = (drawing: GarmentArt | undefined) => drawing?.cut?.(choiceOf(w))?.collar ?? drawing?.regions.collar;
       const front = collar ? collarCut(collarArt(collar.asset.front)) : undefined;
       const behind = collar?.asset.behindBody ? collarCut(collarArt(collar.asset.behindBody)) : undefined;
-      return { garment, index, cutFor, front, behind };
+      /* its trim, when it has one on — a sailor collar's stripes, in their own cloth */
+      const trim = collar ? collarArt(collar.asset.front)?.regions.trim : undefined;
+      return { garment, index, cutFor, front, behind, trim };
     });
 
     /*
@@ -503,7 +505,7 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
             opening there is, which is what stops the picker from lying about
             what you are looking at.
           */
-          const { cutFor, front: collarFront } = layers[index];
+          const { cutFor, front: collarFront, trim: collarTrim } = layers[index];
           return (
             <g key={garment.id}>
               {inside(
@@ -525,6 +527,8 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
                   collarFront,
                   `${garment.id}-${collar!.id}`
                 )}
+              {/* its trim, sewn on it — drawn only with a cloth of its own, which it has only when it is on */}
+              {collarTrim && cut("trim", collarTrim, `${garment.id}-${collar!.id}-trim`)}
               {/* a band collar's placket buttons from just under the band; otherwise the opening's, or the garment's own */}
               {(collar?.build.fall === "none" ? art.bandTrim : undefined) ??
                 (collar && art.openingTrim?.[collar.opening]) ??

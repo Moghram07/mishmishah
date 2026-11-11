@@ -1,4 +1,4 @@
-import type { BodyType, Collar, Garment } from "@/types";
+import type { BodyType, Collar, Garment, Localized, TrimId } from "@/types";
 
 /**
  * The collars.
@@ -159,17 +159,29 @@ export const collars: Collar[] = [
     /* a dress only: neither top has a V to sew it down */
     compatibleWith: ["dress"],
     /**
-     * Full shoulder width — the largest footprint here, by a distance. Three
-     * centimetres narrower than it was, because the shoulder is: the figure's
-     * trapezius was re-solved and the seam it reaches for came in with it.
+     * Across both shoulders — the widest footprint here, by a distance: each
+     * panel lies on its shoulder out to within 1.6 cm of the shoulder point,
+     * and narrows to the V's point at mid-chest, 14 cm below the collar
+     * points. Drawn, 34.2 × 13.9 cm. It was 27.9 × 21.1: two panels hanging
+     * below the shoulder line from the collar points, down the chest.
      */
-    footprint: { width: [27, 33], drop: [20, 27] },
-    /** Open at the front: the panels part in a V over the garment's own neckline. */
-    build: { stand: 6, fall: "flat", front: "open" },
-    opening: "high",
-    /** On a dress, only on a V-neck, where it belongs: its panels sewn down the V and meeting at its point. */
-    cuts: ["v"],
-    asset: { front: "female-sailor-collar-front", behindBody: "female-sailor-collar-behind" },
+    footprint: { width: [32, 37], drop: [12.5, 16] },
+    /**
+     * Flat, and open at the front: two panels that lie on the shoulders and
+     * part in a V. No stand, so nothing behind the neck either — the back of
+     * a sailor collar lies flat on the back, and the band that used to stand
+     * behind the neck showed beside it as two stubs above the shoulder line.
+     */
+    build: { stand: 0, fall: "flat", front: "open" },
+    /**
+     * Sewn down a V, and only a V, where it belongs: its panels down the V's
+     * edges, meeting at its point. A dress's V-neck is the one cut that
+     * offers it; neither top has a V.
+     */
+    opening: "v",
+    asset: { front: "female-sailor-collar-front" },
+    /** Plain, or two thin stripes along its outer edge in a second cloth. */
+    trims: { offered: ["none", "stripes"], default: "none" },
   },
   {
     id: "female-ruffled-collar",
@@ -393,3 +405,13 @@ export const defaultCollar = (garment: Garment): Collar | undefined => {
     ? collar
     : undefined;
 };
+
+/** A collar's trims, by name. */
+const TRIM_NAMES: Record<TrimId, Localized> = {
+  none: { en: "None", ar: "بدون" },
+  stripes: { en: "Two stripes", ar: "شريطان" },
+};
+
+/** The trims a collar can be finished with, by name — none for a collar that takes none. */
+export const trimsFor = (collar: Collar | undefined): { id: TrimId; name: Localized }[] =>
+  collar?.trims ? collar.trims.offered.map((id) => ({ id, name: TRIM_NAMES[id] })) : [];

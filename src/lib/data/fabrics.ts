@@ -1,5 +1,6 @@
 import type { Fabric } from "@/types";
-import { assertMotifScale } from "@/lib/fabrics/patterns";
+import { assertMotifScale, fabricAverageColor } from "@/lib/fabrics/patterns";
+import { hexToLab } from "@/lib/color/cielab";
 
 /**
  * The fabric catalogue — plain data, no code.
@@ -182,6 +183,32 @@ export const fabrics: Fabric[] = [
     texture: "smooth",
     categories: ["fashion"],
   },
+  /* plain white: most thobes, and the stripes on a navy sailor collar */
+  {
+    id: "fb-white",
+    name: { en: "White", ar: "أبيض" },
+    source: "procedural",
+    motif: "solid",
+    palette: { base: "#FAFAF8", accent: "#E6E5E1", highlight: "#FFFFFF" },
+    color: "#FAFAF8",
+    material: "cotton",
+    colorName: { en: "White", ar: "أبيض" },
+    texture: "smooth",
+    categories: ["fashion"],
+  },
+  /* white with a little warmth in it — softer than pure white, not as yellow as cream */
+  {
+    id: "fb-off-white",
+    name: { en: "Off-white", ar: "أوفوايت" },
+    source: "procedural",
+    motif: "solid",
+    palette: { base: "#F2EDE3", accent: "#DDD5C6", highlight: "#FAF7F1" },
+    color: "#F2EDE3",
+    material: "cotton",
+    colorName: { en: "Off-white", ar: "أوفوايت" },
+    texture: "smooth",
+    categories: ["fashion"],
+  },
 ];
 
 // Fails loudly in dev if scale ever stops being motif-owned. See the note on
@@ -189,3 +216,17 @@ export const fabrics: Fabric[] = [
 assertMotifScale(fabrics);
 
 export const fabricById = (id: string) => fabrics.find((f) => f.id === id);
+
+/**
+ * The plain cloth a collar's stripes arrive in, so they show from the first —
+ * stripes cut from the collar's own cloth would not show at all: of the plain
+ * samples, the one furthest from it in lightness (CIE L*, of each average
+ * colour). On dark cloth that is the white, as on a navy sailor collar; on
+ * light cloth, the black crepe.
+ */
+export function contrastingPlain(fabric: Fabric): Fabric {
+  const lightness = (f: Fabric) => hexToLab(fabricAverageColor(f))[0];
+  const own = lightness(fabric);
+  const plain = fabrics.filter((f) => f.source === "procedural" && f.motif === "solid" && f.id !== fabric.id);
+  return plain.reduce((best, f) => (Math.abs(lightness(f) - own) > Math.abs(lightness(best) - own) ? f : best));
+}

@@ -347,6 +347,13 @@ export type ButtonsId = "none" | "waist" | "hem";
 export type BeltId = "none" | "self" | "brown" | "black";
 
 /**
+ * A collar's trim: none, or two thin stripes along its outer edge in a
+ * second cloth — a sailor collar's braid. The stripes take a fabric of their
+ * own, as the `trim` region.
+ */
+export type TrimId = "none" | "stripes";
+
+/**
  * The drawing a body or a garment is rendered from.
  *
  * Front-on, and only front-on. This carried optional `back` and `side` slots
@@ -457,7 +464,8 @@ export type FabricRegionId =
   | "lapel"
   | "sleeve"
   | "cuff"
-  | "waistband";
+  | "waistband"
+  | "trim";
 
 /**
  * A garment, as a plain data record.
@@ -674,6 +682,12 @@ export interface Collar {
    * never passes behind anything reads as a decal, however well it is shaded.
    */
   asset: { front: string; behindBody?: string };
+  /**
+   * The trims it can be finished with — a sailor collar's stripes along its
+   * outer edge, in a cloth of their own — and the one it arrives with.
+   * Absent, it takes none.
+   */
+  trims?: { offered: TrimId[]; default: TrimId };
 }
 
 /**
@@ -764,6 +778,11 @@ export interface WornGarment {
    * takes a fabric through exactly the machinery every other region does.
    */
   collarId?: string;
+  /**
+   * Its collar's trim, if the collar takes one and one was chosen — see
+   * `TrimId`. The stripes' cloth lives in the maps below under `trim`.
+   */
+  trim?: TrimId;
   /** Fabric id per region. */
   fabrics: Partial<Record<FabricRegionId, string>>;
   stitch: Partial<Record<FabricRegionId, StitchId>>;

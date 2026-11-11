@@ -31,6 +31,16 @@ export const collarTone = (): ReactNode => <rect x="0" y="0" width="600" height=
  */
 const EDGE_LIGHT = { width: 2.4, opacity: 0.085, soft: 1.4 } as const;
 
+/**
+ * The shadow under a flat collar's free edge — a Peter Pan's, a sailor's:
+ * stronger and a little wider than a soft outline's (0.3, 3.2 wide, blurred
+ * 2), still no line. Two layers of cloth lying flat on the dress have no
+ * other edge, and at the soft outline's strength a same-cloth collar all but
+ * disappeared into a busy print at whole-figure size. Thrown from the free
+ * edges only: a seam throws none.
+ */
+export const FLAT_COLLAR_SHADOW = { opacity: 0.55, width: 5.2, soft: 2.8 } as const;
+
 /** The blur the edge light is drawn through. Put once in the collar's `defs`. */
 export const edgeLightDefs = (uid: Uid): ReactNode => (
   <filter id={uid("edge-light")} filterUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000" colorInterpolationFilters="sRGB">

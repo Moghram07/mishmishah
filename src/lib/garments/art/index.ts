@@ -29,10 +29,7 @@ import {
   notchedCollarBehind,
   notchedCollarFront,
 } from "./female/collars/notched";
-import {
-  sailorCollarBehind,
-  sailorCollarFront,
-} from "./female/collars/sailor";
+import { sailorCollarFront } from "./female/collars/sailor";
 import {
   ruffledCollarBehind,
   ruffledCollarFront,
@@ -322,7 +319,6 @@ const COLLAR_ART: Record<string, GarmentArt> = {
   "female-notched-collar-front": notchedCollarFront,
   "female-notched-collar-behind": notchedCollarBehind,
   "female-sailor-collar-front": sailorCollarFront,
-  "female-sailor-collar-behind": sailorCollarBehind,
   "female-ruffled-collar-front": ruffledCollarFront,
   "female-ruffled-collar-behind": ruffledCollarBehind,
   "female-turtleneck-collar-front": turtleneckCollarFront,

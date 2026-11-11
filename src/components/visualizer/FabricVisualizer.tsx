@@ -20,7 +20,7 @@ import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { productTemplates } from "@/lib/data/products";
 import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
-import { collarsForGarment } from "@/lib/data/collars";
+import { collarsForGarment, trimsFor } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { legsFor } from "@/lib/data/legs";
@@ -35,7 +35,7 @@ import {
   sleeveTypeName,
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
-import { fabrics, fabricById } from "@/lib/data/fabrics";
+import { contrastingPlain, fabrics, fabricById } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE, skinToneById, skinTones } from "@/lib/data/skinTones";
 import { regionLabel } from "@/lib/data/fabricRegions";
 import { BODY_CANVAS, bodyTypes } from "@/lib/mannequin/bodies";
@@ -62,6 +62,8 @@ import {
   buttonsOf,
   setBelt,
   beltOf,
+  setTrim,
+  trimOf,
   setSleeve,
   skirtOf,
   sleeveOf,
@@ -98,6 +100,7 @@ import type {
   SkirtChoice,
   LegId,
   SleeveChoice,
+  TrimId,
 } from "@/types";
 
 /**
@@ -355,6 +358,22 @@ export function FabricVisualizer() {
    * one a cut is not itself without — the Collared cut arrives wearing a shirt
    * collar, which then stays swappable like any other.
    */
+  /**
+   * Trim the collar being cut, or take its trim off. The stripes arrive in
+   * the plain cloth that stands out most against the collar's — see
+   * `contrastingPlain` — and the picker moves to them, since their cloth is
+   * what you almost always want next.
+   */
+  const chooseTrim = (trim: TrimId) => {
+    if (!cuttingGarment || !cuttingEntry) return;
+    const collarCloth = fabricById(cuttingEntry.worn.fabrics.collar ?? "") ?? fabric;
+    setOutfit((o) => ({
+      ...o,
+      worn: setTrim(o.worn, cuttingGarment.id, trim, contrastingPlain(collarCloth).id),
+    }));
+    setCutting({ garmentId: cuttingGarment.id, region: trim === "stripes" ? "trim" : "collar" });
+  };
+
   const chooseNeckline = (necklineId: string) => {
     if (!cuttingGarment) return;
     setOutfit((o) => ({
@@ -756,6 +775,9 @@ export function FabricVisualizer() {
       ? collarsFitting(cuttingGarment, cuttingEntry.worn)
       : [];
   const wornCollarId = cuttingEntry && collarOf(cuttingEntry.worn)?.id;
+  /* its collar's trim, for a collar that takes one: a sailor's stripes */
+  const trimChoices = cuttingEntry ? trimsFor(collarOf(cuttingEntry.worn)) : [];
+  const wornTrim = cuttingEntry ? trimOf(cuttingEntry.worn) : undefined;
 
   const regions =
     subject === "wardrobe"
@@ -1529,6 +1551,37 @@ export function FabricVisualizer() {
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   {t("viz.collarHint")}
                 </p>
+              </div>
+            )}
+
+            {/* a collar's trim, for one that takes it: none, or two stripes along its edge in a cloth of their own */}
+            {subject === "wardrobe" && !onBottom && trimChoices.length > 1 && wornTrim && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("viz.trim")}
+                </p>
+                <div
+                  role="group"
+                  aria-label={t("viz.trim")}
+                  className="grid gap-1 rounded-full bg-muted/60 p-1"
+                  style={{ gridTemplateColumns: `repeat(${trimChoices.length}, minmax(0, 1fr))` }}
+                >
+                  {trimChoices.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => chooseTrim(c.id)}
+                      aria-pressed={wornTrim === c.id}
+                      className={cn(
+                        "btn-focus rounded-full px-2 py-2 text-xs font-semibold transition-all",
+                        wornTrim === c.id
+                          ? "bg-card text-foreground shadow-soft"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {pick(c.name)}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

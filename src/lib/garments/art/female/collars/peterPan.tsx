@@ -1,4 +1,4 @@
-import { collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
+import { FLAT_COLLAR_SHADOW, collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
 import { line, outline, type Pt } from "@/lib/garments/fit";
 import { peterPan } from "../collarCuts";
 import type { NecklineId } from "@/lib/garments/necklines";
@@ -26,15 +26,6 @@ import type { GarmentArt, RegionArt } from "../../index";
  * The two halves are separate paths — overlapping subpaths of one path cancel
  * where they cross, and a mirrored one winds the other way.
  */
-
-/**
- * The shadow under a Peter Pan's free edge: stronger and a little wider than
- * a soft outline's (0.3, 3.2 wide, blurred 2), still no line. Two layers of
- * cloth lying flat on the dress have no other edge, and at the soft outline's
- * strength the collar all but disappeared into a busy print at whole-figure
- * size.
- */
-const PETER_PAN_SHADOW = { opacity: 0.55, width: 5.2, soft: 2.8 };
 
 /**
  * The collar on one opening, from its two halves — see `peterPan` in
@@ -84,7 +75,8 @@ function collarOn(halves: { left: Pt[]; right: Pt[]; free: [Pt[], Pt[]] }): Regi
         <path d={FREE_EDGE_RIGHT} />
       </>
     ),
-    shadow: PETER_PAN_SHADOW,
+    /* stronger than a soft outline's, so it reads on a busy print — see `FLAT_COLLAR_SHADOW` */
+    shadow: FLAT_COLLAR_SHADOW,
   };
 }
 

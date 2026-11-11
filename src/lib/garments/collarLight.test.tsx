@@ -150,6 +150,32 @@ describe("a soft outline", () => {
       }
     }
   });
+
+  /* Round 15: the sailor's plain panels, too, so they show on a busy print without trim. */
+  it("under a sailor collar, as strong as under a Peter Pan, from its free edges only", () => {
+    const shadowOf = (markup: string) => {
+      const gs = [...markup.matchAll(/<g filter="url\(#t-contact\)" fill="none" stroke="#5c4a3e" stroke-opacity="([\d.]+)" stroke-width="([\d.]+)"[^>]*>(.*?)<\/g>/g)];
+      return gs.length ? { opacity: Number(gs[0][1]), width: Number(gs[0][2]), edges: gs.flatMap((g) => pathOf(g[3])) } : null;
+    };
+    const pp = shadowOf(draw(collarArt("female-peter-pan-collar-front")!.regions.collar!))!;
+    const sailorArt = collarArt("female-sailor-collar-front")!;
+    const sailor = (sailorArt.cut?.({ neckline: "v" })?.collar ?? sailorArt.regions.collar)!;
+    const markup = draw(sailor);
+    const s = shadowOf(markup)!;
+    expect(s.opacity).toBe(pp.opacity);
+    expect(s.width).toBe(pp.width);
+    expect(markup).not.toContain(`stroke="currentColor"`);
+    expect(markup).not.toContain(`stroke="#241e19"`);
+    // two open edges, each from its shoulder corner down to the V's point
+    expect(s.edges).toHaveLength(2);
+    for (const d of s.edges) {
+      expect(d).not.toMatch(/Z\s*$/);
+      const p = points(d);
+      expect(p[0][1]).toBeLessThan(205);
+      expect(Math.abs(p.at(-1)![0] - 297.05)).toBeLessThan(0.2);
+      expect(Math.abs(p.at(-1)![1] - 252)).toBeLessThan(0.2);
+    }
+  });
 });
 
 describe("her mandarin", () => {

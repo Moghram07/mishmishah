@@ -168,10 +168,12 @@ describe("a collar that stands has to wrap the neck", () => {
   });
 
   it("gives a flat collar no stand and no band behind", () => {
+    // It lies on the garment round the opening it is sewn to — a round neck,
+    // or a sailor's V — never at the base of the neck, where a band stands.
     for (const collar of collars) {
       if (collar.build.stand > 0) continue;
       expect(collar.asset.behindBody, collar.id).toBeUndefined();
-      expect(collar.opening, collar.id).toBe("round");
+      for (const opening of collar.cuts ?? [collar.opening]) expect(["round", "v"], collar.id).toContain(opening);
     }
   });
 

@@ -101,6 +101,7 @@ export const dictionaries = {
     "viz.noCollar": "Plain",
     "viz.collarHint":
       "The collar takes its own fabric — cut it from a second cloth.",
+    "viz.trim": "Collar trim",
     "viz.controls": "Finishing",
     "viz.rotation": "Pattern direction",
     "viz.grainStraight": "Vertical",
@@ -258,6 +259,7 @@ export const dictionaries = {
     "viz.collar": "الياقة",
     "viz.noCollar": "بدون ياقة",
     "viz.collarHint": "يمكن تفصيل الياقة من قماش مختلف.",
+    "viz.trim": "شريط الياقة",
     "viz.controls": "اللمسات النهائية",
     "viz.rotation": "اتجاه النقشة",
     "viz.grainStraight": "طولي",
