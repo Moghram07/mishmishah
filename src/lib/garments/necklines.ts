@@ -1302,6 +1302,15 @@ export const NECKLINE_OPENING: Record<NecklineId, OpeningShape | null> = {
  * Which sleeves survive each cut. The off-shoulder's are its own: its band is
  * the top of them, at every length it is offered in.
  */
+/**
+ * The cuts whose neckline edge is drafted for a part to be laid along it —
+ * stripes now — with no collar on: the boat, whose wide straight line is
+ * where a sailor dress without a collar wears its braid. The offer and the
+ * drawing read this one list, so a cut cannot be offered stripes it has no
+ * edge for.
+ */
+export const NECKLINE_EDGED: readonly NecklineId[] = ["boat"];
+
 export const NECKLINE_SLEEVES: Record<
   NecklineId,
   "both" | "none" | "left" | "right" | "band"
@@ -1335,7 +1344,12 @@ export const NECKLINE_SLEEVES: Record<
  *
  * `upperArm` goes with it wherever there is no sleeve on **both** sides. The
  * asymmetrical cut keeps its left sleeve and still bares the zone, because the
- * right arm has none and a zone is claimed or it is not.
+ * right arm has none and a zone is claimed or it is not. And where a cut's
+ * opening reaches into the zone, for the same reason as the shoulder: the
+ * square's two lower corners lie inside its inner edge, so a sleeve that
+ * claims the upper arm — elbow length and longer — erased the chest in those
+ * corners, and nothing painted it back. `check:garments` found it, wearing
+ * every pair of options together.
  */
 export const NECKLINE_BARES: Record<NecklineId, ("shoulderCap" | "upperArm")[]> = {
   round: [],
@@ -1354,7 +1368,8 @@ export const NECKLINE_BARES: Record<NecklineId, ("shoulderCap" | "upperArm")[]> 
   scoop: ["shoulderCap"],
   boat: ["shoulderCap"],
   v: [],
-  square: ["shoulderCap"],
+  /* its lower corners reach into the upper arm's zone — see above */
+  square: ["shoulderCap", "upperArm"],
   high: [],
   keyhole: [],
   cowl: ["shoulderCap"],

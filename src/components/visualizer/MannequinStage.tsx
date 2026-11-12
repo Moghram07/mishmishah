@@ -10,18 +10,10 @@ import { profileFor } from "@/lib/mannequin/profile";
 import { skinTint } from "@/lib/mannequin/skinTint";
 import { collarArt, garmentArt, type GarmentArt, type GarmentChoice } from "@/lib/garments/art";
 import {
+  choiceOf as wornChoice,
   collarOf,
-  stripesAtOf,
-  stripesOf,
-  stripesOn,
-  tieOf,
   coveredZones,
   frontOf,
-  necklineOf,
-  skirtOf,
-  legOf,
-  buttonsOf,
-  beltOf,
   sleeveOf,
   stack,
   visibleStack,
@@ -156,27 +148,9 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
           ? visible.slice(index + 1).find((v) => garmentArt(v.garment.asset.front)?.cover)
           : undefined;
       const underTop = over ? garmentArt(over.garment.asset.front)!.cover!(choiceOf(over.worn)) : undefined;
-      const skirt = skirtOf(w);
-      const front = frontOf(w);
-      const leg = legOf(w);
-      const buttons = buttonsOf(w);
-      const belt = beltOf(w);
-      /* its stripes and its tie — see `GarmentChoice` */
-      const count = stripesOf(w);
-      const on = stripesOn(w);
-      const stripes = count && count !== "none" && on ? { count, at: stripesAtOf(w) ?? "neck", on } : undefined;
-      const tie = tieOf(w);
+      /* what it is cut to on its own — see `wornChoice` — and what it is worn under */
       return {
-        neckline: necklineOf(w)?.cut,
-        opening: collarOf(w)?.opening,
-        sleeve: sleeveOf(w),
-        ...(skirt ? { skirt } : {}),
-        ...(front ? { front } : {}),
-        ...(leg ? { leg } : {}),
-        ...(buttons ? { buttons } : {}),
-        ...(belt ? { belt } : {}),
-        ...(stripes ? { stripes } : {}),
-        ...(tie && tie !== "none" ? { tie } : {}),
+        ...wornChoice(w),
         ...(inside ? { inside } : {}),
         ...(underTop ? { underTop } : {}),
       };

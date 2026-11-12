@@ -48,6 +48,7 @@ import {
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
 import { sleeveCoverage } from "@/lib/garments/sleeves";
+import type { GarmentChoice } from "@/lib/garments/art";
 import { cutAs, skirtCoverage } from "@/lib/garments/skirts";
 
 /**
@@ -411,6 +412,37 @@ export function tieOf(worn: WornGarment): TieId | undefined {
   if (!ties) return undefined;
   const wanted = worn.tie ?? ties.default;
   return ties.offered.includes(wanted) ? wanted : ties.default;
+}
+
+/**
+ * Everything a worn garment is cut to on its own — its neckline, collar
+ * opening, sleeves, skirt, front, legs, buttons, belt, stripes and tie — as
+ * its drawing takes it. What it is worn under is the stage's to add: a
+ * jacket's hem it comes out from under, a top's it is tucked under.
+ */
+export function choiceOf(w: WornGarment): GarmentChoice {
+  const skirt = skirtOf(w);
+  const front = frontOf(w);
+  const leg = legOf(w);
+  const buttons = buttonsOf(w);
+  const belt = beltOf(w);
+  /* its stripes and its tie — see `GarmentChoice` */
+  const count = stripesOf(w);
+  const on = stripesOn(w);
+  const stripes = count && count !== "none" && on ? { count, at: stripesAtOf(w) ?? "neck", on } : undefined;
+  const tie = tieOf(w);
+  return {
+    neckline: necklineOf(w)?.cut,
+    opening: collarOf(w)?.opening,
+    sleeve: sleeveOf(w),
+    ...(skirt ? { skirt } : {}),
+    ...(front ? { front } : {}),
+    ...(leg ? { leg } : {}),
+    ...(buttons ? { buttons } : {}),
+    ...(belt ? { belt } : {}),
+    ...(stripes ? { stripes } : {}),
+    ...(tie && tie !== "none" ? { tie } : {}),
+  };
 }
 
 /**

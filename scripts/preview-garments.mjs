@@ -23,6 +23,7 @@ import { dirname, join } from "node:path";
 import { decodePngAlpha, encodePng } from "./mannequin/png.mjs";
 import { measureBody } from "./measure-body.mjs";
 import { duration, planQuick } from "./quick-check.mjs";
+import { checkEdges } from "./check-edges.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(ROOT, ".preview");
@@ -67,7 +68,7 @@ const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
 const { HEM_AT, WAIST_DROP, besideArms, fallOf, fallRun, hangs, shapeLengths, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
 const { legWiden } = await import(src("src/lib/garments/legs.ts"));
-const { BELT_ABOVE_SEAM, BELT_WIDTH, BUTTONED_CUTS, BUTTON_LAST } = await import(src("src/lib/garments/closures.ts"));
+const { BELT_ABOVE_SEAM, BELT_WIDTH, BUTTONED_CUTS, BUTTON_LAST, buttonsOn } = await import(src("src/lib/garments/closures.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES } = await import(
@@ -486,7 +487,8 @@ const CUT_MODULES = Object.fromEntries(
  * drafted in a plain module for the same reason, and read from it here, on
  * every cut they are sewn to.
  */
-const { COLLAR_CLOTH } = await import(src("src/lib/garments/art/female/collarCuts.ts"));
+const COLLAR_CUTS = await import(src("src/lib/garments/art/female/collarCuts.ts"));
+const { COLLAR_CLOTH } = COLLAR_CUTS;
 
 /** Every neckline cut a drawing offers, or `[]` for one with none to choose. */
 const cutsOf = (assetId) => Object.keys(CUT_MODULES[assetId]?.NECKLINE_PATHS ?? {});
@@ -4047,6 +4049,67 @@ const timed = (section, check) => {
 };
 
 failures += timed("wardrobe", () => checkWardrobes() + checkCollarWardrobes());
+
+/*
+  The edges parts are laid along, each checked once rather than once per
+  outfit — see `check-edges.mjs`. On every garment cut with edges: the dress.
+*/
+failures += timed("edges", () => {
+  let failed = 0;
+  for (const garment of garmentsFor("female")) {
+    const mod = CUT_MODULES[garment.asset.front];
+    if (!mod?.dressEdges) continue;
+    const body = bodies.female;
+    const cover = bodyCoverage(body);
+    const kinds = SLEEVE_KINDS;
+    const offered = garment.sleeves.types.filter((t) => kinds[t].bodies.includes("female"));
+    const sews = (collar, opening) => opening !== null && opening !== undefined && (collar.cuts ?? [collar.opening]).includes(opening);
+    /* what the panel offers, by the panel's own rules — see `sleeveTypesFor` and `sleeveLengthsFor` in data/sleeves.ts */
+    const world = {
+      cuts: cutsOf(garment.asset.front),
+      sleevesOn: (cut) => {
+        const mode = NECKLINE_SLEEVES[cut];
+        if (mode === "band") return SLEEVE_KIT.BAND_CUT_TYPES.filter((t) => kinds[t].bodies.includes("female") && (kinds[t].construction === "band" || offered.includes(t)));
+        if (mode === "both") return offered.filter((t) => kinds[t].construction !== "band");
+        if (mode === "none") return [];
+        return offered.filter((t) => kinds[t].construction === "set-in" && !SLEEVE_KIT.SHOULDER_TYPES.includes(t));
+      },
+      lengthsOf: (type, cut) =>
+        garment.sleeves.lengths
+          ? [...garment.sleeves.lengths]
+          : kinds[type].construction === "band" || NECKLINE_SLEEVES[cut] === "band"
+            ? [...kinds[type].lengths]
+            : ["sleeveless", ...kinds[type].lengths],
+      cuffsOn: (sleeve) => SLEEVE_KIT.cuffsOffered(garment.sleeves.cuffs, sleeve),
+      skirt: { shapes: garment.skirt.shapes, waists: garment.skirt.waists, lengthsOf: (shape) => shapeLengths(shape, garment.skirt.lengths) },
+      buttonsOn: (cut, shape) => buttonsOn(cut, garment.buttons?.offered ?? ["none"], shape),
+      openingsOn: (cut) => [...new Set(collarsForGarment(garment).filter((c) => sews(c, NECKLINE_OPENING[cut])).map((c) => c.opening))],
+    };
+    /* a whole outfit's holes, as `checkCut` counts them */
+    const holes = (choice) => {
+      const cut = choice.neckline;
+      const sleeve = choice.sleeve ?? null;
+      const skirt = choice.skirt ?? null;
+      const cloth = rasterize(artPaths(garment.asset.front, body, { cut, sleeve, skirt, opening: choice.opening ?? null }));
+      const bares = NECKLINE_BARES[cut] ?? [];
+      const cutCoverage = ownCoverage(garment, skirt ?? undefined).filter((z) => !bares.includes(z));
+      const sleeved = garment.sleeves && NECKLINE_SLEEVES[cut] === "both";
+      const coverage = sleeved ? sleeveCoverage("female", cutCoverage, sleeve ?? garment.sleeves.default) : cutCoverage;
+      const { holes: n, at } = countHoles(cover, erasedZones(body, coverage), [cloth], null);
+      return { n: n > 40 ? n : 0, at };
+    };
+    failed += checkEdges({
+      garment,
+      mod,
+      collarMod: COLLAR_CUTS,
+      offer: { sleeves: garment.sleeves, skirt: garment.skirt, buttons: garment.buttons?.offered ?? ["none"] },
+      world,
+      holes,
+    });
+  }
+  console.log("");
+  return failed;
+});
 
 for (const bodyKey of Object.keys(bodies)) {
   const body = bodies[bodyKey];

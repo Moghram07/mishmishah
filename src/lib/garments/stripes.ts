@@ -2,13 +2,13 @@
   Plain `.ts`, relative and extensioned, and no JSX — so `scripts/
   preview-garments.mjs` could import it as it does the cuts.
 
-  Stripes of braid sewn flat along an edge: a sailor collar's outer edge, a
-  sleeve's hem, a skirt's hem, a boat neckline. Each is a band between two
-  guide lines laid at its two distances in from the edge, cut to the piece of
-  cloth it lies on — so a stripe runs right to that piece's own edges, and
-  never past them.
+  Stripes of braid sewn flat along an edge — any edge: see `edges.ts`. Each
+  is a band between two guide lines laid at its two distances in from the
+  edge, cut to the piece of cloth it lies on — so a stripe runs right to that
+  piece's own edges, and never past them.
 */
 import type { Pt } from "./fit.ts";
+import type { Edge, EdgePiece } from "./edges.ts";
 import type { StripesId } from "@/types";
 
 /** A stripe's near and far side, as distances in from the edge it runs along, in canvas units. */
@@ -53,6 +53,18 @@ const xy = ([x, y]: Pt) => `${Math.round(x * 100) / 100} ${Math.round(y * 100) /
  * here writes: M, L, H, V, C, Q and Z.
  */
 export function ringsOf(d: string): Pt[][] {
+  const known = parsed.get(d);
+  if (known) return known;
+  const rings = parse(d);
+  parsed.set(d, rings);
+  /* the oldest out once there are enough: pieces are asked for again and again, but not without end */
+  if (parsed.size > 512) parsed.delete(parsed.keys().next().value!);
+  return rings;
+}
+/** Outlines already read, by path — shared: never change one. */
+const parsed = new Map<string, Pt[][]>();
+
+function parse(d: string): Pt[][] {
   const tokens = d.match(/[A-Za-z]|-?\d*\.?\d+(?:e-?\d+)?/g) ?? [];
   const rings: Pt[][] = [];
   let ring: Pt[] = [];
@@ -123,17 +135,48 @@ export function ringsOf(d: string): Pt[][] {
   return rings;
 }
 
-/** Whether a point lies inside a set of rings — the even-odd rule, as SVG fills a path by default here. */
+/**
+ * Whether a point lies inside a set of rings — the even-odd rule, as SVG
+ * fills a path by default here.
+ *
+ * Asked of every point of every stripe's guide, against outlines of a
+ * thousand points and more, so each set of rings is indexed once by the
+ * unit-high rows its sides pass through: a point is tested only against the
+ * sides that reach its row — every side that could cross it, and the same
+ * test, so the same answer.
+ */
 export function insideRings(rings: Pt[][], [x, y]: Pt): boolean {
+  const { top, rows } = rowsOf(rings);
+  const row = rows[Math.floor(y) - top];
+  if (!row) return false;
   let hit = false;
+  for (let k = 0; k < row.length; k += 4) {
+    const [xi, yi, xj, yj] = [row[k], row[k + 1], row[k + 2], row[k + 3]];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+  }
+  return hit;
+}
+
+/** Each side of a set of rings, filed under every unit-high row it passes through. */
+const indexed = new WeakMap<Pt[][], { top: number; rows: number[][] }>();
+function rowsOf(rings: Pt[][]): { top: number; rows: number[][] } {
+  const known = indexed.get(rings);
+  if (known) return known;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const ring of rings) for (const [, py] of ring) [top, bottom] = [Math.min(top, py), Math.max(bottom, py)];
+  top = Math.floor(top);
+  const rows: number[][] = Array.from({ length: Number.isFinite(top) ? Math.floor(bottom) - top + 1 : 0 }, () => []);
   for (const ring of rings) {
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
       const [xi, yi] = ring[i];
       const [xj, yj] = ring[j];
-      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+      for (let r = Math.floor(Math.min(yi, yj)); r <= Math.floor(Math.max(yi, yj)); r++) rows[r - top].push(xi, yi, xj, yj);
     }
   }
-  return hit;
+  const index = { top, rows };
+  indexed.set(rings, index);
+  return index;
 }
 
 /** A polyline with points put in along it, no two more than `step` apart. */
@@ -240,65 +283,83 @@ export interface Inlay {
   d: string;
 }
 
+/** How much of a band or cuff the stripes on it leave clear above them, in canvas units. */
+export const BAND_STRIPE_ROOM = 1.5;
+
 /**
- * Stripes along a hem: the hem moved in onto the cloth by each stripe's
- * distances, carried on past its ends and cut to each piece given — a sleeve
- * and its cuff, or a skirt and its placket. A moved copy rather than an
- * offset, so a waving or stepped hem keeps its shape in every stripe and no
- * stripe folds over itself.
+ * The stripes as they fit an edge: on a band narrower than they are deep —
+ * an edge with `room` — drawn finer to fit it, since a stripe across its seam
+ * would be lost; elsewhere as they are.
+ */
+export function fittedBands(edge: Edge, bands: readonly StripeBand[]): readonly StripeBand[] {
+  if (edge.room === undefined || bands.length === 0) return bands;
+  const last = bands[bands.length - 1][1];
+  if (edge.room >= last + BAND_STRIPE_ROOM) return bands;
+  const fit = (edge.room - BAND_STRIPE_ROOM) / last;
+  return bands.map(([n, f]) => [n * fit, f * fit] as const);
+}
+
+/**
+ * The guide line `d` units in from an edge, before it is cut to the cloth,
+ * and the index of its middle — where every stripe is laid from.
  *
- * `into` points from the hem onto the cloth; `inset` sets every stripe that
- * much further in, past the hem's own turn.
+ * A `level` edge — a hem — is moved straight in, carried on 24 units past
+ * each end: a moved copy rather than an offset, so a waving or stepped hem
+ * keeps its shape in every stripe and no stripe folds over itself. A `follow`
+ * edge — one that turns — is smoothed through its corners, carried on past
+ * its ends, and offset square to itself onto the cloth.
  */
-export function hemStripes(
-  hem: Pt[],
-  into: Pt,
-  bands: readonly StripeBand[],
-  pieces: { index: number; d: string }[],
-  inset = 0
-): Inlay[] {
-  if (hem.length < 2 || bands.length === 0) return [];
-  const guide = extend(densify(hem, 1), 24);
-  const keep = Math.floor(guide.length / 2);
-  return lay(
-    bands.map(([a, b]) => [translate(guide, into, a + inset), translate(guide, into, b + inset)] as [Pt[], Pt[]]),
-    pieces,
-    keep
-  );
+export function guideAt(edge: Edge, d: number): { pts: Pt[]; keep: number } {
+  const lay = edge.lay;
+  if (lay.by === "own") {
+    const pts = lay.inFrom(d);
+    return { pts, keep: Math.floor(pts.length / 2) };
+  }
+  if (lay.by === "level") {
+    const guide = extend(densify(edge.line, 1), 24);
+    return { pts: translate(guide, lay.into, d + lay.inset), keep: Math.floor(guide.length / 2) };
+  }
+  const guide = extend(smooth(edge.line, lay.round), lay.ends[0], 1, lay.ends[1]);
+  return { pts: offset(guide, d, lay.toward), keep: Math.floor(guide.length / 2) };
+}
+
+/** One stripe's two long sides as laid on one piece, near side first. */
+export interface StripeSides {
+  piece: number;
+  /** Which stripe of the count, from the edge in. */
+  stripe: number;
+  near: Pt[];
+  far: Pt[];
 }
 
 /**
- * Stripes along an edge that turns — a boat neckline and the shoulders
- * either side of it, a cap sleeve's edge round the arm: the edge smoothed
- * through its corners, then offset onto the cloth, `toward` a point on it.
+ * Each stripe's two sides along an edge, cut to each piece it lies on — a
+ * sleeve and its cuff, a skirt and its placket, a collar panel — where both
+ * lie on it. An `own` edge's are cut already.
  */
-export function edgeStripes(
-  edge: Pt[],
-  toward: Pt,
-  bands: readonly StripeBand[],
-  pieces: { index: number; d: string }[],
-  { round = 12, ends = [16, 16] }: { round?: number; ends?: [head: number, tail: number] } = {}
-): Inlay[] {
-  if (edge.length < 2 || bands.length === 0) return [];
-  const guide = extend(smooth(edge, round), ends[0], 1, ends[1]);
-  const keep = Math.floor(guide.length / 2);
-  return lay(
-    bands.map(([a, b]) => [offset(guide, a, toward), offset(guide, b, toward)] as [Pt[], Pt[]]),
-    pieces,
-    keep
-  );
-}
-
-/** Each stripe's two sides cut to each piece, and closed into a stripe where both lie on it. */
-function lay(sides: [Pt[], Pt[]][], pieces: { index: number; d: string }[], keep: number): Inlay[] {
-  const out: Inlay[] = [];
-  for (const { index, d } of pieces) {
+export function stripeSides(edge: Edge, bands: readonly StripeBand[]): StripeSides[] {
+  if (edge.line.length < 2 || bands.length === 0) return [];
+  const fitted = fittedBands(edge, bands);
+  const guides = fitted.map(([a, b]) => [guideAt(edge, a), guideAt(edge, b)] as const);
+  const out: StripeSides[] = [];
+  if (edge.lay.by === "own") {
+    const piece = edge.pieces[0]?.index ?? 0;
+    guides.forEach(([a, b], stripe) => {
+      if (a.pts.length > 1 && b.pts.length > 1) out.push({ piece, stripe, near: a.pts, far: b.pts });
+    });
+    return out;
+  }
+  for (const { index, d } of edge.pieces as EdgePiece[]) {
     const rings = ringsOf(d);
-    for (const [near, far] of sides) {
-      const a = clipTo(rings, near, keep);
-      const b = clipTo(rings, far, keep);
-      if (a.length > 1 && b.length > 1) out.push({ piece: index, d: band(a, b) });
-    }
+    guides.forEach(([a, b], stripe) => {
+      const near = clipTo(rings, a.pts, a.keep);
+      const far = clipTo(rings, b.pts, b.keep);
+      if (near.length > 1 && far.length > 1) out.push({ piece: index, stripe, near, far });
+    });
   }
   return out;
 }
+
+/** Stripes along any edge, closed, each on the piece of its region it lies on — see `stripeSides`. */
+export const stripesAlong = (edge: Edge, bands: readonly StripeBand[]): Inlay[] =>
+  stripeSides(edge, bands).map(({ piece, near, far }) => ({ piece, d: band(near, far) }));

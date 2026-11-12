@@ -1,0 +1,99 @@
+/*
+  Plain `.ts`, relative and extensioned, and no JSX — so `scripts/
+  preview-garments.mjs` can import it as it does the cuts.
+
+  The edges of a garment that parts are sewn along, and the points parts are
+  placed at. An edge is a line, the side of it its cloth is on, and the
+  pieces of cloth it lies on: a sleeve's hem and its cuff, a skirt's hem and
+  its placket, a neckline and the bodice, a collar's free edge and the
+  collar. A part laid along one — stripes now; bands and trims later — needs
+  nothing else, so it goes on any edge a garment has, and is checked once per
+  edge rather than once per outfit: see `check:garments`, which builds every
+  edge over only the choices that shape it, and then proves, on whole outfits,
+  that nothing else does.
+*/
+import type { Pt } from "./fit.ts";
+import type { GarmentChoice } from "./art/index.ts";
+
+/** What an edge is: a neckline's, a sleeve's hem, a skirt's hem, or a collar's free edge. */
+export type EdgeKind = "neckline" | "sleeve" | "hem" | "collar";
+
+/**
+ * How a part is laid in from an edge, `d` units onto the cloth.
+ *
+ * - `level`: the edge moved straight in along `into`, every point alike — a
+ *   hem, whose waves and steps each stripe then keeps, `inset` further in
+ *   past the hem's own turn.
+ * - `follow`: the edge smoothed through its corners (`round` units) and
+ *   offset square to itself `toward` a point on the cloth — a neckline and
+ *   the shoulders either side of it, a cap sleeve's edge round the arm;
+ *   carried on past its two ends by `ends`.
+ * - `own`: the edge lays its own, already cut to its piece — a sailor
+ *   collar's outer edge, offset along its own curve.
+ */
+export type EdgeLay =
+  | { by: "level"; into: Pt; inset: number }
+  | { by: "follow"; toward: Pt; round: number; ends: readonly [head: number, tail: number] }
+  | { by: "own"; inFrom: (d: number) => Pt[] };
+
+/** A piece of cloth an edge lies on: its index in its region's `shape`, and its outline. */
+export interface EdgePiece {
+  index: number;
+  d: string;
+}
+
+export interface Edge {
+  kind: EdgeKind;
+  /** Which of a pair: 0 the left (her right), 1 the other — a sleeve's, a collar panel's. Absent for an edge across the middle. */
+  side?: 0 | 1;
+  /** The edge, as points along it. */
+  line: Pt[];
+  /** The cloth it lies on: what is laid along it is cut to these. */
+  pieces: EdgePiece[];
+  lay: EdgeLay;
+  /**
+   * How much cloth there is in from it, where that is less than a part may
+   * want — a band or a cuff, a few centimetres deep: what is laid there is
+   * fitted finer to it. Absent where the cloth runs on.
+   */
+  room?: number;
+}
+
+/** What a point is: the centre front of the neck — a V's point, a round neck's lowest. */
+export type PointKind = "neck";
+
+/** A place a part is set at — a tie, later a brooch: where, and which way is down from it. */
+export interface EdgePoint {
+  kind: PointKind;
+  at: Pt;
+  down: Pt;
+}
+
+/**
+ * What shapes one kind of edge, declared — so it can be checked once per
+ * shape it takes rather than once per outfit.
+ *
+ * `shapedBy` names, from a whole choice, everything the edge depends on, as a
+ * plain value; `choiceFor` turns that back into a choice with nothing else
+ * set; `every` lists each value the garment offers. `check:garments` builds
+ * every edge from `every` and holds each to the edge rules, then proves the
+ * declaration on whole outfits: an edge built from a whole choice must be the
+ * edge built from `choiceFor(shapedBy(choice))`. If anything undeclared
+ * shapes it, that fails.
+ */
+export interface EdgeSpec<K = unknown> {
+  kind: EdgeKind;
+  shapedBy: (choice: GarmentChoice) => K;
+  choiceFor: (key: K) => GarmentChoice;
+  every: (offer: EdgeOffer) => K[];
+}
+
+/** What a garment offers, from its record — what `EdgeSpec.every` lists edges over. */
+export interface EdgeOffer {
+  sleeves: { types: readonly string[]; cuffs?: readonly string[] };
+  skirt: { shapes: readonly string[]; lengths: readonly string[]; waists: readonly string[] };
+  buttons: readonly string[];
+}
+
+/** The same points mirrored about the column at `x`. */
+export const mirrorX = (pts: Pt[], x: number): Pt[] => pts.map(([px, py]) => [2 * x - px, py] as Pt);

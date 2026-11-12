@@ -10,8 +10,9 @@
 import { flatCollar, outline, run, type Neckline, type Pt } from "../../fit.ts";
 import { blade, mirror, nudge, type Point } from "../../collar.ts";
 import type { NecklineId } from "../../necklines.ts";
-import { band, type StripeBand } from "../../stripes.ts";
-import { bodiceFor } from "./dressCut.ts";
+import { stripeSides, stripesAlong, type StripeBand } from "../../stripes.ts";
+import type { Edge } from "../../edges.ts";
+import { bodiceFor, dressPoints } from "./dressCut.ts";
 import { opening, standFront } from "./yoke.ts";
 
 /* ------------------------------------------------------------- Peter Pan */
@@ -233,15 +234,33 @@ function sailorPanel(apex: Pt, edge: Pt[], shoulder: Pt[]): SailorPanel {
 }
 
 /**
+ * A panel's free edge, as an edge parts are laid along — see `edges.ts`: its
+ * outer edge, on the panel, each stripe's side laid in along the panel's own
+ * curve and cut to it (`inFrom`). `side` is the panel's index in the
+ * collar's drawing: 0 the left, 1 the right.
+ */
+export const panelEdge = (panel: SailorPanel, side: 0 | 1): Edge => ({
+  kind: "collar",
+  side,
+  line: panel.outer,
+  pieces: [{ index: side, d: panel.path }],
+  lay: { by: "own", inFrom: panel.inFrom },
+});
+
+/** The sailor collar's two free edges, left then right — what its stripes are laid along. */
+export function sailorEdges(): Edge[] {
+  const { left, right } = sailor();
+  return [panelEdge(left, 0), panelEdge(right, 1)];
+}
+
+/**
  * A panel's stripes, closed, each with its two long sides as points from the
  * shoulder down, the side nearer the free edge first — see `STRIPES` in
  * `stripes.ts` for how many and how far in.
  */
 export function panelStripes(panel: SailorPanel, bands: readonly StripeBand[]): { paths: string[]; edges: [Pt[], Pt[]][] } {
-  const edges = bands
-    .map(([a, b]) => [panel.inFrom(a), panel.inFrom(b)] as [Pt[], Pt[]])
-    .filter(([a, b]) => a.length > 1 && b.length > 1);
-  return { paths: edges.map(([a, b]) => band(a, b)), edges };
+  const edge = panelEdge(panel, 0);
+  return { paths: stripesAlong(edge, bands).map((s) => s.d), edges: stripeSides(edge, bands).map((s) => [s.near, s.far]) };
 }
 
 /**
@@ -261,8 +280,8 @@ export function sailor(): { left: SailorPanel; right: SailorPanel } {
 
 /* ------------------------------------------------------------- the tie */
 
-/** Where a sailor collar's tie is knotted: the point of the V, where its two panels meet. */
-export const TIE_AT: Pt = bodiceFor("v").cut.vee!.apex;
+/** Where a sailor collar's tie is knotted: the V's neck point, where its two panels meet — see `dressPoints`. */
+export const TIE_AT: Pt = dressPoints({ neckline: "v" }).find((p) => p.kind === "neck")!.at;
 
 /** Corners and bows relative to the V's point, laid on it — see `blade` for the bows' sign. */
 const atV = (corners: Pt[]): Point[] => corners.map(([x, y]) => [TIE_AT[0] + x, TIE_AT[1] + y] as const);

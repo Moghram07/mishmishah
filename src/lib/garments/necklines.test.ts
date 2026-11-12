@@ -17,6 +17,8 @@ import { collarsFitting, cutFrom, necklineOf, setCollar, setNeckline, setSleeve,
 import { effectiveCoverage } from "./outfit";
 import { TIP_LEFT, NECK_BASE_SEAM } from "./art/female/yoke";
 import type { SleeveChoice } from "@/types";
+import { bodies } from "@/lib/mannequin/bodies";
+import { insideRings, ringsOf } from "./stripes";
 
 /**
  * The fifteen cuts.
@@ -82,13 +84,18 @@ describe("the record and the geometry agree", () => {
     }
   });
 
-  it("takes the sleeves off exactly when it bares the arm", () => {
+  it("bares the arm exactly when it takes a sleeve off, or its opening reaches into the arm's zone", () => {
+    /* the upper arm's zone, and each cut's opening: a cut whose opening reaches inside it would erase skin it leaves bare */
+    const zone = ringsOf(bodies.female.zones.upperArm);
+    const reaches = (id: (typeof NECKLINE_IDS)[number]) => {
+      const opening = bodiceFor(id).cut.parts?.opening;
+      return opening ? ringsOf(opening).flat().some((p) => insideRings(zone, p)) : false;
+    };
+    expect(reaches("square")).toBe(true);
+    expect(reaches("round")).toBe(false);
     for (const id of NECKLINE_IDS) {
-      if (NECKLINE_SLEEVES[id] === "both") {
-        expect(NECKLINE_BARES[id], id).not.toContain("upperArm");
-      } else {
-        expect(NECKLINE_BARES[id], id).toContain("upperArm");
-      }
+      const bares = NECKLINE_SLEEVES[id] !== "both" || reaches(id);
+      expect(NECKLINE_BARES[id].includes("upperArm"), id).toBe(bares);
     }
   });
 

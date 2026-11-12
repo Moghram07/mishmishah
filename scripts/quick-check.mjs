@@ -27,6 +27,13 @@ const SHARED = [
   "src/lib/garments/legs.ts",
   "src/lib/garments/necklines.ts",
 ];
+/**
+ * Files no outline is drawn from: what is laid along a garment's edges —
+ * stripes — and the edges themselves. A change to them reaches the edge
+ * checks and nothing else, since every other check measures outlines. Keep it
+ * so: an outline must never be built from these.
+ */
+const INLAY_ONLY = ["src/lib/garments/stripes.ts", "src/lib/garments/edges.ts", "scripts/check-edges.mjs"];
 /** The checker itself, and the body it measures against. */
 const CHECKER = [/^scripts\/preview-garments\.mjs$/, /^scripts\/quick-check\.mjs$/, /^scripts\/measure-body\.mjs$/, /^scripts\/mannequin\//];
 
@@ -90,6 +97,7 @@ export function planQuick({ root, args, garments, artOf, cutModule, collarArt })
     })
   );
   const of = (gs) => new Set(gs.flatMap((g) => [...own.get(g.id)]));
+  const outlines = (files) => new Set([...files].filter((f) => !INLAY_ONLY.includes(f)));
   const dress = garments.filter((g) => g.acceptsNeckline);
   const sections = {
     body: new Set(["src/lib/garments/art/female/yoke.ts", "src/lib/garments/art/male/yoke.ts"]),
@@ -105,6 +113,14 @@ export function planQuick({ root, args, garments, artOf, cutModule, collarArt })
     ]),
     ...Object.fromEntries(garments.map((g) => [`coverage:${g.id}`, own.get(g.id)])),
   };
+  /* every section but the edges measures outlines: what is laid inside them is not theirs */
+  for (const k of Object.keys(sections)) sections[k] = outlines(sections[k]);
+  /* the edges: the dress's cut, the sailor collar's, and what is laid along them */
+  sections.edges = new Set([
+    ...of(dress),
+    ...closureOf(root, ["src/lib/garments/art/female/collarCuts.ts", ...INLAY_ONLY]),
+    ...INLAY_ONLY,
+  ]);
   const hits = (files) => changed.some((f) => files.has(f));
   const run = Object.keys(sections).filter((s) => hits(sections[s]));
   const read = changed.filter((f) => Object.values(sections).some((files) => files.has(f)));

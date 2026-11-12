@@ -101,7 +101,8 @@ describe("every print at its true size", () => {
         }
       }
     }
-  });
+    /* every product in every fabric: near four seconds alone, longer with the rest of the suite running */
+  }, 60_000);
 
   it("on every garment, in every size of repeat, at every zoom", () => {
     for (const garment of garments) {

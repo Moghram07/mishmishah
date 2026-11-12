@@ -1,7 +1,7 @@
 import { FLAT_COLLAR_SHADOW, collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
-import { TIE_AT, panelStripes, sailor, sailorTie } from "../collarCuts";
+import { TIE_AT, sailor, sailorEdges, sailorTie } from "../collarCuts";
 import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
-import { STRIPES } from "@/lib/garments/stripes";
+import { STRIPES, stripesAlong } from "@/lib/garments/stripes";
 import type { Pt } from "@/lib/garments/fit";
 import type { StripesId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../../index";
@@ -72,7 +72,8 @@ const panelsWith = (count: Exclude<StripesId, "none">): RegionArt => {
   let r = striped.get(count);
   if (!r) {
     const bands = STRIPES[count];
-    const inlay = [left, right].flatMap((panel, piece) => panelStripes(panel, bands).paths.map((d) => ({ piece, d })));
+    /* along each panel's free edge, on that panel — see `sailorEdges` */
+    const inlay = sailorEdges().flatMap((edge) => stripesAlong(edge, bands));
     r = { ...PANELS, inlay };
     striped.set(count, r);
   }
