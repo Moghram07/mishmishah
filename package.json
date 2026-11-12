@@ -12,6 +12,7 @@
     "mannequin": "node scripts/normalise-mannequin.mjs",
     "measure:body": "node scripts/measure-body.mjs",
     "check:garments": "node --experimental-strip-types --no-warnings scripts/preview-garments.mjs",
+    "check:quick": "node --experimental-strip-types --no-warnings scripts/preview-garments.mjs --quick",
     "check:scale": "vitest run src/lib/fabrics/trueScale.test.tsx",
     "shoot": "node scripts/shoot-preview.mjs"
   },

@@ -209,6 +209,32 @@ export const fabrics: Fabric[] = [
     texture: "smooth",
     categories: ["fashion"],
   },
+  /* plain red: a sailor's tie and stripes, as in the photos */
+  {
+    id: "fb-red",
+    name: { en: "Red", ar: "أحمر" },
+    source: "procedural",
+    motif: "solid",
+    palette: { base: "#C62630", accent: "#9E1A23", highlight: "#DE4A52" },
+    color: "#C62630",
+    material: "cotton",
+    colorName: { en: "Red", ar: "أحمر" },
+    texture: "smooth",
+    categories: ["fashion"],
+  },
+  /* plain navy: the sailor dress's own cloth */
+  {
+    id: "fb-navy",
+    name: { en: "Navy", ar: "كحلي" },
+    source: "procedural",
+    motif: "solid",
+    palette: { base: "#1F2A44", accent: "#141C30", highlight: "#36456A" },
+    color: "#1F2A44",
+    material: "cotton",
+    colorName: { en: "Navy", ar: "كحلي" },
+    texture: "smooth",
+    categories: ["fashion"],
+  },
 ];
 
 // Fails loudly in dev if scale ever stops being motif-owned. See the note on

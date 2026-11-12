@@ -22,6 +22,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { decodePngAlpha, encodePng } from "./mannequin/png.mjs";
 import { measureBody } from "./measure-body.mjs";
+import { duration, planQuick } from "./quick-check.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(ROOT, ".preview");
@@ -465,26 +466,19 @@ function artTable(assetId, body) {
  * Each answers `cloth(choice)` for the same choice the stage draws: a cut, a
  * sleeve, a skirt's style, a jacket's hem.
  */
-const CUT_MODULES = {
-  "female-dress-front": await import(
-    src("src/lib/garments/art/female/dressCut.ts")
-  ),
+const CUT_MODULE_FILES = {
+  "female-dress-front": "src/lib/garments/art/female/dressCut.ts",
   /* the skirt is cut to a style from the parts it shares with the dress's skirt */
-  "female-skirt-front": await import(
-    src("src/lib/garments/art/female/skirtCut.ts")
-  ),
+  "female-skirt-front": "src/lib/garments/art/female/skirtCut.ts",
   /* her abaya: a robe drafted from the shared top, and what it holds inside it */
-  "female-abaya-front": await import(
-    src("src/lib/garments/art/female/abayaCut.ts")
-  ),
+  "female-abaya-front": "src/lib/garments/art/female/abayaCut.ts",
   /* the trousers, each body's, cut to a leg — see `garments/legs.ts` */
-  "female-trousers-front": await import(
-    src("src/lib/garments/art/female/trousersCut.ts")
-  ),
-  "male-trousers-front": await import(
-    src("src/lib/garments/art/male/trousersCut.ts")
-  ),
+  "female-trousers-front": "src/lib/garments/art/female/trousersCut.ts",
+  "male-trousers-front": "src/lib/garments/art/male/trousersCut.ts",
 };
+const CUT_MODULES = Object.fromEntries(
+  await Promise.all(Object.entries(CUT_MODULE_FILES).map(async ([id, file]) => [id, await import(src(file))]))
+);
 
 /**
  * Collars whose drawing follows the cut they are sewn to — a Peter Pan along a
@@ -4022,26 +4016,54 @@ function checkBaseLayer(bodyKey, body, cover, wardrobe) {
   return failed;
 }
 
-failures += checkWardrobes();
-failures += checkCollarWardrobes();
+/*
+  Which checks run: all of them, or with `--quick` only those a change since
+  the last commit can reach — see `quick-check.mjs`. And how long each took.
+*/
+const QUICK = process.argv.includes("--quick");
+const STARTED = Date.now();
+const plan = QUICK
+  ? planQuick({
+      root: ROOT,
+      args: process.argv.slice(2),
+      garments,
+      artOf: (g) => `src/lib/garments/art/${artFile(g.asset.front).split("\\").join("/")}`,
+      cutModule: (g) => CUT_MODULE_FILES[g.asset.front],
+      collarArt: collars.flatMap((c) => [c.asset.front, c.asset.behindBody].filter(Boolean)).map((id) => `src/lib/garments/art/${artFile(id).split("\\").join("/")}`),
+    })
+  : { want: () => true, full: true, lines: [] };
+for (const line of plan.lines) console.log(line);
+if (plan.lines.length) console.log("");
+/* `--dry`: say what a quick run would check, and stop */
+if (process.argv.includes("--dry")) process.exit(0);
+const times = new Map();
+/** Run a check if the plan wants it, and add its time to its section's. */
+const timed = (section, check) => {
+  if (!plan.want(section)) return 0;
+  const t = Date.now();
+  const failed = check();
+  times.set(section, (times.get(section) ?? 0) + Date.now() - t);
+  return failed;
+};
+
+failures += timed("wardrobe", () => checkWardrobes() + checkCollarWardrobes());
 
 for (const bodyKey of Object.keys(bodies)) {
   const body = bodies[bodyKey];
   const cover = bodyCoverage(body);
   const rows = edgeRows(cover);
   const profile = profileFor(bodyKey);
-  failures += checkProfile(bodyKey, body, profile);
-  failures += checkArmsInFront(bodyKey, body, cover);
-  failures += checkAnchors(bodyKey, cover, rows, body.anchors);
-  failures += checkSeams(bodyKey, rows, body);
-  failures += checkWardrobe(bodyKey);
-  failures += checkDrawingsRead(bodyKey, body, garmentsFor(bodyKey));
-  failures += checkTrouserDetails(bodyKey, body, profile, garmentsFor(bodyKey));
-  failures += checkBodiceDetails(bodyKey, garmentsFor(bodyKey));
-  failures += checkClosures(bodyKey, garmentsFor(bodyKey));
-  failures += checkLayering(bodyKey, body, cover, garmentsFor(bodyKey));
-  failures += checkUnderTops(bodyKey, body, garmentsFor(bodyKey));
-  failures += checkBaseLayer(bodyKey, body, cover, garmentsFor(bodyKey));
+  failures += timed("body", () =>
+    checkProfile(bodyKey, body, profile) + checkArmsInFront(bodyKey, body, cover) + checkAnchors(bodyKey, cover, rows, body.anchors) + checkSeams(bodyKey, rows, body)
+  );
+  failures += timed("wardrobe", () => checkWardrobe(bodyKey) + checkDrawingsRead(bodyKey, body, garmentsFor(bodyKey)));
+  failures += timed("trousers", () => checkTrouserDetails(bodyKey, body, profile, garmentsFor(bodyKey)));
+  failures += timed("bodice", () => checkBodiceDetails(bodyKey, garmentsFor(bodyKey)));
+  failures += timed("closures", () => checkClosures(bodyKey, garmentsFor(bodyKey)));
+  failures += timed("layering", () =>
+    checkLayering(bodyKey, body, cover, garmentsFor(bodyKey)) + checkUnderTops(bodyKey, body, garmentsFor(bodyKey)) + checkBaseLayer(bodyKey, body, cover, garmentsFor(bodyKey))
+  );
+  const coverageStarted = Date.now();
   const rgba = Buffer.alloc(W * H * 4);
   const holeMap = new Uint8Array(W * H);
 
@@ -4061,6 +4083,7 @@ for (const bodyKey of Object.keys(bodies)) {
   const painted = new Map();
 
   for (const garment of wardrobe) {
+    if (!plan.want(`coverage:${garment.id}`)) continue;
     /*
       Every rule below runs once per **cut**, not once per garment.
 
@@ -4468,10 +4491,16 @@ for (const bodyKey of Object.keys(bodies)) {
     rgba[o + 3] = 255;
   }
 
-  const file = join(OUT_DIR, `garment-${bodyKey}.png`);
-  writeFileSync(file, encodePng(rgba, W, H));
-  console.log(`     → ${file}\n`);
+  times.set("coverage", (times.get("coverage") ?? 0) + Date.now() - coverageStarted);
+  /* the sheets show every garment: a quick run, which measures some, leaves the last full run's in place */
+  if (plan.full) {
+    const file = join(OUT_DIR, `garment-${bodyKey}.png`);
+    writeFileSync(file, encodePng(rgba, W, H));
+    console.log(`     → ${file}\n`);
+  }
 
+  if (!plan.want("collars")) continue;
+  const collarsStarted = Date.now();
   const collarCheck = checkCollars(bodyKey, cover, body, painted, rows);
   failures += collarCheck.problems;
   if (collarCheck.paints.size > 0) {
@@ -4483,7 +4512,7 @@ for (const bodyKey of Object.keys(bodies)) {
       jawline(rows, body.anchors)
     );
   }
-  if (collarCheck.paints.size > 0) {
+  if (plan.full && collarCheck.paints.size > 0) {
     // Shown over the garment most of them are sewn to, so the join is visible.
     const under = wardrobe.find((g) => g.acceptsCollar && g.category === "top");
     const { png, ids } = collarSheet(
@@ -4501,7 +4530,16 @@ for (const bodyKey of Object.keys(bodies)) {
     writeFileSync(file, png);
     console.log(`     → ${file}  (${ids.join(", ")}, over ${under.id})\n`);
   }
+  times.set("collars", (times.get("collars") ?? 0) + Date.now() - collarsStarted);
 }
+
+/* how long it took, all told and check by check, so a quick run and a full one can be compared */
+const slowest = [...times].filter(([, ms]) => ms >= 500).sort((a, b) => b[1] - a[1]);
+console.log(
+  `check:garments ${QUICK ? "quick" : "full"}: ${duration(Date.now() - STARTED)}` +
+    (slowest.length ? ` (${slowest.map(([k, ms]) => `${k} ${duration(ms)}`).join(", ")})` : "") +
+    `, ${failures} failing`
+);
 
 /**
  * A contact sheet: one tile per collar, cropped to the neck and shoulders.

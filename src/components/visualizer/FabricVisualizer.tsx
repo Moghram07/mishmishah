@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RotateCcw,
-  Compass,
   X,
   Sparkles,
-  Check,
   Download,
   Ruler,
   Loader2,
@@ -14,13 +12,15 @@ import {
   Move,
   Shirt,
   Sofa,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { useVisualizer } from "@/components/providers/VisualizerProvider";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { productTemplates } from "@/lib/data/products";
 import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
-import { collarsForGarment, stripesAtFor, stripesFor, tiesFor } from "@/lib/data/collars";
+import { stripesAtFor, stripesFor, tiesFor } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { legsFor } from "@/lib/data/legs";
@@ -85,6 +85,19 @@ import { exportShareCard, type ShareEntry } from "@/lib/share/shareCard";
 import { ProductTemplate, productPanBy } from "./ProductTemplate";
 import { MannequinStage } from "./MannequinStage";
 import { Silhouette, boxAround } from "./Silhouette";
+import { useHistory } from "./history";
+import {
+  BodyButton,
+  Chip,
+  Choice,
+  PanelRow,
+  PanelTabs,
+  RowHeading,
+  RowHint,
+  Segmented,
+  SkinSwatch,
+  type PanelTab,
+} from "./PanelControls";
 import { garmentArt } from "@/lib/garments/art";
 import { cutAs } from "@/lib/garments/skirts";
 import { Button } from "@/components/ui/Button";
@@ -167,8 +180,45 @@ export function FabricVisualizer() {
   const { theme } = useTheme();
 
   const [subject, setSubject] = useState<Subject>("wardrobe");
-  const [outfit, setOutfit] = useState<Outfit>(() => newOutfit(fabric));
-  const [design, setDesign] = useState<Design>(() => newDesign("sofa", fabric));
+  /*
+    The outfit and the home design, with undo and redo: every choice is one
+    step back — see `history.ts`. Zoom, panning and which part is being cut
+    are where you are looking, not what you designed, so they are not steps.
+  */
+  const {
+    state: designed,
+    set: setDesigned,
+    rebase,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistory<{ outfit: Outfit; design: Design }>(() => ({
+    outfit: newOutfit(fabric),
+    design: newDesign("sofa", fabric),
+  }));
+  const { outfit, design } = designed;
+  const setOutfit = useCallback(
+    (next: Outfit | ((o: Outfit) => Outfit)) =>
+      setDesigned((s) => {
+        const o = typeof next === "function" ? next(s.outfit) : next;
+        return o === s.outfit ? s : { ...s, outfit: o };
+      }),
+    [setDesigned]
+  );
+  const setDesign = useCallback(
+    (next: Design | ((d: Design) => Design)) =>
+      setDesigned((s) => {
+        const d = typeof next === "function" ? next(s.design) : next;
+        return d === s.design ? s : { ...s, design: d };
+      }),
+    [setDesigned]
+  );
+  /* the panel's group, and the row open in each — one at a time */
+  const [tab, setTab] = useState<PanelTab>("cut");
+  const [openRow, setOpenRow] = useState<Partial<Record<PanelTab, string>>>({});
+  /* the fabrics group keeps the part being cut open, until it is closed */
+  const [fabricsOpen, setFabricsOpen] = useState(true);
   const [cutting, setCutting] = useState<Cutting>(() =>
     startCutting("female")
   );
@@ -253,28 +303,40 @@ export function FabricVisualizer() {
   }, [worn, cutting]);
 
   // Opening from a fabric card dresses everything in that fabric; once inside,
-  // picking a fabric only re-cuts the region being edited.
+  // picking a fabric only re-cuts the region being edited. A fresh start: the
+  // last visit's steps are not this one's to undo.
   const wasOpen = useRef(false);
   useEffect(() => {
     if (isOpen && !wasOpen.current) {
-      // Both mannequins, the one put away as well as the one on the stage.
-      setOutfit((o) =>
-        everyWardrobe(o, (worn) =>
+      rebase((s) => ({
+        // Both mannequins, the one put away as well as the one on the stage.
+        outfit: everyWardrobe(s.outfit, (worn) =>
           worn.map((w) => {
             const garment = garmentById(w.garmentId);
             return garment ? cutFrom(garment, fabric.id, w.stitch) : w;
           })
-        )
-      );
-      setDesign((d) => ({ ...d, ...newDesign(d.productId, fabric) }));
+        ),
+        design: { ...s.design, ...newDesign(s.design.productId, fabric) },
+      }));
     }
     wasOpen.current = isOpen;
-  }, [isOpen, fabric]);
+  }, [isOpen, fabric, rebase]);
 
-  // Close on Escape + lock body scroll while open.
+  // Close on Escape, undo and redo on their keys, and lock body scroll while open.
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return close();
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      /* by the key's place, not its letter, so they work on an Arabic keyboard too */
+      if (e.code === "KeyZ" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (e.code === "KeyY" || (e.code === "KeyZ" && e.shiftKey)) {
+        e.preventDefault();
+        redo();
+      }
+    };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -282,7 +344,7 @@ export function FabricVisualizer() {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [isOpen, close]);
+  }, [isOpen, close, undo, redo]);
 
   /** Every worn garment's regions, resolved to fabrics. */
   const outfitFabrics = useMemo(() => {
@@ -686,21 +748,12 @@ export function FabricVisualizer() {
     pick,
   ]);
 
-  /*
-    A garment cut in two parts — the dress's top and its skirt — shows the
-    part being cut and that part's options: the bodice's neckline, sleeves and
-    collar, or the skirt's. A garment that is one part shows its own.
-  */
-  const onBottom = subject === "wardrobe" && cutting.region === "bottom";
   const wornSkirt = cuttingEntry ? skirtOf(cuttingEntry.worn) : undefined;
   const skirtShapeChoices = cuttingGarment ? skirtShapesFor(cuttingGarment) : [];
   /* the lengths the shape being worn is cut at: a mermaid's, midi and maxi */
   const skirtLengthChoices = cuttingGarment ? skirtLengthsFor(cuttingGarment, wornSkirt?.shape) : [];
   const waistChoices = cuttingGarment ? waistsFor(cuttingGarment) : [];
-  const showSkirt =
-    subject === "wardrobe" &&
-    (skirtShapeChoices.length > 1 || skirtLengthChoices.length > 1 || waistChoices.length > 1) &&
-    (onBottom || !cuttingGarment?.fabricRegions.includes("bottom"));
+  const showSkirt = subject === "wardrobe" && (skirtShapeChoices.length > 1 || skirtLengthChoices.length > 1);
 
   /* how a pair of trousers' legs are cut: straight, slim or wide */
   const legChoices = cuttingGarment ? legsFor(cuttingGarment) : [];
@@ -719,33 +772,10 @@ export function FabricVisualizer() {
   const cutNow = cuttingEntry ? necklineOf(cuttingEntry.worn)?.cut : undefined;
   const buttonChoices = cuttingGarment ? buttonsFor(cuttingGarment, cutNow, wornSkirt?.shape) : [];
   const wornButtons = cuttingEntry ? buttonsOf(cuttingEntry.worn) : undefined;
-  const showButtons = subject === "wardrobe" && !onBottom && buttonChoices.length > 1 && wornButtons !== undefined;
+  const showButtons = subject === "wardrobe" && buttonChoices.length > 1 && wornButtons !== undefined;
   const beltChoices = cuttingGarment ? beltsFor(cuttingGarment, cutNow) : [];
   const wornBelt = cuttingEntry ? beltOf(cuttingEntry.worn) : undefined;
   const showBelt = beltChoices.length > 1 && wornBelt !== undefined;
-
-  /*
-    On a phone the controls under the stage show a few rows at a time, and the
-    skirt's switches sat below them. Picking the skirt's part — the dress's
-    Bottom, or the skirt — brings them into view, so its length is never a
-    scroll away; where they already show, nothing moves. Picking the abaya
-    does the same for its front.
-  */
-  const skirtOptions = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!isOpen || !showSkirt) return;
-    skirtOptions.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [isOpen, showSkirt, cutting.garmentId, cutting.region]);
-  const legOptions = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!isOpen || !showLeg) return;
-    legOptions.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [isOpen, showLeg, cutting.garmentId]);
-  const frontOptions = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!isOpen || !showFront) return;
-    frontOptions.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [isOpen, showFront, cutting.garmentId]);
 
   if (!isOpen) return null;
 
@@ -818,25 +848,443 @@ export function FabricVisualizer() {
   const tieChoices = tiesFor(wornCollar);
   const wornTie = cuttingEntry ? tieOf(cuttingEntry.worn) : undefined;
 
-  const regions =
+  /*
+    The panel, as rows: each choice closed to a line saying what is chosen,
+    opening in place. Each row names the part a close-up should look at while
+    it is open — the skirt's rows the skirt, the collar's the collar.
+  */
+  interface RowSpec {
+    id: string;
+    label: string;
+    value?: string;
+    region?: FabricRegionId;
+    body: React.ReactNode;
+  }
+  const named = (list: { id: string; name: { en: string; ar: string } }[], id: string | undefined) => {
+    const hit = list.find((c) => c.id === id);
+    return hit ? pick(hit.name) : undefined;
+  };
+
+  /* القصّة: how the garment being edited is cut */
+  const cutRows: RowSpec[] = [];
+  if (subject === "wardrobe" && necklineChoices.length > 0) {
+    cutRows.push({
+      id: "neckline",
+      label: t("viz.neckline"),
+      value: named(necklineChoices, wornNecklineId),
+      region: "top",
+      body: (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {necklineChoices.map((n) => (
+              <Chip key={n.id} label={pick(n.name)} active={wornNecklineId === n.id} onClick={() => chooseNeckline(n.id)} />
+            ))}
+          </div>
+          <RowHint>{t("viz.necklineHint")}</RowHint>
+        </>
+      ),
+    });
+  }
+  /*
+    Sleeves: how the sleeve is built, then where it ends — two choices, since a
+    type offers only the lengths it is made in, and changing type keeps the
+    length when it can.
+  */
+  if (subject === "wardrobe" && sleeveChoices.length > 0 && wornSleeve) {
+    const length = sleeveLengthById(wornSleeve.length);
+    cutRows.push({
+      id: "sleeve",
+      label: t("viz.sleeve"),
+      value:
+        wornSleeve.length === "sleeveless" && length
+          ? pick(length.name)
+          : [length && sleeveLengths.length > 1 ? pick(length.name) : undefined, pick(sleeveTypeName(cuttingGarment, wornSleeve.type))]
+              .filter(Boolean)
+              .join(" · "),
+      region: "top",
+      body: (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {sleeveChoices.map((id) => (
+              <Chip key={id} label={pick(sleeveTypeName(cuttingGarment, id))} active={wornSleeve.type === id} onClick={() => chooseSleeve({ type: id })} />
+            ))}
+          </div>
+          {/* where it ends — not asked of a garment cut at one length only, an abaya's long sleeves */}
+          {sleeveLengths.length > 1 && (
+            <>
+              <RowHeading>{t("viz.sleeveLength")}</RowHeading>
+              <div className="flex flex-wrap gap-2">
+                {sleeveLengths.map((id) => (
+                  <Chip key={id} label={pick(sleeveLengthById(id)!.name)} active={wornSleeve.length === id} onClick={() => chooseSleeve({ length: id })} />
+                ))}
+              </div>
+            </>
+          )}
+          <RowHint>{t("viz.sleeveHint")}</RowHint>
+        </>
+      ),
+    });
+  }
+  /* the skirt: its shape, as a row of the garment cut to each, and its length */
+  if (showSkirt && wornSkirt) {
+    cutRows.push({
+      id: "skirt",
+      /* «شكل التنورة», not «القصّة» (the whole group's name) nor «التنورة» (a garment's) */
+      label: t("viz.skirt"),
+      value: [named(skirtShapeChoices, wornSkirt.shape), named(skirtLengthChoices, wornSkirt.length)].filter(Boolean).join(" · "),
+      region: "bottom",
+      body: (
+        <>
+          {shapeIcons && (
+            <div role="group" aria-label={t("viz.shape")} className="flex gap-2 overflow-x-auto pb-1">
+              {skirtShapeChoices.map((shape, i) => {
+                const on = wornSkirt.shape === shape.id;
+                return (
+                  <button
+                    key={shape.id}
+                    onClick={() => chooseSkirt({ shape: shape.id })}
+                    aria-pressed={on}
+                    className={cn(
+                      "btn-focus flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-2 pb-2 pt-2.5 text-xs font-semibold transition-all",
+                      on ? "border-apricot-500 bg-apricot-500/10 text-foreground" : "border-border bg-card text-muted-foreground hover:border-apricot-400"
+                    )}
+                  >
+                    <Silhouette pieces={shapeIcons.pieces[i]} box={shapeIcons.box} className={cn("h-16 w-full", on && "text-apricot-500")} />
+                    {pick(shape.name)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {skirtLengthChoices.length > 1 && (
+            <>
+              <RowHeading>{t("viz.length")}</RowHeading>
+              <Segmented
+                label={t("viz.length")}
+                choices={skirtLengthChoices.map((l) => ({ id: l.id, label: pick(l.name) }))}
+                active={wornSkirt.length}
+                onPick={(length) => chooseSkirt({ length })}
+              />
+            </>
+          )}
+        </>
+      ),
+    });
+  }
+  /* the waist its skirt hangs from, a dress's */
+  if (subject === "wardrobe" && waistChoices.length > 1 && wornSkirt) {
+    cutRows.push({
+      id: "waist",
+      label: t("viz.waist"),
+      value: named(waistChoices, wornSkirt.waist),
+      region: "bottom",
+      body: (
+        <Segmented
+          label={t("viz.waist")}
+          choices={waistChoices.map((w) => ({ id: w.id, label: pick(w.name) }))}
+          active={wornSkirt.waist ?? waistChoices[0].id}
+          onPick={(waist) => chooseSkirt({ waist })}
+        />
+      ),
+    });
+  }
+  /* how it is worn at the front, an abaya's: open or closed */
+  if (showFront && wornFront) {
+    cutRows.push({
+      id: "front",
+      label: t("viz.front"),
+      value: named(frontChoices, wornFront),
+      body: (
+        <Segmented
+          label={t("viz.front")}
+          choices={frontChoices.map((f) => ({ id: f.id, label: pick(f.name) }))}
+          active={wornFront}
+          onPick={chooseFront}
+        />
+      ),
+    });
+  }
+  /* a pair of trousers' legs: a row of them cut to each */
+  if (legIcons && wornLeg) {
+    cutRows.push({
+      id: "leg",
+      /* «شكل البنطلون», not «القصّة» (the whole group's name) nor «بنطلون» (the garment's) */
+      label: t("viz.trousersShape"),
+      value: named(legChoices, wornLeg),
+      body: (
+        <div role="group" aria-label={t("viz.leg")} className="flex gap-2 overflow-x-auto pb-1">
+          {legChoices.map((leg, i) => {
+            const on = wornLeg === leg.id;
+            return (
+              <button
+                key={leg.id}
+                onClick={() => chooseLeg(leg.id)}
+                aria-pressed={on}
+                className={cn(
+                  "btn-focus flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-2 pb-2 pt-2.5 text-xs font-semibold transition-all",
+                  on ? "border-apricot-500 bg-apricot-500/10 text-foreground" : "border-border bg-card text-muted-foreground hover:border-apricot-400"
+                )}
+              >
+                <Silhouette pieces={legIcons.pieces[i]} box={legIcons.box} className={cn("h-16 w-full", on && "text-apricot-500")} />
+                {pick(leg.name)}
+              </button>
+            );
+          })}
+        </div>
+      ),
+    });
+  }
+
+  /* الإضافات: what is added to it */
+  const extraRows: RowSpec[] = [];
+  /*
+    The collar, as a part rather than a style. It is offered only where a
+    garment has a neckline to sew one to, and only the ones cut to fit that
+    neckline are listed.
+  */
+  if (subject === "wardrobe" && collarChoices.length > 0) {
+    extraRows.push({
+      id: "collar",
+      label: t("viz.collar"),
+      value: wornCollar ? pick(wornCollar.name) : t("viz.noCollar"),
+      region: wornCollar ? "collar" : "top",
+      body: (
+        <>
+          <div className="flex flex-wrap gap-2">
+            <Chip label={t("viz.noCollar")} active={!wornCollarId} onClick={() => chooseCollar(undefined)} />
+            {collarChoices.map((c) => (
+              <Chip key={c.id} label={pick(c.name)} active={wornCollarId === c.id} onClick={() => chooseCollar(c.id)} />
+            ))}
+          </div>
+          <RowHint>{t("viz.collarHint")}</RowHint>
+        </>
+      ),
+    });
+  }
+  /* stripes in a cloth of their own, along a sailor collar's edge or a boat neckline's: how many, and how far they go */
+  if (subject === "wardrobe" && stripeChoices.length > 1 && wornStripes) {
+    extraRows.push({
+      id: "stripes",
+      label: t("viz.stripes"),
+      value: [named(stripeChoices, wornStripes), stripesAtChoices.length > 1 ? named(stripesAtChoices, wornStripesAt) : undefined]
+        .filter(Boolean)
+        .join(" · "),
+      region: wornStripes !== "none" ? "trim" : undefined,
+      body: (
+        <>
+          <Segmented label={t("viz.stripes")} choices={stripeChoices.map((c) => ({ id: c.id, label: pick(c.name) }))} active={wornStripes} onPick={chooseStripes} />
+          {stripesAtChoices.length > 1 && wornStripesAt && (
+            <>
+              <RowHeading>{t("viz.stripesAt")}</RowHeading>
+              <div role="group" aria-label={t("viz.stripesAt")} className="flex flex-wrap gap-2">
+                {stripesAtChoices.map((c) => (
+                  <Chip key={c.id} label={pick(c.name)} active={wornStripesAt === c.id} onClick={() => chooseStripesAt(c.id)} />
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      ),
+    });
+  }
+  /* a sailor collar's tie */
+  if (subject === "wardrobe" && tieChoices.length > 1 && wornTie) {
+    extraRows.push({
+      id: "tie",
+      label: t("viz.tie"),
+      value: named(tieChoices, wornTie),
+      region: wornTie !== "none" ? "tie" : undefined,
+      body: <Segmented label={t("viz.tie")} choices={tieChoices.map((c) => ({ id: c.id, label: pick(c.name) }))} active={wornTie} onPick={chooseTie} />,
+    });
+  }
+  /* a dress's buttons down its front, on a cut with a straight centre front */
+  if (showButtons && wornButtons) {
+    extraRows.push({
+      id: "buttons",
+      label: t("viz.buttons"),
+      value: named(buttonChoices, wornButtons),
+      region: "top",
+      body: <Segmented label={t("viz.buttons")} choices={buttonChoices.map((b) => ({ id: b.id, label: pick(b.name) }))} active={wornButtons} onPick={chooseButtons} />,
+    });
+  }
+  /* a belt on its waist seam, a dress's: none, its own cloth, or leather */
+  if (subject === "wardrobe" && showBelt && wornBelt) {
+    extraRows.push({
+      id: "belt",
+      label: t("viz.belt"),
+      value: named(beltChoices, wornBelt),
+      region: "bottom",
+      body: (
+        <div role="group" aria-label={t("viz.belt")} className="flex flex-wrap gap-2">
+          {beltChoices.map((b) => (
+            <Chip key={b.id} label={pick(b.name)} active={wornBelt === b.id} onClick={() => chooseBelt(b.id)} />
+          ))}
+        </div>
+      ),
+    });
+  }
+  /* a long sleeve's cuff, on a garment that offers one */
+  const cuffChoices = cuttingGarment && wornSleeve ? sleeveCuffsFor(cuttingGarment, wornSleeve) : [];
+  if (subject === "wardrobe" && wornSleeve && cuffChoices.length > 0) {
+    extraRows.push({
+      id: "cuff",
+      label: t("viz.cuff"),
+      value: wornSleeve.cuff ? pick(sleeveCuffById(wornSleeve.cuff)!.name) : undefined,
+      region: "top",
+      body: (
+        <div className="flex flex-wrap gap-2">
+          {cuffChoices.map((id) => (
+            <Chip key={id} label={pick(sleeveCuffById(id)!.name)} active={wornSleeve.cuff === id} onClick={() => chooseSleeve({ cuff: id })} />
+          ))}
+        </div>
+      ),
+    });
+  }
+
+  /*
+    الأقمشة: every part on the figure, each with its fabric. Opening one is
+    choosing what the swatches cut; it stays open as you try them.
+  */
+  const fabricRows =
     subject === "wardrobe"
-      ? (cuttingEntry
-          ? regionsOf(cuttingEntry.garment, cuttingEntry.worn)
-          : []
-        ).map((region) => ({
-          key: region as string,
-          label: regionLabel(region),
-          fabric: outfitFabrics[cutting.garmentId]?.[region],
-          active: cutting.region === region,
-          onClick: () => setCutting({ garmentId: cutting.garmentId, region }),
-        }))
+      ? worn.flatMap(({ garment, worn: w }) => {
+          const regions = regionsOf(garment, w);
+          return regions.map((region) => ({
+            key: `${garment.id}:${region}`,
+            label:
+              worn.length > 1
+                ? regions.length > 1
+                  ? `${pick(garment.name)} · ${pick(regionLabel(region))}`
+                  : pick(garment.name)
+                : regions.length > 1
+                  ? pick(regionLabel(region))
+                  : pick(garment.name),
+            fabric: outfitFabrics[garment.id]?.[region] ?? fabric,
+            active: cutting.garmentId === garment.id && cutting.region === region,
+            choose: () => setCutting({ garmentId: garment.id, region }),
+          }));
+        })
       : product.parts.map((part) => ({
           key: part.id as string,
-          label: part.label,
-          fabric: partFabrics[part.id],
+          label: pick(part.label),
+          fabric: partFabrics[part.id] ?? fabric,
           active: activePart === part.id,
-          onClick: () => setActivePart(part.id),
+          choose: () => setActivePart(part.id),
         }));
+
+  /* opening a row closes the one open before it, and points a close-up at what it is about */
+  const toggleRow = (row: RowSpec) => {
+    const opening = openRow[tab] !== row.id;
+    setOpenRow((o) => ({ ...o, [tab]: opening ? row.id : undefined }));
+    if (opening && row.region && cuttingEntry && regionsOf(cuttingEntry.garment, cuttingEntry.worn).includes(row.region)) {
+      setCutting({ garmentId: cuttingEntry.garment.id, region: row.region });
+    }
+  };
+  const rowsOf = (rows: RowSpec[]) =>
+    rows.map((row) => (
+      <PanelRow key={row.id} id={row.id} label={row.label} value={row.value} open={openRow[tab] === row.id} onToggle={() => toggleRow(row)}>
+        {row.body}
+      </PanelRow>
+    ));
+
+  /* which garment the cut and extras are for, when more than one is worn */
+  const editing = subject === "wardrobe" && worn.length > 1 && (
+    <div>
+      <RowHeading>{t("viz.editing")}</RowHeading>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {worn.map(({ garment }) => (
+          <button
+            key={garment.id}
+            onClick={() => setCutting({ garmentId: garment.id, region: garment.fabricRegions[0] })}
+            aria-pressed={cutting.garmentId === garment.id}
+            className={cn(
+              "btn-focus rounded-full border px-3 py-1 text-xs font-medium transition-all",
+              cutting.garmentId === garment.id
+                ? "border-apricot-500 bg-apricot-500/10 text-foreground"
+                : "border-border bg-card text-muted-foreground hover:border-apricot-400"
+            )}
+          >
+            {pick(garment.name)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  /* the fabrics: a row per part, the swatches under the one open */
+  const fabricsList = (
+    <>
+      {fabricRows.map((row) => (
+        <PanelRow
+          key={row.key}
+          id={`fabric-${row.key}`}
+          label={row.label}
+          value={pick(row.fabric.name)}
+          lead={
+            <span
+              className="h-7 w-7 shrink-0 rounded-full border border-border"
+              style={fabricBackground(row.fabric, { viewCm: 4, elementPx: 28, fitRepeat: true })}
+            />
+          }
+          open={row.active && fabricsOpen}
+          onToggle={() => {
+            if (row.active) setFabricsOpen((o) => !o);
+            else {
+              row.choose();
+              setFabricsOpen(true);
+            }
+          }}
+        >
+          <div className="grid grid-cols-6 gap-2">
+            {fabrics.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => cutRegion(f)}
+                aria-label={pick(f.name)}
+                aria-pressed={f.id === activeFabric.id}
+                title={`${pick(f.name)} · ${fabricRepeatCm(f).toFixed(1)} cm`}
+                className={cn(
+                  "aspect-square rounded-lg border transition-all",
+                  f.id === activeFabric.id ? "border-apricot-500 ring-2 ring-apricot-500/30" : "border-border hover:border-apricot-400"
+                )}
+                style={fabricBackground(f, { viewCm: 6, elementPx: 44, fitRepeat: true })}
+              />
+            ))}
+          </div>
+          <RowHint>
+            {t("card.sample")} · {t("viz.repeat")}:{" "}
+            <span className="font-semibold text-foreground">
+              {fabricRepeatCm(activeFabric).toFixed(1)} {t("unit.cm")}
+            </span>
+          </RowHint>
+        </PanelRow>
+      ))}
+      {/*
+        Which way the pattern is laid, for a pattern that has a way:
+        lengthwise, across or on the bias. A plain cloth or a print that looks
+        the same any way round is not asked — the choice would change nothing
+        on the figure.
+      */}
+      {fabricHasDirection(activeFabric) && (
+        <div className="flex flex-col gap-2 pt-1">
+          <RowHeading>{t("viz.rotation")}</RowHeading>
+          <div role="group" aria-label={t("viz.rotation")} className="flex gap-2">
+            {GRAIN_PRESETS.map((d) => (
+              <Choice key={d} active={direction === d} onClick={() => setDirection(d)}>
+                {t(GRAIN_LABELS[d])}
+              </Choice>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const TABS: { id: PanelTab; label: string }[] = [
+    { id: "cut", label: t("viz.tabCut") },
+    { id: "extras", label: t("viz.tabExtras") },
+    { id: "fabrics", label: t("viz.tabFabrics") },
+  ];
 
   return (
     <div
@@ -855,32 +1303,43 @@ export function FabricVisualizer() {
 
       {/* sheet */}
       <div className="relative z-10 m-0 flex h-full w-full max-w-6xl flex-col overflow-hidden bg-background shadow-lift animate-scale-in sm:m-4 sm:h-[calc(100%-2rem)] sm:rounded-3xl">
-        {/* header */}
-        <header className="flex items-center justify-between gap-4 border-b border-border px-5 py-4 sm:px-7">
-          <div className="flex items-center gap-3">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-apricot-500/15 text-apricot-600">
+        {/* header: what this is; then undo, redo, share and close */}
+        <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-7 sm:py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full bg-apricot-500/15 text-apricot-600 sm:inline-flex">
               <Sparkles className="h-5 w-5" />
             </span>
-            <div>
-              <h2 className="heading-display text-lg leading-none">
-                {t("viz.title")}
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {t("viz.subtitle")}
-              </p>
+            <div className="min-w-0">
+              <h2 className="heading-display truncate text-lg leading-none">{t("viz.title")}</h2>
+              <p className="mt-1 hidden text-xs text-muted-foreground sm:block">{t("viz.subtitle")}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              aria-label={t("viz.undo")}
+              title={t("viz.undo")}
+              className="btn-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-muted disabled:opacity-35 disabled:hover:bg-transparent"
+            >
+              <Undo2 className="h-[18px] w-[18px] rtl:-scale-x-100" />
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              aria-label={t("viz.redo")}
+              title={t("viz.redo")}
+              className="btn-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-muted disabled:opacity-35 disabled:hover:bg-transparent"
+            >
+              <Redo2 className="h-[18px] w-[18px] rtl:-scale-x-100" />
+            </button>
             <button
               onClick={share}
               disabled={exporting}
-              className="btn-focus inline-flex h-10 items-center gap-1.5 rounded-full border border-border px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+              aria-label={t("viz.share")}
+              className="btn-focus inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-border px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60 sm:px-4"
             >
-              {exporting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               <span className="hidden sm:inline">{t("viz.share")}</span>
             </button>
             <button
@@ -903,6 +1362,18 @@ export function FabricVisualizer() {
             className="relative flex h-[58svh] shrink-0 items-center justify-center overflow-hidden bg-gradient-to-b from-muted/40 to-background p-6 sm:p-10 lg:h-auto lg:flex-1 lg:shrink"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-apricot-radial" />
+
+            {/* which mannequin, behind a small button in the stage's corner */}
+            {subject === "wardrobe" && (
+              <div className="absolute start-3 top-3 z-30">
+                <BodyButton
+                  label={t("viz.body")}
+                  bodies={bodyTypes.map((b) => ({ id: b.id, label: pick(b.label) }))}
+                  active={outfit.bodyType}
+                  onPick={setBody}
+                />
+              </div>
+            )}
 
             {subject === "wardrobe" ? (
               <MannequinStage
@@ -949,72 +1420,33 @@ export function FabricVisualizer() {
             )}
 
             {/*
-              Under the figure: who is wearing it, then the close-up. Laid over
-              the stage, and measured, so a zoomed-out figure stands clear of it
-              and a close-up runs on underneath.
+              Under the figure: the skin it is worn on, then the close-up. Laid
+              over the stage, and measured, so a zoomed-out figure stands clear
+              of it and a close-up runs on underneath.
             */}
             <div
               ref={setDockEl}
               className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-2 px-2 pb-3 sm:px-4 sm:pb-4"
             >
+              {/* the skin tone stays out under the figure: the fabric on your own skin is the point */}
               {subject === "wardrobe" && (
-                <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-2xl border border-border/60 bg-card/85 px-3 py-2 shadow-soft backdrop-blur sm:gap-x-5 sm:px-4 sm:py-2.5">
-                  <div className="flex flex-col items-center gap-1.5">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("viz.body")}
+                <div className="pointer-events-auto flex max-w-full flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-card/85 px-3 py-2 shadow-soft backdrop-blur sm:px-4 sm:py-2.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {t("viz.skinTone")}
+                    <span className="ms-1.5 font-medium normal-case tracking-normal text-foreground/80">
+                      {pick(skinToneById(outfit.skinTone).label)}
                     </span>
-                    <div
-                      role="group"
-                      aria-label={t("viz.body")}
-                      className="grid grid-cols-2 gap-1 rounded-full bg-muted/70 p-1"
-                    >
-                      {bodyTypes.map((b) => (
-                        <button
-                          key={b.id}
-                          onClick={() => setBody(b.id)}
-                          aria-pressed={outfit.bodyType === b.id}
-                          className={cn(
-                            "btn-focus rounded-full px-3 py-1 text-sm font-semibold transition-all sm:px-3.5",
-                            outfit.bodyType === b.id
-                              ? "bg-card text-foreground shadow-soft"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {pick(b.label)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <span
-                    aria-hidden="true"
-                    className="hidden h-10 w-px bg-border sm:block"
-                  />
-
-                  <div className="flex flex-col items-center gap-1.5">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("viz.skinTone")}
-                      <span className="ms-1.5 font-medium normal-case tracking-normal text-foreground/80">
-                        {pick(skinToneById(outfit.skinTone).label)}
-                      </span>
-                    </span>
-                    <div
-                      role="group"
-                      aria-label={t("viz.skinTone")}
-                      className="flex items-center gap-1.5 py-1 sm:gap-2"
-                    >
-                      {skinTones.map((s) => (
-                        <SkinSwatch
-                          key={s.id}
-                          label={pick(s.label)}
-                          color={s.color}
-                          active={outfit.skinTone === s.id}
-                          onClick={() =>
-                            setOutfit((o) => ({ ...o, skinTone: s.id }))
-                          }
-                        />
-                      ))}
-                    </div>
+                  </span>
+                  <div role="group" aria-label={t("viz.skinTone")} className="flex items-center gap-1.5 py-1 sm:gap-2">
+                    {skinTones.map((s) => (
+                      <SkinSwatch
+                        key={s.id}
+                        label={pick(s.label)}
+                        color={s.color}
+                        active={outfit.skinTone === s.id}
+                        onClick={() => setOutfit((o) => ({ ...o, skinTone: s.id }))}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -1044,9 +1476,7 @@ export function FabricVisualizer() {
                   aria-label={t("viz.zoom")}
                   className="h-1.5 w-28 cursor-pointer appearance-none rounded-full bg-muted accent-apricot-500"
                 />
-                <span className="w-8 shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {zoom}×
-                </span>
+                <span className="w-8 shrink-0 text-xs tabular-nums text-muted-foreground">{zoom}×</span>
               </div>
               {/*
                 Zoomed in, the useful thing to say is that the picture can be
@@ -1071,12 +1501,8 @@ export function FabricVisualizer() {
                 ) : (
                   <>
                     <Ruler className="h-3.5 w-3.5 shrink-0 text-apricot-500" />
-                    <span className="truncate sm:hidden">
-                      {t("viz.trueScaleShort")}
-                    </span>
-                    <span className="hidden truncate sm:inline">
-                      {t("viz.trueScale")}
-                    </span>
+                    <span className="truncate sm:hidden">{t("viz.trueScaleShort")}</span>
+                    <span className="hidden truncate sm:inline">{t("viz.trueScale")}</span>
                   </>
                 )}
               </span>
@@ -1084,793 +1510,123 @@ export function FabricVisualizer() {
           </div>
 
           {/* controls */}
-          <aside className="flex min-h-0 w-full flex-1 flex-col gap-6 overflow-y-auto border-t border-border bg-card/40 p-5 sm:p-7 lg:w-[380px] lg:flex-none lg:border-s lg:border-t-0">
-            {/* selected fabric */}
-            <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
-              <span
-                className="h-14 w-14 shrink-0 rounded-xl border border-border"
-                style={fabricBackground(activeFabric, {
-                  viewCm: 8,
-                  elementPx: 56,
-                  fitRepeat: true,
-                })}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-foreground">
-                    {pick(activeFabric.name)}
-                  </p>
-                  <span
-                    title={t("viz.applied")}
-                    aria-label={t("viz.applied")}
-                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-apricot-500/12 text-apricot-700 dark:text-apricot-300"
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                  </span>
-                </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {t("card.sample")}
-                </p>
-              </div>
-            </div>
-
-            {/* what we are dressing: clothes, or a home product while those are switched on */}
-            {FEATURES.home && (
-              <div className="grid grid-cols-2 gap-2 rounded-full bg-muted/60 p-1">
-                {(
-                  [
-                    ["wardrobe", t("viz.wardrobe"), <Shirt key="s" className="h-4 w-4" />],
-                    ["home", t("viz.home"), <Sofa key="h" className="h-4 w-4" />],
-                  ] as const
-                ).map(([key, label, icon]) => (
-                  <button
-                    key={key}
-                    onClick={() => {
-                      setSubject(key);
-                      setZoom(1);
-                    }}
-                    aria-pressed={subject === key}
-                    className={cn(
-                      "btn-focus inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold transition-all",
-                      subject === key
-                        ? "bg-card text-foreground shadow-soft"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {icon}
-                    {label}
-                  </button>
-                ))}
+          <aside className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto border-t border-border bg-card/40 lg:w-[380px] lg:flex-none lg:border-s lg:border-t-0">
+            {/* the three groups, kept in view while the panel scrolls */}
+            {subject === "wardrobe" && (
+              <div className="sticky top-0 z-10 border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur sm:px-7">
+                <PanelTabs label={t("viz.title")} tabs={TABS} active={tab} onPick={setTab} />
               </div>
             )}
 
-            {subject === "wardrobe" ? (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.wear")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {wardrobe.map((g) => {
-                    const on = isWearing(outfit.worn, g.id);
-                    return (
-                      <button
-                        key={g.id}
-                        onClick={() => toggleGarment(g.id)}
-                        aria-pressed={on}
-                        className={cn(
-                          "btn-focus rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all",
-                          on
-                            ? "border-apricot-500 bg-apricot-500 text-white shadow-soft"
-                            : "border-border bg-card text-foreground hover:border-apricot-400"
-                        )}
-                      >
-                        {pick(g.name)}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {t("viz.layersHint")}
-                </p>
-              </div>
-            ) : (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.chooseProduct")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {productTemplates.map((p) => (
+            <div
+              role={subject === "wardrobe" ? "tabpanel" : undefined}
+              id={subject === "wardrobe" ? `viz-panel-${tab}` : undefined}
+              aria-labelledby={subject === "wardrobe" ? `viz-tab-${tab}` : undefined}
+              className="flex flex-col gap-4 p-4 sm:p-7"
+            >
+              {/* what we are dressing: clothes, or a home product while those are switched on */}
+              {FEATURES.home && (
+                <div className="grid grid-cols-2 gap-2 rounded-full bg-muted/60 p-1">
+                  {(
+                    [
+                      ["wardrobe", t("viz.wardrobe"), <Shirt key="s" className="h-4 w-4" />],
+                      ["home", t("viz.home"), <Sofa key="h" className="h-4 w-4" />],
+                    ] as const
+                  ).map(([key, label, icon]) => (
                     <button
-                      key={p.kind}
+                      key={key}
                       onClick={() => {
-                        setDesign((d) => ({
-                          ...newDesign(p.kind, fabric),
-                          direction: d.direction,
-                          stitch: d.stitch,
-                        }));
-                        setActivePart(productByKind(p.kind).parts[0].id);
+                        setSubject(key);
+                        setZoom(1);
                       }}
+                      aria-pressed={subject === key}
                       className={cn(
-                        "btn-focus rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all",
-                        design.productId === p.kind
-                          ? "border-apricot-500 bg-apricot-500 text-white shadow-soft"
-                          : "border-border bg-card text-foreground hover:border-apricot-400"
+                        "btn-focus inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold transition-all",
+                        subject === key ? "bg-card text-foreground shadow-soft" : "text-muted-foreground hover:text-foreground"
                       )}
                     >
-                      {pick(p.label)}
+                      {icon}
+                      {label}
                     </button>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* which garment is being cut */}
-            {subject === "wardrobe" && worn.length > 1 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.editing")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {worn.map(({ garment }) => (
-                    <button
-                      key={garment.id}
-                      onClick={() =>
-                        setCutting({
-                          garmentId: garment.id,
-                          region: garment.fabricRegions[0],
-                        })
-                      }
-                      className={cn(
-                        "btn-focus rounded-full border px-3 py-1 text-xs font-medium transition-all",
-                        cutting.garmentId === garment.id
-                          ? "border-apricot-500 bg-apricot-500/10 text-foreground"
-                          : "border-border bg-card text-muted-foreground hover:border-apricot-400"
-                      )}
-                    >
-                      {pick(garment.name)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* per-region fabric — the heart of a multi-part piece, and which part's options show */}
-            {regions.length > 1 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.parts")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {regions.map((region) => (
-                    <button
-                      key={region.key}
-                      onClick={region.onClick}
-                      className={cn(
-                        "btn-focus flex items-center gap-2 rounded-full border py-1.5 pe-3.5 ps-1.5 text-sm font-medium transition-all",
-                        region.active
-                          ? "border-apricot-500 bg-apricot-500/10 text-foreground"
-                          : "border-border bg-card text-muted-foreground hover:border-apricot-400"
-                      )}
-                    >
-                      <span
-                        className="h-6 w-6 rounded-full border border-border"
-                        style={
-                          region.fabric
-                            ? fabricBackground(region.fabric, {
-                                viewCm: 4,
-                                elementPx: 24,
-                                fitRepeat: true,
-                              })
-                            : undefined
-                        }
-                      />
-                      {pick(region.label)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* how it is worn at the front, an abaya's: open or closed, one row */}
-            {showFront && wornFront && (
-              <div ref={frontOptions} className="scroll-my-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.front")}
-                </p>
-                <div
-                  role="group"
-                  aria-label={t("viz.front")}
-                  className="grid gap-1 rounded-full bg-muted/60 p-1"
-                  style={{ gridTemplateColumns: `repeat(${frontChoices.length}, minmax(0, 1fr))` }}
-                >
-                  {frontChoices.map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => chooseFront(f.id)}
-                      aria-pressed={wornFront === f.id}
-                      className={cn(
-                        "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
-                        wornFront === f.id
-                          ? "bg-card text-foreground shadow-soft"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {pick(f.name)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* a pair of trousers' legs: a row of them cut to each */}
-            {legIcons && wornLeg && (
-              <div ref={legOptions} className="scroll-my-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.leg")}
-                </p>
-                <div role="group" aria-label={t("viz.leg")} className="flex gap-2 overflow-x-auto pb-1">
-                  {legChoices.map((leg, i) => {
-                    const on = wornLeg === leg.id;
-                    return (
-                      <button
-                        key={leg.id}
-                        onClick={() => chooseLeg(leg.id)}
-                        aria-pressed={on}
-                        className={cn(
-                          "btn-focus flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-2 pb-2 pt-2.5 text-xs font-semibold transition-all",
-                          on
-                            ? "border-apricot-500 bg-apricot-500/10 text-foreground"
-                            : "border-border bg-card text-muted-foreground hover:border-apricot-400"
-                        )}
-                      >
-                        <Silhouette pieces={legIcons.pieces[i]} box={legIcons.box} className={cn("h-16 w-full", on && "text-apricot-500")} />
-                        {pick(leg.name)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* the skirt's switches, together */}
-            {showSkirt && wornSkirt && (
-              <div ref={skirtOptions} className="flex scroll-my-4 flex-col gap-6">
-                {/* the skirt's length: three choices, one row */}
-                {skirtLengthChoices.length > 1 && (
+              {subject === "home" ? (
+                <>
                   <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("viz.length")}
-                    </p>
-                    <div
-                      role="group"
-                      aria-label={t("viz.length")}
-                      className="grid gap-1 rounded-full bg-muted/60 p-1"
-                      style={{ gridTemplateColumns: `repeat(${skirtLengthChoices.length}, minmax(0, 1fr))` }}
-                    >
-                      {skirtLengthChoices.map((l) => (
-                        <button
-                          key={l.id}
-                          onClick={() => chooseSkirt({ length: l.id })}
-                          aria-pressed={wornSkirt.length === l.id}
-                          className={cn(
-                            "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
-                            wornSkirt.length === l.id
-                              ? "bg-card text-foreground shadow-soft"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {pick(l.name)}
-                        </button>
+                    <RowHeading>{t("viz.chooseProduct")}</RowHeading>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {productTemplates.map((p) => (
+                        <Chip
+                          key={p.kind}
+                          label={pick(p.label)}
+                          active={design.productId === p.kind}
+                          onClick={() => {
+                            setDesign((d) => ({ ...newDesign(p.kind, fabric), direction: d.direction, stitch: d.stitch }));
+                            setActivePart(productByKind(p.kind).parts[0].id);
+                          }}
+                        />
                       ))}
                     </div>
                   </div>
-                )}
-
-                {/* the skirt's shape: a row of the garment cut to each */}
-                {shapeIcons && (
+                  {fabricsList}
+                </>
+              ) : tab === "cut" ? (
+                <>
+                  {/* what she is wearing */}
                   <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("viz.shape")}
-                    </p>
-                    <div role="group" aria-label={t("viz.shape")} className="flex gap-2 overflow-x-auto pb-1">
-                      {skirtShapeChoices.map((shape, i) => {
-                        const on = wornSkirt.shape === shape.id;
+                    <RowHeading>{t("viz.wear")}</RowHeading>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {wardrobe.map((g) => {
+                        const on = isWearing(outfit.worn, g.id);
                         return (
                           <button
-                            key={shape.id}
-                            onClick={() => chooseSkirt({ shape: shape.id })}
+                            key={g.id}
+                            onClick={() => toggleGarment(g.id)}
                             aria-pressed={on}
                             className={cn(
-                              "btn-focus flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-2 pb-2 pt-2.5 text-xs font-semibold transition-all",
-                              on
-                                ? "border-apricot-500 bg-apricot-500/10 text-foreground"
-                                : "border-border bg-card text-muted-foreground hover:border-apricot-400"
+                              "btn-focus rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all",
+                              on ? "border-apricot-500 bg-apricot-500 text-white shadow-soft" : "border-border bg-card text-foreground hover:border-apricot-400"
                             )}
                           >
-                            <Silhouette
-                              pieces={shapeIcons.pieces[i]}
-                              box={shapeIcons.box}
-                              className={cn("h-16 w-full", on && "text-apricot-500")}
-                            />
-                            {pick(shape.name)}
+                            {pick(g.name)}
                           </button>
                         );
                       })}
                     </div>
+                    <p className="mt-2 text-[11px] text-muted-foreground">{t("viz.layersHint")}</p>
                   </div>
-                )}
-
-                {/* the waist its skirt hangs from, a dress's: one row */}
-                {waistChoices.length > 1 && (
-                  <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("viz.waist")}
-                    </p>
-                    <div
-                      role="group"
-                      aria-label={t("viz.waist")}
-                      className="grid gap-1 rounded-full bg-muted/60 p-1"
-                      style={{ gridTemplateColumns: `repeat(${waistChoices.length}, minmax(0, 1fr))` }}
-                    >
-                      {waistChoices.map((w) => (
-                        <button
-                          key={w.id}
-                          onClick={() => chooseSkirt({ waist: w.id })}
-                          aria-pressed={wornSkirt.waist === w.id}
-                          className={cn(
-                            "btn-focus rounded-full px-3 py-2 text-sm font-semibold transition-all",
-                            wornSkirt.waist === w.id
-                              ? "bg-card text-foreground shadow-soft"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {pick(w.name)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* a belt on its waist seam, a dress's: none, its own cloth, or leather */}
-                {showBelt && wornBelt && (
-                  <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("viz.belt")}
-                    </p>
-                    <div role="group" aria-label={t("viz.belt")} className="flex flex-wrap gap-2">
-                      {beltChoices.map((b) => (
-                        <CollarChoice key={b.id} label={pick(b.name)} active={wornBelt === b.id} onClick={() => chooseBelt(b.id)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/*
-              The collar, as a part rather than a style. It is offered only
-              where a garment has a neckline to sew one to, and only the ones
-              cut to fit that neckline are listed.
-            */}
-            {subject === "wardrobe" && !onBottom && necklineChoices.length > 0 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.neckline")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {necklineChoices.map((n) => (
-                    <CollarChoice
-                      key={n.id}
-                      label={pick(n.name)}
-                      active={wornNecklineId === n.id}
-                      onClick={() => chooseNeckline(n.id)}
-                    />
-                  ))}
-                </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {t("viz.necklineHint")}
-                </p>
-              </div>
-            )}
-
-            {/* a dress's buttons down its front, on a cut with a straight centre front: one row */}
-            {showButtons && wornButtons && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.buttons")}
-                </p>
-                <div
-                  role="group"
-                  aria-label={t("viz.buttons")}
-                  className="grid gap-1 rounded-full bg-muted/60 p-1"
-                  style={{ gridTemplateColumns: `repeat(${buttonChoices.length}, minmax(0, 1fr))` }}
-                >
-                  {buttonChoices.map((b) => (
-                    <button
-                      key={b.id}
-                      onClick={() => chooseButtons(b.id)}
-                      aria-pressed={wornButtons === b.id}
-                      className={cn(
-                        "btn-focus rounded-full px-2 py-2 text-xs font-semibold transition-all",
-                        wornButtons === b.id
-                          ? "bg-card text-foreground shadow-soft"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {pick(b.name)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/*
-              Sleeves: how the sleeve is built, then where it ends. Two rows,
-              because the two are separate choices — a type offers only the
-              lengths it is made in, and changing type keeps the length when
-              it can.
-            */}
-            {subject === "wardrobe" && !onBottom && sleeveChoices.length > 0 && wornSleeve && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.sleeve")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {sleeveChoices.map((id) => (
-                    <CollarChoice
-                      key={id}
-                      label={pick(sleeveTypeName(cuttingGarment, id))}
-                      active={wornSleeve.type === id}
-                      onClick={() => chooseSleeve({ type: id })}
-                    />
-                  ))}
-                </div>
-                {/* where it ends — not asked of a garment cut at one length only, an abaya's long sleeves */}
-                {sleeveLengths.length > 1 && (
-                  <>
-                    <p className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("viz.sleeveLength")}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {sleeveLengths.map((id) => (
-                        <CollarChoice
-                          key={id}
-                          label={pick(sleeveLengthById(id)!.name)}
-                          active={wornSleeve.length === id}
-                          onClick={() => chooseSleeve({ length: id })}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-                {/* a cuff is a long sleeve's, on a garment that offers one */}
-                {cuttingGarment && sleeveCuffsFor(cuttingGarment, wornSleeve).length > 0 && (
-                  <>
-                    <p className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("viz.cuff")}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {sleeveCuffsFor(cuttingGarment, wornSleeve).map((id) => (
-                        <CollarChoice
-                          key={id}
-                          label={pick(sleeveCuffById(id)!.name)}
-                          active={wornSleeve.cuff === id}
-                          onClick={() => chooseSleeve({ cuff: id })}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {t("viz.sleeveHint")}
-                </p>
-              </div>
-            )}
-
-            {subject === "wardrobe" && !onBottom && collarChoices.length > 0 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.collar")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <CollarChoice
-                    label={t("viz.noCollar")}
-                    active={!wornCollarId}
-                    onClick={() => chooseCollar(undefined)}
-                  />
-                  {collarChoices.map((c) => (
-                    <CollarChoice
-                      key={c.id}
-                      label={pick(c.name)}
-                      active={wornCollarId === c.id}
-                      onClick={() => chooseCollar(c.id)}
-                    />
-                  ))}
-                </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {t("viz.collarHint")}
-                </p>
-              </div>
-            )}
-
-            {/*
-              Stripes in a cloth of their own: along a sailor collar's edge, or
-              a boat neckline's — how many, and how far they go; and a sailor
-              collar's tie.
-            */}
-            {subject === "wardrobe" && !onBottom && stripeChoices.length > 1 && wornStripes && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.stripes")}
-                </p>
-                <Segmented
-                  label={t("viz.stripes")}
-                  choices={stripeChoices.map((c) => ({ id: c.id, label: pick(c.name) }))}
-                  active={wornStripes}
-                  onPick={chooseStripes}
-                />
-                {stripesAtChoices.length > 1 && wornStripesAt && (
-                  <>
-                    <p className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t("viz.stripesAt")}
-                    </p>
-                    <div role="group" aria-label={t("viz.stripesAt")} className="flex flex-wrap gap-2">
-                      {stripesAtChoices.map((c) => (
-                        <CollarChoice key={c.id} label={pick(c.name)} active={wornStripesAt === c.id} onClick={() => chooseStripesAt(c.id)} />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-            {subject === "wardrobe" && !onBottom && tieChoices.length > 1 && wornTie && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("viz.tie")}
-                </p>
-                <Segmented
-                  label={t("viz.tie")}
-                  choices={tieChoices.map((c) => ({ id: c.id, label: pick(c.name) }))}
-                  active={wornTie}
-                  onPick={chooseTie}
-                />
-              </div>
-            )}
-
-            {/* fabric switcher */}
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {regions.length > 1
-                  ? `${t("viz.cutFrom")} — ${pick(
-                      regions.find((r) => r.active)?.label ?? {
-                        en: "",
-                        ar: "",
-                      }
-                    )}`
-                  : t("viz.pickFabric")}
-              </p>
-              <div className="grid grid-cols-6 gap-2">
-                {fabrics.map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => cutRegion(f)}
-                    aria-label={pick(f.name)}
-                    title={`${pick(f.name)} · ${fabricRepeatCm(f).toFixed(
-                      1
-                    )} cm`}
-                    className={cn(
-                      "aspect-square rounded-lg border transition-all",
-                      f.id === activeFabric.id
-                        ? "border-apricot-500 ring-2 ring-apricot-500/30"
-                        : "border-border hover:border-apricot-400"
-                    )}
-                    style={fabricBackground(f, {
-                      viewCm: 6,
-                      elementPx: 44,
-                      fitRepeat: true,
-                    })}
-                  />
-                ))}
-              </div>
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                {t("viz.repeat")}:{" "}
-                <span className="font-semibold text-foreground">
-                  {fabricRepeatCm(activeFabric).toFixed(1)} {t("unit.cm")}
-                </span>
-              </p>
-            </div>
-
-            {/* finishing */}
-            <div className="space-y-5">
-              {/*
-                Which way the pattern is laid, for a pattern that has a way:
-                lengthwise, across or on the bias. A plain cloth or a print
-                that looks the same any way round is not asked — the choice
-                would change nothing on the figure.
-              */}
-              {fabricHasDirection(activeFabric) && (
-                <>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {t("viz.controls")}
-                  </p>
-                  <Field
-                    icon={<Compass className="h-4 w-4" />}
-                    label={t("viz.rotation")}
-                  >
-                    <div role="group" aria-label={t("viz.rotation")} className="flex gap-2">
-                      {GRAIN_PRESETS.map((d) => (
-                        <Choice
-                          key={d}
-                          active={direction === d}
-                          onClick={() => setDirection(d)}
-                        >
-                          {t(GRAIN_LABELS[d])}
-                        </Choice>
-                      ))}
-                    </div>
-                  </Field>
+                  {editing}
+                  {rowsOf(cutRows)}
                 </>
+              ) : tab === "extras" ? (
+                <>
+                  {editing}
+                  {extraRows.length > 0 ? rowsOf(extraRows) : <RowHint>{t("viz.noExtras")}</RowHint>}
+                </>
+              ) : (
+                fabricsList
               )}
 
-              <button
-                onClick={reset}
-                className="btn-focus inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-apricot-600"
-              >
-                <RotateCcw className="h-4 w-4" />
-                {t("viz.reset")}
-              </button>
+              <div className="mt-2 flex flex-col gap-4 border-t border-border/60 pt-4">
+                <button
+                  onClick={reset}
+                  className="btn-focus inline-flex items-center gap-1.5 self-start text-sm font-medium text-muted-foreground transition-colors hover:text-apricot-600"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  {t("viz.reset")}
+                </button>
+                <Button variant="primary" className="w-full" onClick={share}>
+                  <Download className="h-4 w-4" />
+                  {t("viz.share")}
+                </Button>
+              </div>
             </div>
-
-            <Button variant="primary" className="w-full" onClick={share}>
-              <Download className="h-4 w-4" />
-              {t("viz.share")}
-            </Button>
           </aside>
         </div>
       </div>
     </div>
-  );
-}
-
-function Field({
-  icon,
-  label,
-  children,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-          <span className="text-apricot-500">{icon}</span>
-          {label}
-        </span>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Choice({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "btn-focus flex-1 rounded-full border px-3 py-1.5 text-sm font-medium transition-all",
-        active
-          ? "border-apricot-500 bg-apricot-500 text-white"
-          : "border-border bg-card text-foreground hover:border-apricot-400"
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** A row of a few choices sharing one pill, one of them pressed — the panel's buttons, stripes and tie rows. */
-function Segmented<T extends string>({
-  label,
-  choices,
-  active,
-  onPick,
-}: {
-  label: string;
-  choices: { id: T; label: string }[];
-  active: T;
-  onPick: (id: T) => void;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label={label}
-      className="grid gap-1 rounded-full bg-muted/60 p-1"
-      style={{ gridTemplateColumns: `repeat(${choices.length}, minmax(0, 1fr))` }}
-    >
-      {choices.map((c) => (
-        <button
-          key={c.id}
-          onClick={() => onPick(c.id)}
-          aria-pressed={active === c.id}
-          className={cn(
-            "btn-focus rounded-full px-2 py-2 text-xs font-semibold transition-all",
-            active === c.id ? "bg-card text-foreground shadow-soft" : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {c.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** A collar in the picker. Narrower than `Choice` — there are ten of them. */
-function CollarChoice({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "btn-focus rounded-full border px-3 py-1 text-xs font-medium transition-all",
-        active
-          ? "border-apricot-500 bg-apricot-500 text-white shadow-soft"
-          : "border-border bg-card text-muted-foreground hover:border-apricot-400"
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
-/**
- * One skin tone, in its own colour and nothing else. It once had a painted-on
- * highlight, which turned the deepest tones grey: the swatch has to be the
- * colour the body is drawn in.
- */
-function SkinSwatch({
-  label,
-  color,
-  active,
-  onClick,
-}: {
-  label: string;
-  color: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={label}
-      title={label}
-      className={cn(
-        "btn-focus h-6 w-6 shrink-0 rounded-full transition-transform hover:scale-110 sm:h-7 sm:w-7",
-        active
-          ? "scale-110 ring-2 ring-apricot-500 ring-offset-2 ring-offset-card"
-          : "ring-1 ring-black/10 dark:ring-white/15"
-      )}
-      style={{ backgroundColor: color }}
-    />
   );
 }
 
