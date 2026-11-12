@@ -78,6 +78,7 @@ const CUFF_NAMES: Record<CuffId, { en: string; ar: string }> = {
   formal: { en: "Formal cuff", ar: "كبك رسمي" },
   french: { en: "French cuff", ar: "كبك فرنسي" },
   rib: { en: "Rib cuff", ar: "أسورة مضلّعة" },
+  band: { en: "Wide band", ar: "شريط عريض" },
 };
 
 export const sleeveTypes: SleeveType[] = SLEEVE_TYPES.map((id) => ({

@@ -4291,3 +4291,118 @@ describe("round 19, stripes on any edge, light and dark", () => {
     }, 120_000);
   }
 });
+
+describe("round 20, a cloth for every part, light and dark", () => {
+  /*
+    The sleeves' ends and a fabric belt, each in a cloth of its own: every
+    cuff and the wide band «شريط عريض» at every length, a puff's and a
+    bishop's band; the belt in another cloth, and striped; and the sailor
+    look of the photographs — white bands and belt, red stripes.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Look = {
+    caption: string;
+    cloth: string;
+    cut?: string;
+    sleeve?: SleeveChoice;
+    cuffCloth?: string;
+    belt?: BeltId;
+    beltCloth?: string;
+    stripes?: StripesId;
+    on?: StripeEdgeId[];
+    stripeCloth?: string;
+    zoom: number;
+    focus: [number, number];
+  };
+  const stage = (look: Look) => {
+    const cloth = f(look.cloth);
+    const g = garmentById("female-dress")!;
+    let worn = setNeckline(wear([], cutFrom(g, cloth.id)), g.id, `female-${look.cut ?? "round"}-neckline`);
+    if (look.sleeve) worn = setSleeve(worn, g.id, look.sleeve);
+    if (look.belt) worn = setBelt(worn, g.id, look.belt);
+    if (look.stripes) worn = setStripeEdges(setStripes(worn, g.id, look.stripes, look.stripeCloth ?? "fb-red"), g.id, look.on ?? []);
+    const w = worn.find((x) => x.garmentId === g.id)!;
+    const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+    for (const r of regionsOf(g, w))
+      regions[r] = r === "cuff" && look.cuffCloth ? f(look.cuffCloth) : r === "belt" && look.beltCloth ? f(look.beltCloth) : r === "trim" ? f(look.stripeCloth ?? "fb-red") : cloth;
+    const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={{ [g.id]: regions }} zoom={look.zoom} focus={look.focus} />;
+  };
+  const NAVY = "fb-navy";
+  const PRINT = "fb-midnight-floral";
+  const WHITE = "fb-white";
+  const ENDS: [string, SleeveChoice, [number, number]][] = [
+    ["wide band, short", { type: "set-in", length: "short", cuff: "band" }, [200, 300]],
+    ["wide band, elbow", { type: "set-in", length: "elbow", cuff: "band" }, [196, 350]],
+    ["wide band, three-quarter", { type: "drop", length: "three-quarter", cuff: "band" }, [192, 410]],
+    ["wide band, long", { type: "raglan", length: "long", cuff: "band" }, [188, 470]],
+    ["plain cuff", { type: "set-in", length: "long", cuff: "plain" }, [188, 470]],
+    ["formal cuff", { type: "set-in", length: "long", cuff: "formal" }, [188, 465]],
+    ["french cuff", { type: "set-in", length: "long", cuff: "french" }, [188, 470]],
+    ["puff band", { type: "puff", length: "short" }, [200, 300]],
+    ["bishop cuff", { type: "bishop", length: "long" }, [188, 470]],
+  ];
+  const named = (cloth: string) => (cloth === NAVY ? "navy" : "print");
+  const SHEETS: Record<string, Look[][]> = {
+    /* every sleeve end in white: on navy, then on the print */
+    cuffs: [NAVY, PRINT].flatMap((cloth): Look[][] => [
+      ENDS.slice(0, 5).map(([c, sleeve, focus]) => ({ caption: `${c}, white on ${named(cloth)}, 3×`, cloth, sleeve, cuffCloth: WHITE, zoom: 3, focus })),
+      [
+        ...ENDS.slice(5).map(([c, sleeve, focus]) => ({ caption: `${c}, white on ${named(cloth)}, 3×`, cloth, sleeve, cuffCloth: WHITE, zoom: 3, focus })),
+        { caption: `wide band, white on ${named(cloth)}, 1×`, cloth, sleeve: { type: "set-in", length: "short", cuff: "band" }, cuffCloth: WHITE, zoom: 1, focus: [300, 500] },
+      ],
+    ]),
+    /* the belt in a cloth of its own, then striped — one, two, three — and leather beside it */
+    belt: [NAVY, PRINT].flatMap((cloth): Look[][] => [
+      [
+        { caption: `belt, own cloth (white), ${named(cloth)}, 1×`, cloth, belt: "self", beltCloth: WHITE, zoom: 1, focus: [300, 500] },
+        { caption: `belt, white, ${named(cloth)}, 4×`, cloth, belt: "self", beltCloth: WHITE, zoom: 4, focus: [300, 345] },
+        { caption: `belt, red, ${named(cloth)}, 4×`, cloth, belt: "self", beltCloth: "fb-red", zoom: 4, focus: [300, 345] },
+        { caption: `belt, the dress's cloth, ${named(cloth)}, 4×`, cloth, belt: "self", zoom: 4, focus: [300, 345] },
+        { caption: `brown leather, ${named(cloth)}, 4×`, cloth, belt: "brown", zoom: 4, focus: [300, 345] },
+      ],
+      [
+        ...(["one", "two", "three"] as const).map((n): Look => ({ caption: `belt stripes: ${n}, ${named(cloth)}, 4×`, cloth, belt: "self", beltCloth: WHITE, stripes: n, on: ["belt"], zoom: 4, focus: [300, 345] })),
+        { caption: `belt stripes, empire waist, ${named(cloth)}, 4×`, cloth, belt: "self", beltCloth: WHITE, stripes: "two", on: ["belt"], zoom: 4, focus: [300, 300] },
+        { caption: `band stripes: two, ${named(cloth)}, 4×`, cloth, sleeve: { type: "set-in", length: "short", cuff: "band" }, cuffCloth: WHITE, stripes: "two", on: ["sleeves"], zoom: 4, focus: [200, 300] },
+      ],
+    ]),
+    /* the photographs' sailor dress: navy, white bands and belt, red stripes along the neck, the bands, the belt and the hem */
+    sailor: [
+      [
+        { caption: "boat, bands + belt + hem, 1×", cloth: NAVY, cut: "boat", sleeve: { type: "set-in", length: "short", cuff: "band" }, cuffCloth: WHITE, belt: "self", beltCloth: WHITE, stripes: "two", on: ["neckline", "sleeves", "hem", "belt"], zoom: 1, focus: [300, 500] },
+        { caption: "boat, close, 3×", cloth: NAVY, cut: "boat", sleeve: { type: "set-in", length: "short", cuff: "band" }, cuffCloth: WHITE, belt: "self", beltCloth: WHITE, stripes: "two", on: ["neckline", "sleeves", "hem", "belt"], zoom: 3, focus: [300, 290] },
+        { caption: "V, elbow bands, three, 1×", cloth: NAVY, cut: "v", sleeve: { type: "set-in", length: "elbow", cuff: "band" }, cuffCloth: WHITE, belt: "self", beltCloth: WHITE, stripes: "three", on: ["neckline", "sleeves", "belt"], zoom: 1, focus: [300, 500] },
+        { caption: "print, white bands, navy stripes, 1×", cloth: PRINT, cut: "square", sleeve: { type: "set-in", length: "short", cuff: "band" }, cuffCloth: WHITE, belt: "self", beltCloth: WHITE, stripes: "one", on: ["sleeves", "belt"], stripeCloth: NAVY, zoom: 1, focus: [300, 500] },
+      ],
+    ],
+  };
+  for (const [name, rows] of Object.entries(SHEETS)) {
+    it.each(["light", "dark"] as const)(`writes .preview/wardrobe/round20-${name}-%s.html`, (theme) => {
+      const t = THEMES[theme];
+      const html = renderToStaticMarkup(
+        <>
+          {rows.map((row, r) => (
+            <div key={r} className="row">
+              {row.map((look) => (
+                <figure key={look.caption}>
+                  {stage(look)}
+                  <figcaption>{look.caption}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ))}
+        </>
+      );
+      const css =
+        `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+        `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+        `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+        `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+      writeFileSync(`.preview/wardrobe/round20-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    }, 120_000);
+  }
+});

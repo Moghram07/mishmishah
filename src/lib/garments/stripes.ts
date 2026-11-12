@@ -403,9 +403,12 @@ export const BAND_STRIPE_ROOM = 1.5;
 export function fittedBands(edge: Edge, bands: readonly StripeBand[]): readonly StripeBand[] {
   if (edge.room === undefined || bands.length === 0) return bands;
   const last = bands[bands.length - 1][1];
-  if (edge.room >= last + BAND_STRIPE_ROOM) return bands;
-  const fit = (edge.room - BAND_STRIPE_ROOM) / last;
-  return bands.map(([n, f]) => [n * fit, f * fit] as const);
+  const fit = edge.room >= last + BAND_STRIPE_ROOM ? 1 : (edge.room - BAND_STRIPE_ROOM) / last;
+  const fitted = fit === 1 ? bands : bands.map(([n, f]) => [n * fit, f * fit] as const);
+  if (!edge.centred) return fitted;
+  /* centred across the room: an even margin of the band's own cloth either side */
+  const shift = (edge.room - fitted[fitted.length - 1][1] - fitted[0][0]) / 2;
+  return fitted.map(([n, f]) => [n + shift, f + shift] as const);
 }
 
 /**

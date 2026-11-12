@@ -22,8 +22,9 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, dressStripes, frontButtons, seamAt, skirtFor, skirtPlacketFor } from "./dressCut";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, drawnBodice, dressStripes, frontButtons, seamAt, skirtFor, skirtPlacketFor, sleeveEndPieces } from "./dressCut";
 import type { Inlay } from "@/lib/garments/stripes";
+import type { Inlaid } from "../index";
 import { BELTLESS_CUTS, LEATHER } from "@/lib/garments/closures";
 import { Buckle } from "../buckle";
 import { besideArms, fallOf, hangs, sameSkirt, skirtKey, type CutSkirt } from "@/lib/garments/skirts";
@@ -967,6 +968,8 @@ const beltArt = (skirt: SkirtChoice, kind: Exclude<BeltId, "none">, under: strin
     `M${(foot + 3).toFixed(2)} ${b.bottom - s} L${(597 - foot).toFixed(2)} ${b.bottom - s}`;
   return {
     ...(under.length ? { under } : {}),
+    /* a belt in cloth is cut from the belt's own cloth — the skirt's, until another is chosen */
+    ...(leather ? {} : { cloth: "belt" as const }),
     focus: [300, b.mid],
     surface: leather ? { blur: 5, relief: 2.5 } : { blur: 6, relief: 3, warp: 3 },
     ...(leather ? { solid: leather } : { grain: { shift: [6, 13] } }),
@@ -1109,13 +1112,33 @@ function cutRegions(choice: GarmentChoice): { top: RegionArt; bottom?: RegionArt
  * region and stripes, so the stage is handed the same object every render.
  */
 const inlaid = new WeakMap<RegionArt, Map<string, RegionArt>>();
-const withStripes = (region: RegionArt, inlay: Inlay[], key: string): RegionArt => {
+const withStripes = (region: RegionArt, inlay: Inlaid[], key: string): RegionArt => {
   if (!inlay.length) return region;
   let by = inlaid.get(region);
   if (!by) inlaid.set(region, (by = new Map()));
   let r = by.get(key);
   if (!r) by.set(key, (r = { ...region, inlay }));
   return r;
+};
+
+/** The skirt with stripes sewn along the belt lying over it — see `withStripes` — kept the same way. */
+const belted = new WeakMap<RegionArt, Map<string, RegionArt>>();
+const withBeltStripes = (region: RegionArt, inlay: Inlay[], key: string): RegionArt => {
+  if (!inlay.length || !region.over) return region;
+  let by = belted.get(region);
+  if (!by) belted.set(region, (by = new Map()));
+  let r = by.get(key);
+  if (!r) by.set(key, (r = { ...region, over: { ...region.over, inlay } }));
+  return r;
+};
+
+/**
+ * Each piece the sleeves end in, laid over whole in the cuffs' own cloth —
+ * drawn only where that cloth is not the bodice's: see `partFabrics`.
+ */
+const cuffsOf = (choice: GarmentChoice): Inlaid[] => {
+  const b = drawnBodice(choice);
+  return sleeveEndPieces(choice).map((piece) => ({ piece, d: b.pieces[piece], cloth: "cuff" as const, whole: true as const }));
 };
 
 export const dressFront: GarmentArt = {
@@ -1134,9 +1157,12 @@ export const dressFront: GarmentArt = {
     const stripes = dressStripes(choice);
     const stripesKey = choice.stripes ? `${choice.stripes.count}|${choice.stripes.on.join(",")}` : "";
     const cut = cutRegions(choice);
+    /* its cuffs first, each laid whole in the cuffs' cloth, then the stripes over them */
+    const cuffs = cuffsOf(choice);
+    const bottom = cut.bottom || stripes.bottom.length ? withStripes(cut.bottom ?? BOTTOM, stripes.bottom, stripesKey) : undefined;
     return {
-      top: withStripes(cut.top, stripes.top, stripesKey),
-      ...(cut.bottom || stripes.bottom.length ? { bottom: withStripes(cut.bottom ?? BOTTOM, stripes.bottom, stripesKey) } : {}),
+      top: withStripes(cut.top, [...cuffs, ...stripes.top], `${stripesKey}|${cuffs.length}`),
+      ...(bottom ? { bottom: withBeltStripes(bottom, stripes.belt, stripesKey) } : {}),
     };
   },
 

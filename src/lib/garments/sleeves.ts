@@ -151,7 +151,7 @@ export const hasArmhole = (type: SleeveTypeId): boolean =>
  * cufflink («كبك فرنسي»); on a knit one, a ribbed band («أسورة مضلّعة»). Which a
  * garment offers is its own record's business.
  */
-export const CUFFS: readonly CuffId[] = ["none", "plain", "formal", "french", "rib"];
+export const CUFFS: readonly CuffId[] = ["none", "plain", "formal", "french", "rib", "band"];
 
 /**
  * The types a cuff is sewn to: the sewn sleeves, set-in, drop shoulder and
@@ -167,8 +167,36 @@ const CUFFED_TYPES: readonly SleeveTypeId[] = ["set-in", "drop", "raglan", "dolm
  * at all unless it is long and of a type that takes one. Here rather than in
  * the catalogue so that `check:garments` asks the same question.
  */
-export const cuffsOffered = (offered: readonly CuffId[] | undefined, c: SleeveChoice): CuffId[] =>
-  c.length === "long" && CUFFED_TYPES.includes(c.type) ? [...(offered ?? [])] : [];
+export const cuffsOffered = (offered: readonly CuffId[] | undefined, c: SleeveChoice): CuffId[] => {
+  const list = [...(offered ?? [])];
+  if (c.length === "sleeveless") return [];
+  /* a wide band, on a garment that offers one, at every length of a sewn sleeve */
+  const band = list.includes("band") && BANDED_TYPES.includes(c.type);
+  if (c.length === "long" && CUFFED_TYPES.includes(c.type)) return list.filter((x) => x !== "band" || band);
+  return band ? list.filter((x) => x === "none" || x === "band") : [];
+};
+
+/**
+ * The types a wide band is sewn to the end of, at any length — the sewn
+ * sleeves, whose hem is a straight row across the arm: set-in, drop shoulder
+ * and raglan. A turned-back band of a second cloth, as on a sailor dress's
+ * short sleeve.
+ */
+export const BANDED_TYPES: readonly SleeveTypeId[] = ["set-in", "drop", "raglan"];
+
+/** How deep a wide band is: 26 units, about 4.9 cm — room for three stripes, centred. */
+export const WIDE_BAND = 26;
+
+/** The loose sleeves that end in a band of their own: a puff's at its hem, a bishop's cuff. */
+const OWN_BANDS: readonly SleeveTypeId[] = ["puff", "bishop"];
+
+/**
+ * Whether a sleeve ends in a piece of its own — a cuff, a wide band, a
+ * puff's or a bishop's band — which can be cut from a cloth of its own: see
+ * `Garment.partCloths`. A test holds this to the drawing's own pieces.
+ */
+export const hasSleeveEnd = (c: SleeveChoice | undefined): boolean =>
+  !!c && c.length !== "sleeveless" && ((c.cuff !== undefined && c.cuff !== "none") || OWN_BANDS.includes(c.type));
 
 /** Is this type × length a sleeve that exists? */
 export const sleeveAllowed = (c: SleeveChoice): boolean =>
@@ -387,6 +415,8 @@ const CUFF_CUT: Record<Exclude<CuffId, "none">, { deep: number; wide: number }> 
   formal: { deep: 1, wide: 0 },
   french: { deep: 1.25, wide: 2 },
   rib: { deep: 1, wide: -4 },
+  /* a wide band is sewn at the sleeve's own width, at its hem — see `WIDE_BAND` */
+  band: { deep: 1, wide: 0 },
 };
 /** Where across a cuff, from its outer side, it closes: the button, the cufflink, the placket above. */
 const CUFF_CLOSE = 0.18;
@@ -1217,10 +1247,12 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
     const side = sideFrom(U, inside);
     const fin = spec.finish ?? {};
     const wrist = hemRow(body, { type: "set-in", length: "long" })! - (fin.reveal ?? 0);
-    const style = c.length === "long" && c.cuff && c.cuff !== "none" ? c.cuff : null;
+    /* a wide band is sewn on at the hem, at any length, as an armband is — not gathered in at the wrist as a cuff */
+    const wide = c.cuff === "band" && BANDED_TYPES.includes(c.type);
+    const style = c.length === "long" && c.cuff && c.cuff !== "none" && c.cuff !== "band" ? c.cuff : null;
     const cuffed = style !== null;
-    /* a short sleeve's rib armband, if the garment finishes it with one: from here to the hem */
-    const armTop = c.length === "short" && fin.armband ? cuff - fin.armband : null;
+    /* a short sleeve's rib armband, if the garment finishes it with one, or a wide band: from here to the hem */
+    const armTop = wide ? cuff - WIDE_BAND : c.length === "short" && fin.armband ? cuff - fin.armband : null;
     const cuffH = style ? Math.round((fin.cuff?.height ?? CUFF_HEIGHT) * CUFF_CUT[style].deep) : 0;
     /* where the sleeve has narrowed to its end width: the cuff's seam, or the hem */
     const C = cuffed ? wrist - cuffH : wrist;
@@ -1428,8 +1460,10 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
       cuffStitch = cuffParts.stitch;
       cuffSeam = cuffParts.seam;
     } else if (armTop !== null) {
-      /* the armband: a rib band round the arm, sewn on where the sleeve ends */
-      cuffParts = cuffOn("rib", outer, inner, xo, xi, armTop, cuff, xi(armTop) - xo(armTop) - ARMBAND_HUG);
+      /* the armband: a rib band round the arm, sewn on where the sleeve ends — or a wide band, at the sleeve's own width */
+      cuffParts = wide
+        ? cuffOn("band", outer, inner, xo, xi, armTop, cuff, xi(armTop) - xo(armTop) + 1)
+        : cuffOn("rib", outer, inner, xo, xi, armTop, cuff, xi(armTop) - xo(armTop) - ARMBAND_HUG);
       hemPts = cuffParts.hemPts;
       cuffBand = cuffParts.band;
       cuffSeam = cuffParts.seam;
@@ -1496,7 +1530,7 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
       underarm: U,
       left: { armhole: underSleeve, side, hem: hemAcross(side), sleeve: left },
       right: { sleeve: right },
-      ...(cuffParts ? { cuff: bothCuffs(style ?? "rib", cuffSeam, cuffParts) } : {}),
+      ...(cuffParts ? { cuff: bothCuffs(style ?? (wide ? "band" : "rib"), cuffSeam, cuffParts) } : {}),
       raw: { outer: [...head, ...outer], hem: hemPts, inner, stitch: cuffStitch },
       seamed: {
         edges: [bodyEdge, sleeveEdge, sleeveEdgeRight, ...(banded ? [cuffEdge, mirrorLine(cuffEdge)] : [])],

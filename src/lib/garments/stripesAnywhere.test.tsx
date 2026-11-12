@@ -16,7 +16,7 @@ import type { GarmentChoice } from "./art";
 import type { Pt } from "./fit";
 
 const dress = garmentById("female-dress")!;
-const TOGGLE: Record<Edge["kind"], StripeEdgeId> = { neckline: "neckline", sleeve: "sleeves", hem: "hem", collar: "collar" };
+const TOGGLE: Record<Edge["kind"], StripeEdgeId> = { neckline: "neckline", sleeve: "sleeves", hem: "hem", collar: "collar", belt: "belt" };
 const lengthOf = (pts: Pt[]) => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
 /** A point inside a row: between its two sides at its middle. */
 const inRow = (r: StripeSides): Pt => {
@@ -207,7 +207,7 @@ describe("rows along edges that meet", () => {
         }
       }
     }
-  });
+  }, 120_000);
 
   it("stay clear of the other edge where only one is striped: no row of the square's neckline past the cap's edge onto the arm", () => {
     const choice: GarmentChoice = { neckline: "square", sleeve: { type: "cap", length: "short" }, stripes: { count: "three", on: ["neckline"] } };

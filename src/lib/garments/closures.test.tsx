@@ -53,7 +53,7 @@ describe("buttons and belt: what is offered", () => {
       expect(beltsFor(dress, cut).map((b) => b.id), cut).toEqual(cut === "wrap" ? [] : ["none", "self", "brown", "black"]);
     }
     expect(buttonsFor(dress, "round").map((b) => b.name.ar)).toEqual(["بدون", "حتى الخصر", "حتى الأسفل"]);
-    expect(beltsFor(dress, "round").map((b) => b.name.ar)).toEqual(["بدون", "من نفس القماش", "جلد بني", "جلد أسود"]);
+    expect(beltsFor(dress, "round").map((b) => b.name.ar)).toEqual(["بدون", "قماش", "جلد بني", "جلد أسود"]);
     /* nothing else takes either */
     for (const g of garments) if (g.id !== "female-dress") expect([g.buttons, g.belts], g.id).toEqual([undefined, undefined]);
   });

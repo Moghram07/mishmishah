@@ -68,7 +68,7 @@ const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
 const { HEM_AT, WAIST_DROP, besideArms, fallOf, fallRun, hangs, shapeLengths, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
 const { legWiden } = await import(src("src/lib/garments/legs.ts"));
-const { BELT_ABOVE_SEAM, BELT_WIDTH, BUTTONED_CUTS, BUTTON_LAST, buttonsOn } = await import(src("src/lib/garments/closures.ts"));
+const { BELT_ABOVE_SEAM, BELT_WIDTH, BUTTONED_CUTS, BUTTON_LAST, beltsOn, buttonsOn } = await import(src("src/lib/garments/closures.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES } = await import(
@@ -4085,6 +4085,7 @@ failures += timed("edges", () => {
       skirt: { shapes: garment.skirt.shapes, waists: garment.skirt.waists, lengthsOf: (shape) => shapeLengths(shape, garment.skirt.lengths) },
       buttonsOn: (cut, shape) => buttonsOn(cut, garment.buttons?.offered ?? ["none"], shape),
       openingsOn: (cut) => [...new Set(collarsForGarment(garment).filter((c) => sews(c, NECKLINE_OPENING[cut])).map((c) => c.opening))],
+      beltsOn: (cut) => (garment.belts ? beltsOn(cut, garment.belts.offered) : ["none"]),
     };
     /* a whole outfit's holes, as `checkCut` counts them */
     const holes = (choice) => {

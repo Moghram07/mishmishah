@@ -20,7 +20,8 @@ const BUTTON_NAMES: Record<ButtonsId, { en: string; ar: string }> = {
 
 const BELT_NAMES: Record<BeltId, { en: string; ar: string }> = {
   none: { en: "None", ar: "بدون" },
-  self: { en: "Self-fabric", ar: "من نفس القماش" },
+  /* in any cloth now, the dress's own to begin with — see `clothOf` */
+  self: { en: "Fabric", ar: "قماش" },
   brown: { en: "Brown leather", ar: "جلد بني" },
   black: { en: "Black leather", ar: "جلد أسود" },
 };

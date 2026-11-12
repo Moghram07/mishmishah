@@ -175,7 +175,8 @@ describe("the first time a body is dressed, from the other", () => {
     expect(dress.garmentId).toBe("female-dress");
     expect(necklineOf(dress)?.id).toBe("female-high-neckline");
     expect(collarOf(dress)?.id).toBe("female-mandarin-collar");
-    expect(sleeveOf(dress)).toEqual({ type: "raglan", length: "elbow" });
+    /* the dress offers a wide band at the elbow, so its sleeve says it has none */
+    expect(sleeveOf(dress)).toEqual({ type: "raglan", length: "elbow", cuff: "none" });
   });
 
   it("dresses a new body when nothing worn has a counterpart that fits", () => {

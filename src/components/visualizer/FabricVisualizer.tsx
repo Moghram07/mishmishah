@@ -45,6 +45,7 @@ import { PRODUCT_CANVAS } from "@/lib/products/registry";
 import { needsZoom } from "@/lib/fabrics/printScale";
 import { focusOf } from "@/lib/garments/closeUp";
 import {
+  clothOf,
   collarOf,
   collarsFitting,
   cutFrom,
@@ -353,7 +354,8 @@ export function FabricVisualizer() {
     for (const { garment, worn: w } of worn) {
       const regions: Partial<Record<FabricRegionId, Fabric>> = {};
       for (const region of regionsOf(garment, w)) {
-        regions[region] = fabricById(w.fabrics[region] ?? "") ?? fabric;
+        /* a part with no cloth of its own yet arrives in its garment's — see `clothOf` */
+        regions[region] = fabricById(clothOf(w, region) ?? "") ?? fabric;
       }
       out[garment.id] = regions;
     }
@@ -499,6 +501,11 @@ export function FabricVisualizer() {
       ...o,
       worn: setSleeve(o.worn, cuttingGarment.id, { type, length, ...(cuff ? { cuff } : {}) }),
     }));
+    // A wide band in the dress's own cloth barely shows, so its cloth is what
+    // you almost always want next: the picker moves to it, as for the stripes
+    // and the tie.
+    if (next.cuff === "band" && cuttingGarment.partCloths?.includes("cuff"))
+      setCutting({ garmentId: cuttingGarment.id, region: "cuff" });
   };
 
   /** Recut the skirt of the garment being cut — resolved when read, see `skirtOf`. */

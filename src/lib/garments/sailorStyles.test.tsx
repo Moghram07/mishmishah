@@ -152,7 +152,7 @@ describe("stripes round each sleeve's hem", () => {
     expect(dressStripes(striped("three", "neck")).bottom).toEqual([]);
     expect(dressStripes(striped("three", "sleeves")).bottom).toEqual([]);
     // and with no stripes chosen, nothing
-    expect(dressStripes(V)).toEqual({ top: [], bottom: [] });
+    expect(dressStripes(V)).toEqual({ top: [], bottom: [], belt: [] });
   });
 });
 

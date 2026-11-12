@@ -16,7 +16,7 @@ import type { Pt } from "./fit.ts";
 import type { GarmentChoice } from "./art/index.ts";
 
 /** What an edge is: a neckline's, a sleeve's hem, a skirt's hem, or a collar's free edge. */
-export type EdgeKind = "neckline" | "sleeve" | "hem" | "collar";
+export type EdgeKind = "neckline" | "sleeve" | "hem" | "collar" | "belt";
 
 /**
  * How a part is laid in from an edge, `d` units onto the cloth.
@@ -61,6 +61,12 @@ export interface Edge {
    * fitted finer to it. Absent where the cloth runs on.
    */
   room?: number;
+  /**
+   * Whether what is laid in its `room` is centred across it rather than
+   * set in from the edge — braid on a wide band or a belt, an even margin of
+   * the band's cloth either side.
+   */
+  centred?: true;
   /**
    * Where an end of it meets another edge at a corner — a cap sleeve's edge
    * and the shoulder line, at the tip of the shoulder: the corner, and the

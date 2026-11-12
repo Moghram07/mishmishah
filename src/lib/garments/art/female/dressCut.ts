@@ -27,6 +27,7 @@ import {
   BUTTON_PITCH,
   BUTTON_R,
   BUTTON_SLIDE,
+  BELTLESS_CUTS,
   OWN_PLACKET,
   PANEL_HALF,
   PLACKET_HALF,
@@ -125,6 +126,12 @@ export interface Bodice {
    * cut-on or loose one.
    */
   seamed?: { edges: string[]; seams: string[]; sleeves: string[]; cut: SleeveCut };
+  /**
+   * The pieces its sleeves end in — cuffs, wide bands, a puff's or a
+   * bishop's band — however it is sleeved: both sides, one, or hung from an
+   * off-shoulder's band. What a cloth of their own is laid over.
+   */
+  ends?: string[];
   /** Its cuffs, if its sleeves have them: the bands, and the cut they came from. */
   cuff?: { bands: string[]; cut: NonNullable<SleeveCut["cuff"]>; oneSided: boolean };
   /**
@@ -417,6 +424,7 @@ function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Bodice {
       return {
         cut,
         pieces: [body, ...hung.sleeves, ...bands, raglan.outline],
+        ends: bands,
         stitch: [T.stitch, hung.stitch].join(" "),
         folds: [...cut.folds, ...hung.k.folds],
         armCover: [...hung.sleeves, ...bands, raglan.outline],
@@ -467,6 +475,7 @@ function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Bodice {
       cut,
       sleeveCut: k,
       pieces: [k.body, ...cut.extras, ...k.sleeves, ...k.bands],
+      ends: k.bands,
       stitch: [cut.stitch, k.stitch].join(" "),
       folds: [...cut.folds, ...k.folds],
       armCover: k.armCover,
@@ -509,6 +518,7 @@ function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Bodice {
   return {
     cut,
     pieces,
+    ends: k.bands.length ? [k.bands[one]] : [],
     stitch: cut.stitch,
     folds: [...cut.folds, ...(sleeves === "left" ? half : k.folds.slice(half.length))],
     armCover: [sleeves === "left" ? k.left.sleeve : k.right.sleeve],
@@ -1056,7 +1066,7 @@ export const HEM_STRIPE_INSET = 8;
  * each sleeve's hem and the skirt's, when its collar's stripes go so far; or
  * along a boat neckline, with no collar on. The same count everywhere.
  */
-export function dressStripes(choice: GarmentChoice): { top: Inlay[]; bottom: Inlay[] } {
+export function dressStripes(choice: GarmentChoice): { top: Inlay[]; bottom: Inlay[]; belt: Inlay[] } {
   const st = choice.stripes;
   if (!st) return NO_STRIPES;
   /* cut once per everything they are laid on, and kept: the stage asks on every render */
@@ -1071,6 +1081,7 @@ export function dressStripes(choice: GarmentChoice): { top: Inlay[]; bottom: Inl
     choice.buttons ?? "",
     choice.opening ?? "",
     choice.inside ? `${choice.inside.y}|${choice.inside.x}` : "",
+    choice.belt ?? "",
     st.count,
     st.on.join(","),
   ].join("|");
@@ -1079,17 +1090,19 @@ export function dressStripes(choice: GarmentChoice): { top: Inlay[]; bottom: Inl
   return laid;
 }
 
-const NO_STRIPES = { top: [], bottom: [] };
-const stripesCut = new Map<string, { top: Inlay[]; bottom: Inlay[] }>();
+const NO_STRIPES = { top: [], bottom: [], belt: [] };
+const stripesCut = new Map<string, { top: Inlay[]; bottom: Inlay[]; belt: Inlay[] }>();
 
-function layStripes(choice: GarmentChoice, st: NonNullable<GarmentChoice["stripes"]>): { top: Inlay[]; bottom: Inlay[] } {
+function layStripes(choice: GarmentChoice, st: NonNullable<GarmentChoice["stripes"]>): { top: Inlay[]; bottom: Inlay[]; belt: Inlay[] } {
   const bands = STRIPES[st.count];
   const edges = dressEdges(choice);
   const along = (kind: EdgeKind) => edges.filter((e) => e.kind === kind).flatMap((e) => stripesAlong(e, bands));
   /* along each edge chosen: the neckline and the sleeves' hems on the bodice, the skirt's on the skirt — a collar's are its own */
   const top = [...(st.on.includes("neckline") ? along("neckline") : []), ...(st.on.includes("sleeves") ? along("sleeve") : [])];
   const bottom = st.on.includes("hem") ? along("hem") : [];
-  return { top, bottom };
+  /* along a fabric belt, on the belt */
+  const belt = st.on.includes("belt") ? along("belt") : [];
+  return { top, bottom, belt };
 }
 
 /** The direction from a hem onto its cloth: square to the hem, toward the piece. */
@@ -1116,14 +1129,48 @@ function intoCloth(hem: Pt[], piece: string): Pt {
  */
 export function dressEdges(choice: GarmentChoice): Edge[] {
   const b = drawnBodice(choice);
-  return finished([...necklineEdges(b, choice), ...sleeveEdges(b, choice.sleeve ?? DEFAULT_SLEEVE), hemEdge(choice)], choice.stripes?.on ?? []);
+  return finished([...necklineEdges(b, choice), ...sleeveEdges(b, choice.sleeve ?? DEFAULT_SLEEVE), hemEdge(choice), ...beltEdges(choice)], choice.stripes?.on ?? []);
+}
+
+/** Whether a choice wears a fabric belt: a belt in cloth, on a cut that takes one — see `BELTLESS_CUTS`. */
+export const fabricBelt = (choice: GarmentChoice): boolean => choice.belt === "self" && !BELTLESS_CUTS.includes(cutOf(choice.neckline));
+
+/**
+ * Along a fabric belt, at its foot: its whole width to lay in, braid centred
+ * across it — see `Edge.centred` — on the belt's one piece. The belt is
+ * drawn with the skirt, over it: see `beltArt`.
+ */
+function beltEdges(choice: GarmentChoice): Edge[] {
+  if (!fabricBelt(choice)) return [];
+  const b = beltFor(choice.skirt ?? DEFAULT_SKIRT);
+  const foot = b.left[b.left.length - 1][0];
+  const line = densifyRow(foot, 600 - foot, b.bottom);
+  return [{ kind: "belt", line, pieces: [{ index: 0, d: b.path }], lay: { by: "level", into: [0, -1], inset: 0 }, room: b.bottom - b.top, centred: true }];
+}
+
+/** A row from x0 to x1 at y, a point every unit. */
+const densifyRow = (x0: number, x1: number, y: number): Pt[] => {
+  const n = Math.max(1, Math.ceil(x1 - x0));
+  return Array.from({ length: n + 1 }, (_, i) => [x0 + ((x1 - x0) * i) / n, y] as Pt);
+};
+
+/**
+ * The pieces of the bodice a choice's sleeves end in — cuffs, wide bands, a
+ * puff's or a bishop's band — by index in its `pieces`: what a cloth of the
+ * sleeves' ends is laid over. See `hasSleeveEnd`, which says the same of a
+ * choice without drawing it; a test holds the two together.
+ */
+export function sleeveEndPieces(choice: GarmentChoice): number[] {
+  const b = drawnBodice(choice);
+  const ends = b.ends ?? [];
+  return ends.map((d) => b.pieces.indexOf(d)).filter((i) => i >= 0);
 }
 
 /** How near two edges' ends must be to meet at a corner, in units. */
 const MEET = 1.5;
 
 /** The stripe toggle each kind of edge answers to. */
-const TOGGLE: Record<Edge["kind"], StripeEdgeId> = { neckline: "neckline", sleeve: "sleeves", hem: "hem", collar: "collar" };
+const TOGGLE: Record<Edge["kind"], StripeEdgeId> = { neckline: "neckline", sleeve: "sleeves", hem: "hem", collar: "collar", belt: "belt" };
 
 /**
  * The bodice's turning edges told where they meet and what they run beside —
@@ -1284,8 +1331,9 @@ function sleeveEdges(b: Bodice, sleeve: SleeveChoice): Edge[] {
         line: at.map(([x, y]) => [x - into[0] * below, y - into[1] * below] as Pt),
         pieces,
         lay: { by: "level", into, inset: 0 },
-        /* on a band, only the band's depth: what is laid there is fitted to it — see `fittedBands` */
+        /* on a band, only the band's depth: what is laid there is fitted to it — see `fittedBands` — and on a wide band, centred */
         ...(band ? { room: Math.max(...up) + below } : {}),
+        ...(band && sleeve.cuff === "band" ? { centred: true as const } : {}),
       });
     } else if (sleeve.type === "cap") {
       /* along the cap's edge from its end on the arm, stopping at the underarm */
@@ -1593,6 +1641,22 @@ export const DRESS_EDGE_SPECS: EdgeSpec<any>[] = [
           )
         );
       }),
+  },
+  {
+    kind: "belt",
+    /* the skirt it lies over — its waist, and its shape and length, which set how far out its ends reach — and that it is a fabric belt */
+    shapedBy: (c: GarmentChoice) => ({ belted: fabricBelt(c), skirt: fabricBelt(c) ? (c.skirt ?? DEFAULT_SKIRT) : null }),
+    choiceFor: (k: { belted: boolean; skirt: SkirtChoice | null }): GarmentChoice => ({
+      neckline: DEFAULT_CUT,
+      ...(k.skirt ? { skirt: k.skirt } : {}),
+      ...(k.belted ? { belt: "self" as const } : {}),
+    }),
+    every: (offer: EdgeOffer) =>
+      offer.skirt.shapes.flatMap((shape) =>
+        shapeLengths(shape as SkirtChoice["shape"], offer.skirt.lengths as SkirtChoice["length"][]).flatMap((length) =>
+          offer.skirt.waists.map((waist) => ({ belted: true, skirt: { shape, length, waist } as SkirtChoice }))
+        )
+      ),
   },
 ];
 

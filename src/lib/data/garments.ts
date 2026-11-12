@@ -20,6 +20,8 @@ const MALE_SLEEVES: SleeveTypeId[] = ["set-in", "drop", "raglan", "kimono"];
  * t-shirt looks wrong.
  */
 const WOVEN_CUFFS: CuffId[] = ["none", "plain", "formal", "french"];
+/** The dress's: the woven cuffs on a long sleeve, and a wide band at any length — see `cuffsOffered`. */
+const DRESS_CUFFS: CuffId[] = [...WOVEN_CUFFS, "band"];
 const KNIT_CUFFS: CuffId[] = ["none", "rib"];
 
 /**
@@ -142,7 +144,7 @@ export const garments: Garment[] = [
      */
     acceptsNeckline: true,
     defaultNeckline: "female-round-neckline",
-    sleeves: { types: FEMALE_SLEEVES, default: { type: "set-in", length: "short" }, cuffs: WOVEN_CUFFS },
+    sleeves: { types: FEMALE_SLEEVES, default: { type: "set-in", length: "short" }, cuffs: DRESS_CUFFS },
     skirt: {
       shapes: ["aline", "flared", "circle", "pencil", "pleated", "tiered", "mermaid"],
       lengths: ["knee", "midi", "maxi"],
@@ -154,6 +156,8 @@ export const garments: Garment[] = [
     belts: { offered: ["none", "self", "brown", "black"], default: "none" },
     /* stripes along any of its edges — collar, neckline, sleeves, hem — the counts `STRIPE_COUNTS` lists; a test keeps the two the same */
     stripes: { offered: ["none", "one", "two", "three"], default: "none" },
+    /* its cuffs and bands, and a fabric belt, each in a cloth of its own if wanted */
+    partCloths: ["cuff", "belt"],
     asset: { front: "female-dress-front" },
   },
   {

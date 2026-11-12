@@ -269,8 +269,9 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
           // Real garments are topstitched; `hidden` is the choice.
           stitch={worn.stitch[region] ?? "tonal"}
           zoom={zoom}
-          /* the garment's stripes, sewn on whichever of its regions they lie on */
+          /* the garment's stripes, sewn on whichever of its regions they lie on, and its cuffs' own cloth */
           inlayFabric={fabrics[garmentId]?.trim}
+          partFabrics={fabrics[garmentId]?.cuff ? { cuff: fabrics[garmentId]!.cuff! } : undefined}
         />
       );
     };
@@ -503,7 +504,9 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
               {/* cloth of a region that lies over the garment's later ones — a wrap's tie over its skirt */}
               {garment.fabricRegions.map((region) => {
                 const over = cutFor(region)?.over;
-                return over ? cut(region, over, `${garment.id}-${region}-over`) : null;
+                /* cut from its own cloth where it has one — a fabric belt's — else from the region's */
+                const cloth = over?.cloth && fabrics[garment.id]?.[over.cloth] ? over.cloth : region;
+                return over ? cut(cloth, over, `${garment.id}-${region}-over`) : null;
               })}
               {/* the garment's own hardware as cut — a placket's buttons — under the collar */}
               {art.cutTrim?.(choiceOf(worn))}

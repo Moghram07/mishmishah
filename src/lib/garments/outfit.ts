@@ -47,7 +47,7 @@ import {
   sleeveLengthsFor,
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
-import { sleeveCoverage } from "@/lib/garments/sleeves";
+import { hasSleeveEnd, sleeveCoverage } from "@/lib/garments/sleeves";
 import type { GarmentChoice } from "@/lib/garments/art";
 import { cutAs, skirtCoverage } from "@/lib/garments/skirts";
 
@@ -361,14 +361,15 @@ export function regionsOf(
   worn: WornGarment
 ): FabricRegionId[] {
   const collar = collarOf(worn);
+  const parts: FabricRegionId[] = partsOf(worn);
   const striped: FabricRegionId[] = stripesOnOf(worn).length > 0 ? ["trim"] : [];
   const tied: FabricRegionId[] = (tieOf(worn) ?? "none") !== "none" ? ["tie"] : [];
-  if (!collar && !striped.length) return garment.fabricRegions;
-  return [...garment.fabricRegions, ...(collar ? collar.fabricRegions : []), ...striped, ...tied];
+  if (!collar && !parts.length && !striped.length) return garment.fabricRegions;
+  return [...garment.fabricRegions, ...(collar ? collar.fabricRegions : []), ...parts, ...striped, ...tied];
 }
 
 /** The edges stripes can be sewn along, in the panel's order. */
-export const STRIPE_EDGES: readonly StripeEdgeId[] = ["collar", "neckline", "sleeves", "hem"];
+export const STRIPE_EDGES: readonly StripeEdgeId[] = ["collar", "neckline", "sleeves", "hem", "belt"];
 
 /**
  * The edges of a worn garment stripes can go along, as it is cut: its
@@ -388,7 +389,38 @@ export function stripeEdgesOf(worn: WornGarment): StripeEdgeId[] {
   if (!collar && neckline && (NECKLINE_EDGED as readonly string[]).includes(neckline.cut)) out.push("neckline");
   if (sleeve && sleeve.length !== "sleeveless" && (!neckline || neckline.sleeves === "both")) out.push("sleeves");
   if (garment.skirt) out.push("hem");
+  /* a fabric belt's, a garment's whose belt takes a cloth of its own */
+  if (garment.partCloths?.includes("belt") && beltOf(worn) === "self") out.push("belt");
   return out;
+}
+
+/**
+ * The parts of a worn garment cut from a cloth of their own, as it is worn:
+ * its sleeves' ends, where its sleeves end in a piece — see `hasSleeveEnd`
+ * — on a cut that keeps them; and a fabric belt.
+ */
+export function partsOf(worn: WornGarment): ("cuff" | "belt")[] {
+  const garment = garmentById(worn.garmentId);
+  const parts = garment?.partCloths ?? [];
+  const out: ("cuff" | "belt")[] = [];
+  const neckline = necklineOf(worn);
+  if (parts.includes("cuff") && (!neckline || neckline.sleeves !== "none") && hasSleeveEnd(sleeveOf(worn))) out.push("cuff");
+  if (parts.includes("belt") && beltOf(worn) === "self") out.push("belt");
+  return out;
+}
+
+/**
+ * The cloth a region of a worn garment is cut from: its own, once one is
+ * chosen; until then, a part's arrives in the cloth of the part it is sewn
+ * to — cuffs in the bodice's, a belt in the skirt's — so it reads as the
+ * same cloth until it is changed.
+ */
+export function clothOf(worn: WornGarment, region: FabricRegionId): string | undefined {
+  const own = worn.fabrics[region];
+  if (own) return own;
+  if (region === "cuff") return worn.fabrics.top ?? worn.fabrics.body;
+  if (region === "belt") return worn.fabrics.bottom ?? worn.fabrics.top;
+  return undefined;
 }
 
 /** The edge along the neck, where a worn garment has one: its collar's, or its neckline's. */

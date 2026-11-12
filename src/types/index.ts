@@ -296,7 +296,7 @@ export type SleeveLengthId = "sleeveless" | "short" | "elbow" | "three-quarter" 
  * a woven garment's sleeve can take a plain, formal or French cuff, a knit's
  * only a rib.
  */
-export type CuffId = "none" | "plain" | "formal" | "french" | "rib";
+export type CuffId = "none" | "plain" | "formal" | "french" | "rib" | "band";
 
 /** A sleeve as worn. */
 export interface SleeveChoice {
@@ -356,9 +356,9 @@ export type StripesId = "none" | "one" | "two" | "three";
 /**
  * The edges stripes are sewn along, each chosen on its own: a collar's free
  * edge, the neckline's (with no collar over it), each sleeve's hem, the
- * skirt's hem. One count and one cloth for all of them.
+ * skirt's hem, a fabric belt. One count and one cloth for all of them.
  */
-export type StripeEdgeId = "collar" | "neckline" | "sleeves" | "hem";
+export type StripeEdgeId = "collar" | "neckline" | "sleeves" | "hem" | "belt";
 
 /** A tie at the point of a sailor collar's V: none, a small tied bow, or a necktie hanging down the centre. */
 export type TieId = "none" | "knot" | "necktie";
@@ -476,7 +476,8 @@ export type FabricRegionId =
   | "cuff"
   | "waistband"
   | "trim"
-  | "tie";
+  | "tie"
+  | "belt";
 
 /**
  * A garment, as a plain data record.
@@ -589,6 +590,13 @@ export interface Garment {
    * it takes none.
    */
   stripes?: { offered: StripesId[]; default: StripesId };
+  /**
+   * The parts sewn to it that can be cut from a cloth of their own: its
+   * sleeves' ends — cuffs, wide bands, a puff's or a bishop's band — and a
+   * fabric belt. Each arrives in the cloth of the part it is sewn to — see
+   * `clothOf`. Absent, none.
+   */
+  partCloths?: ("cuff" | "belt")[];
   /** Which drawing to use, per view. Ids resolved by `lib/garments/art`. */
   asset: ViewAssets;
 }

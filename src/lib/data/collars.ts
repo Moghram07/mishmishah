@@ -430,6 +430,7 @@ const STRIPE_EDGE_NAMES: Record<StripeEdgeId, Localized> = {
   neckline: { en: "Neckline", ar: "الرقبة" },
   sleeves: { en: "Sleeves", ar: "الأكمام" },
   hem: { en: "Hem", ar: "الذيل" },
+  belt: { en: "Belt", ar: "الحزام" },
 };
 
 /** Ties, by name. */

@@ -9,7 +9,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { Fabric, GrainDirection, StitchId } from "@/types";
+import type { Fabric, FabricRegionId, GrainDirection, StitchId } from "@/types";
 import { fabricRepeatCm, useFabricArtwork } from "@/lib/fabrics/artwork";
 import { printKeep } from "@/lib/fabrics/printScale";
 import { stitchById } from "@/lib/data/stitches";
@@ -135,7 +135,13 @@ export interface RegionDrawing {
    * the form of the cloth under them fall across them too: a braid sewn on a
    * pleated skirt pleats with it.
    */
-  inlay?: readonly { piece: number; d: string }[];
+  inlay?: readonly { piece: number; d: string; cloth?: "trim" | "cuff"; whole?: true }[];
+  /**
+   * The region whose cloth this drawing is cut from, where it is not the one
+   * it is drawn for — a belt drawn with the skirt it lies over is cut from
+   * the belt's. The stage reads it; see `MannequinStage`.
+   */
+  cloth?: FabricRegionId;
 }
 
 /** The soft shadow a cloth edge throws on what it lies on: a warm line, blurred. */
@@ -174,6 +180,12 @@ interface Props {
   stitch: StitchId;
   /** The cloth of the drawing's `inlay` — its stripes. Without it, none are drawn. */
   inlayFabric?: Fabric;
+  /**
+   * The cloth of the parts laid whole over pieces of it — `Inlaid.whole`: a
+   * cuff's. Laid only where it is not the region's own cloth, so a part in
+   * the same cloth draws exactly as the region did before it had one.
+   */
+  partFabrics?: Partial<Record<"cuff", Fabric>>;
   /**
    * How far the view is zoomed in: 1 is the whole figure, or the whole
    * product. The tonal thread shows only in a close-up — see `TONAL_THREAD`.
@@ -341,6 +353,7 @@ export function FabricRegion({
   beneath,
   zoom = 1,
   inlayFabric,
+  partFabrics,
 }: Props) {
   const uid = (name: string) => `${uidBase}-${name}`;
 
@@ -354,8 +367,14 @@ export function FabricRegion({
   /* the stripes' own cloth, at its own true size — asked for always, as a hook must be */
   const inlayTile = fabricRepeatCm(inlayFabric ?? fabric) / cmPerUnit;
   const inlayArt = useFabricArtwork(inlayFabric ?? fabric, printKeep(inlayTile * pxPerUnit));
-  const inlay = inlayFabric && drawing.inlay?.length ? drawing.inlay : [];
+  const inlay = inlayFabric ? (drawing.inlay ?? []).filter((s) => (s.cloth ?? "trim") === "trim") : [];
   const inlayOn = (i: number) => inlay.filter((s) => s.piece === i);
+  /* a part in a cloth of its own, laid whole over its piece — only where that cloth is not the region's — at its own true size */
+  const cuffFabric = partFabrics?.cuff && partFabrics.cuff.id !== fabric.id ? partFabrics.cuff : undefined;
+  const cuffTile = fabricRepeatCm(cuffFabric ?? fabric) / cmPerUnit;
+  const cuffArt = useFabricArtwork(cuffFabric ?? fabric, printKeep(cuffTile * pxPerUnit));
+  const whole = cuffFabric ? (drawing.inlay ?? []).filter((s) => s.cloth === "cuff" && s.whole) : [];
+  const wholeOn = (i: number) => whole.filter((s) => s.piece === i);
 
   /* a thread picked to show keeps its own colour; the tonal one is the cloth's — see `TONAL_THREAD` */
   const thread = stitchById(stitch);
@@ -422,6 +441,27 @@ export function FabricRegion({
             <rect width={tile} height={tile} fill={artwork.averageColor} opacity={artwork.veil} />
           )}
         </pattern>
+        {whole.length > 0 && (
+          <pattern
+            id={uid("cuff-pattern")}
+            patternUnits="userSpaceOnUse"
+            width={cuffTile}
+            height={cuffTile}
+            patternTransform={spin}
+          >
+            <image
+              href={cuffArt.url}
+              x="0"
+              y="0"
+              width={cuffTile}
+              height={cuffTile}
+              preserveAspectRatio="xMidYMid slice"
+            />
+            {cuffArt.veil > 0 && (
+              <rect width={cuffTile} height={cuffTile} fill={cuffArt.averageColor} opacity={cuffArt.veil} />
+            )}
+          </pattern>
+        )}
         {inlay.length > 0 && (
           <pattern
             id={uid("inlay-pattern")}
@@ -575,6 +615,18 @@ export function FabricRegion({
               {piece}
             </g>
           )}
+          {/* the piece in a part's own cloth, laid over it exactly — warped as it is, so its edge is the piece's */}
+          {wholeOn(i).length > 0 &&
+            behind(
+              <g
+                filter={drawing.surface?.warp !== undefined ? `url(#${uid("warp")})` : undefined}
+                fill={`url(#${uid("cuff-pattern")})`}
+              >
+                {wholeOn(i).map((st, k) => (
+                  <path key={k} d={st.d} />
+                ))}
+              </g>
+            )}
           {/* the stripes sewn on this piece, before its form: they take its light — see `inlay` */}
           {inlayOn(i).length > 0 &&
             behind(

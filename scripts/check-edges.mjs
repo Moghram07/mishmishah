@@ -263,7 +263,7 @@ const pickOf = (rand) => (list) => list[Math.floor(rand() * list.length)];
  * from the same tables.
  */
 function randomDress(pick, world) {
-  const { cuts, sleevesOn, cuffsOn, skirt, buttonsOn, openingsOn } = world;
+  const { cuts, sleevesOn, cuffsOn, skirt, buttonsOn, openingsOn, beltsOn } = world;
   const cut = pick(cuts);
   const types = sleevesOn(cut);
   const type = types.length ? pick(types) : null;
@@ -281,10 +281,13 @@ function randomDress(pick, world) {
   };
   const buttons = pick(buttonsOn(cut, shape));
   if (buttons !== "none") choice.buttons = buttons;
+  /* a belt the cut takes: none, in cloth, or leather */
+  const belt = pick(beltsOn(cut));
+  if (belt && belt !== "none") choice.belt = belt;
   const opening = pick([null, ...openingsOn(cut)]);
   if (opening) choice.opening = opening;
   /* stripes along some of its edges: two edges that meet share the cloth between them when both are striped */
-  const on = ["neckline", "sleeves", "hem"].filter(() => pick([true, false]));
+  const on = ["neckline", "sleeves", "hem", "belt"].filter(() => pick([true, false]));
   if (on.length) choice.stripes = { count: "three", on };
   return choice;
 }
@@ -300,6 +303,7 @@ const axesOf = (c) => ({
   waist: c.skirt.waist,
   buttons: c.buttons ?? "none",
   opening: c.opening ?? "none",
+  belt: c.belt ?? "none",
   stripes: c.stripes ? c.stripes.on.join("+") : "none",
 });
 const pairsOf = (c) => {
@@ -406,7 +410,7 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
       const choice = spec.choiceFor(key);
       const mine = mod.dressEdges(choice).filter((e) => e.kind === spec.kind);
       const lopsided = spec.kind === "neckline" && (world.lopsided.includes(key.cut) || Boolean(mod.bodiceFor(key.cut).cut.wrap));
-      const axis = spec.kind === "hem" ? 300 : spec.kind === "neckline" && !lopsided ? 300 : undefined;
+      const axis = spec.kind === "hem" || spec.kind === "belt" ? 300 : spec.kind === "neckline" && !lopsided ? 300 : undefined;
       /*
         Cut about her throat, three units left of her shoulders' centre — a
         neckline, and a skirt's flat panel under its placket — it is that much

@@ -85,6 +85,18 @@ import { maleThobeFront } from "./male/thobe";
  */
 
 /** One fabric region of a garment: its outline, its light, its stitching. */
+/**
+ * Something laid on a piece of a region, in a cloth not the region's: a
+ * stripe — in the stripes' cloth, `trim` — or, `whole`, the piece itself in
+ * a part's cloth — a cuff in the cuffs', laid over the cuff exactly.
+ */
+export interface Inlaid {
+  piece: number;
+  d: string;
+  cloth?: "trim" | "cuff";
+  whole?: true;
+}
+
 export interface RegionArt {
   /** Geometry filled with this region's fabric. `fill` is a `url(#…)` pattern. */
   shape: (fill: string) => ReactNode;
@@ -145,8 +157,10 @@ export interface RegionArt {
   softPieces?: readonly number[];
   /** The soft shadow under its edges, where it differs from what its outline gives — a Peter Pan's: see `RegionDrawing`. */
   shadow?: { opacity?: number; width?: number; soft?: number };
-  /** Stripes of a second cloth sewn flat on its pieces, each with the piece it lies on — see `RegionDrawing`. */
-  inlay?: readonly { piece: number; d: string }[];
+  /** Stripes of a second cloth sewn flat on its pieces, each with the piece it lies on; or a whole piece in a part's cloth — see `RegionDrawing`. */
+  inlay?: readonly Inlaid[];
+  /** The region whose cloth it is cut from, where not its own — a belt drawn with the skirt is cut from the belt's: see `RegionDrawing`. */
+  cloth?: FabricRegionId;
   /** Where a close-up should centre. */
   focus?: [x: number, y: number];
 }
