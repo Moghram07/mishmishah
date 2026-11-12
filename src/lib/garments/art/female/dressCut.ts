@@ -12,7 +12,7 @@
   trapezoid on a collarbone with every check passing.
 */
 import { draft, line, mirrorPts, outline, reverse, run, setIn, span, type Pt, type Tuck } from "../../fit.ts";
-import { SLEEVE_KINDS, cuffsOffered, hemRow, top, type Frame, type PuffShape, type SleeveChoice, type SleeveCut } from "../../sleeves.ts";
+import { BAND_CUT_TYPES, SHOULDER_TYPES, SLEEVE_KINDS, cuffsOffered, hemRow, top, type Frame, type PuffShape, type SleeveChoice, type SleeveCut } from "../../sleeves.ts";
 import { WAIST_DROP, fallOf, sameSkirt, shapeLengths, skirtCut, skirtKey, type CutSkirt, type SkirtFinish } from "../../skirts.ts";
 import {
   BELT_ABOVE_SEAM,
@@ -32,10 +32,10 @@ import {
   PLACKET_HALF,
   PLACKET_STITCH,
 } from "../../closures.ts";
-import type { ButtonsId, CuffId, SkirtChoice, WaistId } from "@/types";
+import type { ButtonsId, CuffId, SkirtChoice, StripeEdgeId, WaistId } from "@/types";
 import type { GarmentChoice } from "../index.ts";
 import { mirror as mirrorPath } from "../../collar.ts";
-import { STRIPES, insideRings, ringsOf, stripesAlong, type Inlay } from "../../stripes.ts";
+import { BAND_STRIPE_ROOM, STRIPES, cornersOf, densify, insideRings, ringsOf, stripesAlong, type Inlay } from "../../stripes.ts";
 import type { Edge, EdgeKind, EdgeOffer, EdgePoint, EdgeSpec } from "../../edges.ts";
 import {
   ONE_SIDED,
@@ -571,11 +571,22 @@ export function bodiceFor(
   sleeve: SleeveChoice = DEFAULT_SLEEVE,
   waist: WaistId = "natural",
   buttons: ButtonsId = "none",
-  collared = false
+  collared = false,
+  braided = false
 ): Bodice {
   /* buttoned to the waist or to the hem, the bodice is the same: its placket runs to the waist seam either way */
   const placketed = placketOn(id, buttons);
   const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placketed ? "|placket" : ""}`;
+  /* braid sewn along the neck edge covers its topstitch, as a collar does — but leaves a keyhole's own closure, which it goes round */
+  if (braided && !collared) {
+    const open = bodiceFor(id, sleeve, waist, buttons);
+    let c = cache.get(`${key}|braided`);
+    if (!c) {
+      c = unstitched(open);
+      cache.set(`${key}|braided`, c);
+    }
+    return c;
+  }
   /* with a collar sewn on, the neck edge's topstitch goes, and a keyhole's own closure — see `underCollar` */
   if (collared) {
     const open = bodiceFor(id, sleeve, waist, buttons);
@@ -608,10 +619,7 @@ export function bodiceFor(
  * mandarin's V and just below the band's foot.
  */
 function underCollar(b: Bodice): Bodice {
-  const neck = b.cut.neckStitch ?? b.cut.stitch;
-  const off = (stitch: string) => (neck && stitch.startsWith(neck) ? stitch.slice(neck.length).trimStart() : stitch);
-  const { neckStitch: _neck, ...sewn } = b.cut;
-  const stitched = { ...b, stitch: off(b.stitch), cut: { ...sewn, stitch: off(b.cut.stitch) } };
+  const stitched = unstitched(b);
   if (!b.cut.loopRim) return stitched;
   const loop = b.cut.extras[0];
   const drop = (list: string[]) => list.filter((d) => d !== loop);
@@ -623,6 +631,14 @@ function underCollar(b: Bodice): Bodice {
     ...(b.edges ? { edges: drop(b.edges) } : {}),
     ...(b.seamed ? { seamed: { ...b.seamed, edges: drop(b.seamed.edges) } } : {}),
   };
+}
+
+/** A bodice with its neck edge's topstitch taken off — under a collar, or under braid sewn along that edge. */
+function unstitched(b: Bodice): Bodice {
+  const neck = b.cut.neckStitch ?? b.cut.stitch;
+  const off = (stitch: string) => (neck && stitch.startsWith(neck) ? stitch.slice(neck.length).trimStart() : stitch);
+  const { neckStitch: _neck, ...sewn } = b.cut;
+  return { ...b, stitch: off(b.stitch), cut: { ...sewn, stitch: off(b.cut.stitch) } };
 }
 
 /* ------------------------------------------------------------- buttons */
@@ -1056,8 +1072,7 @@ export function dressStripes(choice: GarmentChoice): { top: Inlay[]; bottom: Inl
     choice.opening ?? "",
     choice.inside ? `${choice.inside.y}|${choice.inside.x}` : "",
     st.count,
-    st.at,
-    st.on,
+    st.on.join(","),
   ].join("|");
   let laid = stripesCut.get(key);
   if (!laid) stripesCut.set(key, (laid = layStripes(choice, st)));
@@ -1071,9 +1086,9 @@ function layStripes(choice: GarmentChoice, st: NonNullable<GarmentChoice["stripe
   const bands = STRIPES[st.count];
   const edges = dressEdges(choice);
   const along = (kind: EdgeKind) => edges.filter((e) => e.kind === kind).flatMap((e) => stripesAlong(e, bands));
-  /* along a boat neckline's own edge, a collar's are its own; then the sleeves' hems and the skirt's, as far as they go */
-  const top = [...(st.on === "neckline" ? along("neckline") : []), ...(st.at !== "neck" ? along("sleeve") : [])];
-  const bottom = st.at === "hem" ? along("hem") : [];
+  /* along each edge chosen: the neckline and the sleeves' hems on the bodice, the skirt's on the skirt — a collar's are its own */
+  const top = [...(st.on.includes("neckline") ? along("neckline") : []), ...(st.on.includes("sleeves") ? along("sleeve") : [])];
+  const bottom = st.on.includes("hem") ? along("hem") : [];
   return { top, bottom };
 }
 
@@ -1101,7 +1116,136 @@ function intoCloth(hem: Pt[], piece: string): Pt {
  */
 export function dressEdges(choice: GarmentChoice): Edge[] {
   const b = drawnBodice(choice);
-  return [...necklineEdges(b, choice), ...sleeveEdges(b, choice.sleeve ?? DEFAULT_SLEEVE), hemEdge(choice)];
+  return finished([...necklineEdges(b, choice), ...sleeveEdges(b, choice.sleeve ?? DEFAULT_SLEEVE), hemEdge(choice)], choice.stripes?.on ?? []);
+}
+
+/** How near two edges' ends must be to meet at a corner, in units. */
+const MEET = 1.5;
+
+/** The stripe toggle each kind of edge answers to. */
+const TOGGLE: Record<Edge["kind"], StripeEdgeId> = { neckline: "neckline", sleeve: "sleeves", hem: "hem", collar: "collar" };
+
+/**
+ * The bodice's turning edges told where they meet and what they run beside —
+ * see `Edge.meets`, `Edge.against` and `Edge.room`: a cap sleeve's edge
+ * meets the neckline's at the tip of each shoulder, and runs close beside a
+ * square neckline, so braid along either ends in a mitre at the other, and is
+ * drawn finer where the cloth between them narrows — sharing it, where both
+ * are striped. Hems run on round the body at their sides, and are left as
+ * they are.
+ */
+function finished(edges: Edge[], striped: readonly StripeEdgeId[]): Edge[] {
+  const turning = edges.filter((e) => e.lay.by === "follow");
+  if (turning.length < 2) return edges;
+  const ends = (e: Edge): [Pt, Pt] => [e.line[0], e.line[e.line.length - 1]];
+  /* the direction from a corner a few units along an edge, back into it */
+  const inward = (e: Edge, head: boolean): Pt => {
+    const pts = head ? e.line : [...e.line].reverse();
+    const q = pts[Math.min(pts.length - 1, 4)];
+    const v: Pt = [q[0] - pts[0][0], q[1] - pts[0][1]];
+    const l = Math.hypot(v[0], v[1]) || 1;
+    return [v[0] / l, v[1] / l];
+  };
+  const want = STRIPES.three[STRIPES.three.length - 1][1] + BAND_STRIPE_ROOM;
+  return edges.map((e) => {
+    if (e.lay.by !== "follow") return e;
+    const others = turning.filter((o) => o !== e);
+    const meets: NonNullable<Edge["meets"]> = {};
+    /* how far along it from each corner the mitre reaches past the deepest row: no narrowing counts there */
+    const zones: { at: Pt; reach: number }[] = [];
+    ends(e).forEach((at, k) => {
+      for (const o of others) {
+        ends(o).forEach((oat, ok) => {
+          if (Math.hypot(at[0] - oat[0], at[1] - oat[1]) > MEET) return;
+          const a = inward(e, k === 0);
+          const c = inward(o, ok === 0);
+          const m: Pt = [a[0] + c[0], a[1] + c[1]];
+          const l = Math.hypot(m[0], m[1]);
+          if (l < 1e-6) return;
+          meets[k === 0 ? "head" : "tail"] = { at, dir: [m[0] / l, m[1] / l] };
+          const half = Math.acos(Math.max(-1, Math.min(1, a[0] * c[0] + a[1] * c[1]))) / 2;
+          zones.push({ at, reach: want / Math.max(0.2, Math.tan(half)) + 2 });
+        });
+      }
+    });
+    /*
+      Where the cloth between it and another edge narrows mid-way to less than
+      three rows need — a square's corner close to a cap sleeve's edge — the
+      rows are drawn finer to pass, as on a narrow band: none cut off there.
+      Where the other edge is striped too, each has half of what lies between.
+    */
+    const room = roomBeside(e, others.map((o) => ({ line: o.line, shared: striped.includes(TOGGLE[o.kind]) && striped.includes(TOGGLE[e.kind]) })), zones);
+    return {
+      ...e,
+      ...(meets.head || meets.tail ? { meets } : {}),
+      ...(others.length ? { against: others.map((o) => o.line) } : {}),
+      ...(room < want ? { room } : {}),
+    };
+  });
+}
+
+/**
+ * The least cloth between an edge and the other edges it runs beside,
+ * measured square off it onto its cloth: how deep rows laid along it can go —
+ * half of it, beside an edge whose own rows share it. At each of its own
+ * corners, measured along the corner's mitre too, which reaches further than
+ * the rows' depth. Not near a corner it meets another edge at, within each
+ * zone's reach: the rows end in a mitre there before they come close.
+ */
+function roomBeside(e: Edge, others: { line: Pt[]; shared: boolean }[], zones: { at: Pt; reach: number }[]): number {
+  if (e.lay.by !== "follow" || others.length === 0) return Infinity;
+  const lay = e.lay;
+  const segments = others.flatMap((o) => o.line.slice(1).map((b, i) => ({ c: o.line[i], d: b, share: o.shared ? 0.5 : 1 })));
+  /* every unit of it: a square's side is one straight line, two points */
+  const pts = densify(e.line, 1);
+  /* the cloth's side of a direction */
+  const onCloth = (p: Pt, u: Pt): Pt => {
+    let n: Pt = [-u[1], u[0]];
+    if (lay.side !== undefined) n = [n[0] * lay.side, n[1] * lay.side];
+    else if (lay.toward && n[0] * (lay.toward[0] - p[0]) + n[1] * (lay.toward[1] - p[1]) < 0) n = [-n[0], -n[1]];
+    return n;
+  };
+  /* how far a ray from p along n runs before it meets another edge, as a share of what rows may take of it */
+  const ray = (p: Pt, n: Pt): number => {
+    let least = Infinity;
+    const r: Pt = [n[0] * 40, n[1] * 40];
+    for (const { c, d, share } of segments) {
+      const s: Pt = [d[0] - c[0], d[1] - c[1]];
+      const den = r[0] * s[1] - r[1] * s[0];
+      if (Math.abs(den) < 1e-9) continue;
+      const q: Pt = [c[0] - p[0], c[1] - p[1]];
+      const t = (q[0] * s[1] - q[1] * s[0]) / den;
+      const u = (q[0] * r[1] - q[1] * r[0]) / den;
+      if (t > 0 && t <= 1 && u >= 0 && u <= 1) least = Math.min(least, t * 40 * share);
+    }
+    return least;
+  };
+  const free = (p: Pt) => !zones.some((z) => Math.hypot(p[0] - z.at[0], p[1] - z.at[1]) < z.reach);
+  const unitOf = (a: Pt, b: Pt): Pt => {
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+  };
+  let least = Infinity;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i];
+    if (free(p)) least = Math.min(least, ray(p, onCloth(p, unitOf(pts[i - 1], pts[i + 1]))));
+  }
+  /* each corner: rows turn it in a mitre, which reaches 1 / cos(half the turn) of their depth */
+  if (lay.corners) {
+    for (const i of cornersOf(pts)) {
+      const p = pts[i];
+      if (!free(p) || i < 3 || i > pts.length - 4) continue;
+      const a = unitOf(pts[i - 3], p);
+      const b = unitOf(p, pts[i + 3]);
+      const [na, nb] = [onCloth(p, a), onCloth(p, b)];
+      const m: Pt = [na[0] + nb[0], na[1] + nb[1]];
+      const ml = Math.hypot(m[0], m[1]);
+      if (ml < 1e-6) continue;
+      const half = Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1]))) / 2;
+      least = Math.min(least, ray(p, [m[0] / ml, m[1] / ml]) * Math.cos(half));
+    }
+  }
+  return least;
 }
 
 /**
@@ -1159,22 +1303,82 @@ function sleeveEdges(b: Bodice, sleeve: SleeveChoice): Edge[] {
 
 /**
  * Along the neckline and on across the shoulders either side of it, to the
- * armholes: the bodice's whole top edge, on the bodice and its placket — a
- * sleeve set in at the armhole lies over their ends. Drafted for the cuts in
- * `NECKLINE_EDGED`; none where a collar is sewn over it.
+ * armholes: the bodice's whole top edge, on the bodice and what is sewn to
+ * it — a placket — but never a sleeve, which lies over its ends. None where a
+ * collar is sewn over it.
+ *
+ * The boat's is the one approved first, an even curve between its shoulder
+ * lines, laid toward the middle of the chest. Every other cut's is its own
+ * top edge as drawn, right tip round to left — a V down to its point and up,
+ * a square round its four corners, a sweetheart over both curves — and its
+ * stripes turn each corner square, mitred, as braid does; an off-shoulder's
+ * is its band's top edge, across both arms.
  */
 function necklineEdges(b: Bodice, choice: GarmentChoice): Edge[] {
+  const id = cutOf(choice.neckline);
+  if (choice.opening || !NECKLINE_EDGED.includes(id)) return [];
+  const sleeves = new Set([...(b.sleeveCut?.sleeves ?? []), ...(b.sleeveCut?.bands ?? []), ...(b.bandSleeves?.paths ?? [])]);
+  const pieces = b.pieces.map((d, index) => ({ index, d })).filter(({ d }) => !sleeves.has(d));
   const neck = b.cut.neck;
   const parts = b.cut.parts;
-  if (!neck || !parts || choice.opening || !NECKLINE_EDGED.includes(cutOf(choice.neckline))) return [];
-  const arc = Array.from({ length: 49 }, (_, i) => {
-    const t = Math.PI - (i / 48) * Math.PI;
-    return [neck.center + neck.half * Math.cos(t), neck.seamY + neck.dip * Math.sin(t)] as Pt;
-  });
-  const line = [...reverse(parts.strapLeft), ...arc.slice(1, -1), ...reverse(parts.strapRight)];
-  const sleeves = new Set([...(b.sleeveCut?.sleeves ?? []), ...(b.sleeveCut?.bands ?? [])]);
-  const pieces = b.pieces.map((d, index) => ({ index, d })).filter(({ d }) => !sleeves.has(d));
-  return [{ kind: "neckline", line, pieces, lay: { by: "follow", toward: [300, 262], round: 12, ends: [20, 20] } }];
+  if (id === "boat" && neck && parts) {
+    const arc = Array.from({ length: 49 }, (_, i) => {
+      const t = Math.PI - (i / 48) * Math.PI;
+      return [neck.center + neck.half * Math.cos(t), neck.seamY + neck.dip * Math.sin(t)] as Pt;
+    });
+    const line = [...reverse(parts.strapLeft), ...arc.slice(1, -1), ...reverse(parts.strapRight)];
+    return [{ kind: "neckline", line, pieces, lay: { by: "follow", toward: [300, 262], round: 12, ends: [20, 20] } }];
+  }
+  const line = b.cut.band ? b.cut.band.top : upperEdge(b);
+  if (line.length < 2) return [];
+  const host = b.cut.band ? pieces.map((p) => p.d) : [b.pieces[0]];
+  const lay = (run: Pt[]) => ({ by: "follow" as const, side: clothSide(run, host), round: 6, ends: [16, 16] as const, corners: true as const });
+  /* a halter's neckband lies over the top of its edge: braid runs up each armhole to the band, two edges, a pair */
+  if (b.cut.halter) {
+    const band = ringsOf(b.cut.extras[0] ?? "");
+    const fine = densify(line, 1);
+    const runs: Pt[][] = [];
+    let run: Pt[] = [];
+    for (const p of fine) {
+      if (insideRings(band, p)) {
+        if (run.length > 1) runs.push(run);
+        run = [];
+      } else run.push(p);
+    }
+    if (run.length > 1) runs.push(run);
+    const sides = runs.filter((r) => r.length > 8).sort((a, c) => a[0][0] - c[0][0]);
+    return sides.slice(0, 2).map((r, i) => ({ kind: "neckline" as const, side: i as 0 | 1, line: i === 1 ? reverse(r) : r, pieces: pieces.filter(({ d }) => d !== b.cut.extras[0]), lay: lay(i === 1 ? reverse(r) : r) }));
+  }
+  return [{ kind: "neckline", line, pieces, lay: lay(line) }];
+}
+
+/**
+ * A bodice's top edge as drawn, left tip to right: its cut's `edge`, which
+ * runs from the right tip round to the left one, read from the outline it is
+ * part of — where it starts is the point before it there.
+ */
+function upperEdge(b: Bodice): Pt[] {
+  const host = b.pieces.find((d) => d.includes(b.cut.edge));
+  if (!host || !b.cut.edge) return [];
+  const before = host.slice(0, host.indexOf(b.cut.edge)).match(/-?\d*\.?\d+(?:e-?\d+)?/g) ?? [];
+  if (before.length < 2) return [];
+  const start = `M${before[before.length - 2]} ${before[before.length - 1]} `;
+  const [ring] = ringsOf(start + b.cut.edge);
+  return ring ? reverse(ring) : [];
+}
+
+/** Which side of a line, as it runs, its cloth is on: 1 its left, -1 its right — tried a few units off its middle. */
+function clothSide(line: Pt[], pieces: string[]): 1 | -1 {
+  const rings = pieces.map((d) => ringsOf(d));
+  const i = Math.floor(line.length / 2);
+  const [a, b] = [line[Math.max(0, i - 2)], line[Math.min(line.length - 1, i + 2)]];
+  const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  const left: Pt = [-(b[1] - a[1]) / l, (b[0] - a[0]) / l];
+  for (const d of [3, 6, 10]) {
+    const p: Pt = [line[i][0] + left[0] * d, line[i][1] + left[1] * d];
+    if (rings.some((r) => insideRings(r, p))) return 1;
+  }
+  return -1;
 }
 
 /** The skirt's hem, on the skirt and on any placket down it to the hem, laid in past the hem's turn. */
@@ -1200,6 +1404,15 @@ export function dressPoints(choice: GarmentChoice): EdgePoint[] {
   if (cut.neck) return [{ kind: "neck", at: [cut.neck.center, cut.neck.seamY + cut.neck.dip], down: [0, 1] }];
   return [];
 }
+
+/** Whether a sleeve's own edge turns, and so meets the neckline's at the shoulder: a cap's. */
+const turnsAt = (s: SleeveChoice): boolean => s.type === "cap" && s.length !== "sleeveless";
+
+/** Whether a choice stripes both its neckline and its sleeves, which then share the cloth between them where they run close. */
+const sharing = (c: GarmentChoice): boolean => Boolean(c.stripes?.on.includes("neckline") && c.stripes?.on.includes("sleeves"));
+
+/** A sleeve as its armhole: its type and length — a longer sleeve is drafted to a lower, fuller armhole — but not its cuff. */
+const armholeKey = (s: SleeveChoice): { type: SleeveChoice["type"]; length: SleeveChoice["length"] } => ({ type: s.type, length: s.length });
 
 /** A sleeve as a key: its type, length and cuff, nothing else. */
 const sleeveKey = (s: SleeveChoice = DEFAULT_SLEEVE): SleeveChoice => (s.cuff ? { type: s.type, length: s.length, cuff: s.cuff } : { type: s.type, length: s.length });
@@ -1256,23 +1469,48 @@ export const DRESS_EDGE_SPECS: EdgeSpec<any>[] = [
       whether it keeps both sleeves — except for a sleeve cut from the bodice
       itself, whose hem is the bodice's edge on that cut.
     */
+    /*
+      A cap's edge turns, and meets the neckline's at each shoulder: so it also
+      depends on whether there is a neckline edge there — none under a
+      collar — and on whether both are striped, when they share the cloth
+      between them.
+    */
     shapedBy: (c: GarmentChoice) => {
       const sleeve = sleeveKey(c.sleeve);
       const cut = cutOf(c.neckline);
       const sleeved = NECKLINE_SLEEVES[cut] === "both";
-      return { sleeved, cut: sleeved && fromBodice(sleeve.type) ? cut : null, sleeve, waist: c.skirt?.waist ?? "natural" };
+      const cap = sleeved && turnsAt(sleeve);
+      return {
+        sleeved,
+        cut: sleeved && fromBodice(sleeve.type) ? cut : null,
+        sleeve,
+        waist: c.skirt?.waist ?? "natural",
+        open: cap ? !c.opening : null,
+        shared: cap ? !c.opening && sharing(c) : null,
+      };
     },
-    choiceFor: (k: { sleeved: boolean; cut: NecklineId | null; sleeve: SleeveChoice; waist: WaistId }): GarmentChoice => ({
+    choiceFor: (k: { sleeved: boolean; cut: NecklineId | null; sleeve: SleeveChoice; waist: WaistId; open: boolean | null; shared: boolean | null }): GarmentChoice => ({
       neckline: k.cut ?? (k.sleeved ? DEFAULT_CUT : "halter"),
       sleeve: k.sleeve,
       skirt: { ...DEFAULT_SKIRT, waist: k.waist },
+      ...(k.open === false ? { opening: NECKLINE_OPENING[k.cut ?? DEFAULT_CUT] ?? "round" } : {}),
+      ...(k.shared ? { stripes: { count: "three" as const, on: ["neckline", "sleeves"] as StripeEdgeId[] } } : {}),
     }),
     every: (offer: EdgeOffer) =>
       everySleeve(offer)
         .filter((sleeve) => sleeve.length !== "sleeveless")
         .flatMap((sleeve) =>
           (fromBodice(sleeve.type) ? SLEEVED_CUTS : [null]).flatMap((cut) =>
-            offer.skirt.waists.map((waist) => ({ sleeved: true, cut, sleeve, waist: waist as WaistId }))
+            offer.skirt.waists.flatMap((waist) => {
+              const base = { sleeved: true, cut, sleeve, waist: waist as WaistId };
+              if (!turnsAt(sleeve)) return [{ ...base, open: null as boolean | null, shared: null as boolean | null }];
+              /* a collar over the cut, or not; and with no collar, the neckline striped beside it, or not */
+              return [
+                { ...base, open: true, shared: false },
+                { ...base, open: true, shared: true },
+                ...(NECKLINE_OPENING[cut ?? DEFAULT_CUT] ? [{ ...base, open: false, shared: false }] : []),
+              ];
+            })
           )
         ),
   },
@@ -1299,25 +1537,62 @@ export const DRESS_EDGE_SPECS: EdgeSpec<any>[] = [
   },
   {
     kind: "neckline",
-    /* the cut and whether a collar covers it; the sleeve, whose armhole the shoulders run to; and a placket down the front */
-    shapedBy: (c: GarmentChoice) => ({
-      cut: cutOf(c.neckline),
-      collared: Boolean(c.opening),
-      sleeve: sleeveKey(c.sleeve),
-      placket: placketOn(cutOf(c.neckline), c.buttons ?? "none"),
-    }),
-    choiceFor: (k: { cut: NecklineId; collared: boolean; sleeve: SleeveChoice; placket: boolean }): GarmentChoice => ({
+    /*
+      The cut and whether a collar covers it; the sleeve's type, whose armhole
+      the shoulders run to — or that it has none — on a cut that keeps one; a
+      placket down the front; and, beside a cap sleeve, whether the cap is
+      striped too, when the two share the cloth between them.
+    */
+    shapedBy: (c: GarmentChoice) => {
+      const cut = cutOf(c.neckline);
+      const sleeve = c.sleeve ?? DEFAULT_SLEEVE;
+      /* every cut that keeps a sleeve — an off-shoulder's hangs from its band, and the band is drafted to it */
+      const keeps = NECKLINE_SLEEVES[cut] !== "none";
+      return {
+        cut,
+        collared: Boolean(c.opening),
+        sleeve: keeps ? armholeKey(sleeve) : null,
+        placket: placketOn(cut, c.buttons ?? "none"),
+        shared: NECKLINE_SLEEVES[cut] === "both" && turnsAt(sleeve) && !c.opening ? sharing(c) : null,
+        /* a wrap's crossing edge runs down to its waist */
+        waist: bodiceFor(cut).cut.wrap ? (c.skirt?.waist ?? "natural") : null,
+      };
+    },
+    choiceFor: (k: { cut: NecklineId; collared: boolean; sleeve: { type: SleeveChoice["type"]; length: SleeveChoice["length"] } | null; placket: boolean; shared: boolean | null; waist: WaistId | null }): GarmentChoice => ({
       neckline: k.cut,
-      sleeve: k.sleeve,
+      ...(k.sleeve ? { sleeve: { type: k.sleeve.type, length: k.sleeve.length } } : {}),
       ...(k.placket ? { buttons: "waist" } : {}),
       ...(k.collared ? { opening: NECKLINE_OPENING[k.cut] ?? "round" } : {}),
+      ...(k.shared ? { stripes: { count: "three" as const, on: ["neckline", "sleeves"] as StripeEdgeId[] } } : {}),
+      ...(k.waist ? { skirt: { ...DEFAULT_SKIRT, waist: k.waist } } : {}),
     }),
     every: (offer: EdgeOffer) =>
-      NECKLINE_EDGED.flatMap((cut) =>
-        everySleeve(offer).flatMap((sleeve) =>
-          [false, ...(BUTTONED_CUTS.includes(cut) && offer.buttons.includes("waist") ? [true] : [])].map((placket) => ({ cut, collared: false, sleeve, placket }))
-        )
-      ),
+      NECKLINE_EDGED.flatMap((cut) => {
+        const mode = NECKLINE_SLEEVES[cut];
+        /* the sleeves the panel offers on the cut — see `sleeveTypesFor` and `sleeveLengthsFor` */
+        const types = (
+          mode === "band"
+            ? BAND_CUT_TYPES.filter((t) => SLEEVE_KINDS[t].construction === "band" || offer.sleeves.types.includes(t))
+            : offer.sleeves.types.filter((t) => {
+                const kind = SLEEVE_KINDS[t as SleeveChoice["type"]];
+                if (kind.construction === "band") return false;
+                return mode === "both" || (kind.construction === "set-in" && !SHOULDER_TYPES.includes(t as SleeveChoice["type"]));
+              })
+        ) as SleeveChoice["type"][];
+        const lengthsOf = (type: SleeveChoice["type"]) =>
+          (mode === "band" || SLEEVE_KINDS[type].construction === "band" ? SLEEVE_KINDS[type].lengths : ["sleeveless", ...SLEEVE_KINDS[type].lengths]) as SleeveChoice["length"][];
+        const sleeves = mode !== "none" ? types.flatMap((type) => lengthsOf(type).map((length) => ({ type, length }))) : [null];
+        const plackets = [false, ...(offer.buttons.includes("waist") && placketOn(cut, "waist") ? [true] : [])];
+        const waists: (WaistId | null)[] = bodiceFor(cut).cut.wrap ? (offer.skirt.waists as WaistId[]) : [null];
+        return sleeves.flatMap((sleeve) =>
+          plackets.flatMap((placket) =>
+            waists.flatMap((waist) => {
+              const capped = mode === "both" && sleeve !== null && turnsAt(sleeve);
+              return (capped ? [false, true] : [null]).map((shared) => ({ cut, collared: false, sleeve, placket, shared, waist }));
+            })
+          )
+        );
+      }),
   },
 ];
 

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { BeltId, ButtonsId, FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice, StripesAtId, StripesId, TieId } from "@/types";
+import type { BeltId, ButtonsId, FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice, StripeEdgeId, StripesId, TieId } from "@/types";
 import type { Uid } from "@/lib/garments/shading";
 import type { Encloses } from "@/lib/garments/sleeves";
 import type { Tuck } from "@/lib/garments/fit";
@@ -172,11 +172,10 @@ export interface GarmentChoice {
   /** The belt worn on a dress's waist seam. */
   belt?: BeltId;
   /**
-   * Its stripes, if it wears any: how many, how far they go — see
-   * `StripesAtId` — and whether they run along its collar or along its own
-   * neckline, a boat's.
+   * Its stripes, if it wears any: how many, and the edges they are sewn
+   * along — see `StripeEdgeId`.
    */
-  stripes?: { count: Exclude<StripesId, "none">; at: StripesAtId; on: "collar" | "neckline" };
+  stripes?: { count: Exclude<StripesId, "none">; on: readonly StripeEdgeId[] };
   /** The tie at its collar's V, if it wears one. */
   tie?: Exclude<TieId, "none">;
   /**

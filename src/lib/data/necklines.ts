@@ -1,8 +1,6 @@
-import type { BodyType, Garment, Neckline, StripesId } from "@/types";
-import { STRIPE_COUNTS, STRIPE_REACH } from "@/lib/data/collars";
+import type { BodyType, Garment, Neckline } from "@/types";
 import {
   NECKLINE_BARES,
-  NECKLINE_EDGED,
   NECKLINE_IDS,
   NECKLINE_OPENING,
   NECKLINE_SLEEVES,
@@ -58,8 +56,6 @@ const NAMES: Record<NecklineId, { en: string; ar: string }> = {
   asymmetrical: { en: "One-shoulder", ar: "كتف واحد" },
 };
 
-/** The cuts that take stripes along their own edge, with no collar: those whose edge is drafted — see `NECKLINE_EDGED`. */
-const STRIPED_CUTS: readonly NecklineId[] = NECKLINE_EDGED;
 
 /**
  * Every cut is offered on a dress. Tops keep the opening their collar asks for
@@ -75,7 +71,6 @@ export const necklines: Neckline[] = NECKLINE_IDS.map((id) => ({
   sleeves: NECKLINE_SLEEVES[id],
   opening: NECKLINE_OPENING[id],
   ...(NECKLINE_WANTS[id] ? { wants: NECKLINE_WANTS[id] } : {}),
-  ...(STRIPED_CUTS.includes(id) ? { stripes: { offered: STRIPE_COUNTS, default: "none" as StripesId, at: STRIPE_REACH } } : {}),
 }));
 
 export const necklineById = (id: string): Neckline | undefined =>

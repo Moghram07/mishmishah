@@ -152,6 +152,8 @@ export const garments: Garment[] = [
     /* buttoned down a straight centre front only — see `buttonsOn` — and belted on any cut but the wrap */
     buttons: { offered: ["none", "waist", "hem"], default: "none" },
     belts: { offered: ["none", "self", "brown", "black"], default: "none" },
+    /* stripes along any of its edges — collar, neckline, sleeves, hem — the counts `STRIPE_COUNTS` lists; a test keeps the two the same */
+    stripes: { offered: ["none", "one", "two", "three"], default: "none" },
     asset: { front: "female-dress-front" },
   },
   {

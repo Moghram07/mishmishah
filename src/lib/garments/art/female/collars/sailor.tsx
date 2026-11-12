@@ -187,7 +187,7 @@ export const sailorCollarFront: GarmentArt = {
   regions: { collar: PANELS },
   /* its stripes along the outer edges, and its tie at the V, as chosen */
   cut: (choice: GarmentChoice) => ({
-    collar: choice.stripes?.on === "collar" ? panelsWith(choice.stripes.count) : PANELS,
+    collar: choice.stripes?.on.includes("collar") ? panelsWith(choice.stripes.count) : PANELS,
     ...(choice.tie ? { tie: TIES[choice.tie] } : {}),
   }),
 };

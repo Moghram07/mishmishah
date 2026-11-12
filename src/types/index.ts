@@ -354,21 +354,11 @@ export type BeltId = "none" | "self" | "brown" | "black";
 export type StripesId = "none" | "one" | "two" | "three";
 
 /**
- * How far the stripes go, each taking in the one before: along the neck alone
- * — a sailor collar's edge, or a boat neckline's; round each sleeve's hem as
- * well; and round the skirt's hem too.
+ * The edges stripes are sewn along, each chosen on its own: a collar's free
+ * edge, the neckline's (with no collar over it), each sleeve's hem, the
+ * skirt's hem. One count and one cloth for all of them.
  */
-export type StripesAtId = "neck" | "sleeves" | "hem";
-
-/**
- * What a collar or a neckline offers in stripes: the counts, the one it
- * arrives with, and how far they can go, `at` — absent, along the neck alone.
- */
-export interface StripesOffer {
-  offered: StripesId[];
-  default: StripesId;
-  at?: StripesAtId[];
-}
+export type StripeEdgeId = "collar" | "neckline" | "sleeves" | "hem";
 
 /** A tie at the point of a sailor collar's V: none, a small tied bow, or a necktie hanging down the centre. */
 export type TieId = "none" | "knot" | "necktie";
@@ -593,6 +583,12 @@ export interface Garment {
   buttons?: { offered: ButtonsId[]; default: ButtonsId };
   /** The belts it can be worn with on its waist seam, and the one it arrives with. Absent, it takes none. */
   belts?: { offered: BeltId[]; default: BeltId };
+  /**
+   * The stripes it can be trimmed with, in a cloth of their own, along any of
+   * its edges — see `StripeEdgeId` — and the count it arrives with. Absent,
+   * it takes none.
+   */
+  stripes?: { offered: StripesId[]; default: StripesId };
   /** Which drawing to use, per view. Ids resolved by `lib/garments/art`. */
   asset: ViewAssets;
 }
@@ -710,7 +706,8 @@ export interface Collar {
    * the skirt's hems as well, in the same cloth and count. Absent, it takes
    * none.
    */
-  stripes?: StripesOffer;
+  /** Whether stripes can be sewn along its free edge — a sailor collar's. The count is the garment's: see `Garment.stripes`. */
+  takesStripes?: true;
   /** The ties it can be worn with at the point of its V — a sailor collar's — and the one it arrives with. */
   ties?: { offered: TieId[]; default: TieId };
 }
@@ -769,12 +766,6 @@ export interface Neckline {
    * would give two places to fix the same thing.
    */
   wants?: string;
-  /**
-   * Stripes it can take along its own edge, with no collar on — a boat
-   * neckline's, in a cloth of their own — the count it arrives with, and how
-   * far they can go, as a sailor collar's can.
-   */
-  stripes?: StripesOffer;
 }
 
 /** A garment as worn: which fabric and thread each of its regions is finished in. */
@@ -815,7 +806,8 @@ export interface WornGarment {
    * in the maps below under `trim`.
    */
   stripes?: StripesId;
-  stripesAt?: StripesAtId;
+  /** The edges they are sewn along, as chosen — see `stripesOnOf`, which resolves them against the edges it has. */
+  stripesOn?: StripeEdgeId[];
   /** Its collar's tie, if the collar takes one and one was chosen. Its cloth lives below under `tie`. */
   tie?: TieId;
   /** Fabric id per region. */

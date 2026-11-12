@@ -15,9 +15,8 @@ import type {
   SkirtChoice,
   SleeveChoice,
   StitchId,
-  StripesAtId,
+  StripeEdgeId,
   StripesId,
-  StripesOffer,
   TieId,
   WornGarment,
 } from "@/types";
@@ -40,6 +39,7 @@ import {
   defaultCollar,
 } from "@/lib/data/collars";
 import { beltsOn, buttonsOn } from "@/lib/garments/closures";
+import { NECKLINE_EDGED } from "@/lib/garments/necklines";
 import {
   defaultSleeve,
   sleeveCuffsFor,
@@ -361,49 +361,73 @@ export function regionsOf(
   worn: WornGarment
 ): FabricRegionId[] {
   const collar = collarOf(worn);
-  const striped: FabricRegionId[] = (stripesOf(worn) ?? "none") !== "none" ? ["trim"] : [];
+  const striped: FabricRegionId[] = stripesOnOf(worn).length > 0 ? ["trim"] : [];
   const tied: FabricRegionId[] = (tieOf(worn) ?? "none") !== "none" ? ["tie"] : [];
   if (!collar && !striped.length) return garment.fabricRegions;
   return [...garment.fabricRegions, ...(collar ? collar.fabricRegions : []), ...striped, ...tied];
 }
 
-/**
- * What a worn garment offers in stripes: its collar's, along the collar's
- * edge; or, with no collar on, its neckline's, along its own edge — a boat's.
- */
-function stripeOffer(worn: WornGarment): (StripesOffer & { on: "collar" | "neckline" }) | undefined {
-  const collar = collarOf(worn);
-  if (collar) return collar.stripes ? { ...collar.stripes, on: "collar" } : undefined;
-  const own = necklineOf(worn)?.stripes;
-  return own ? { ...own, on: "neckline" } : undefined;
-}
+/** The edges stripes can be sewn along, in the panel's order. */
+export const STRIPE_EDGES: readonly StripeEdgeId[] = ["collar", "neckline", "sleeves", "hem"];
 
 /**
- * The stripes on a worn garment, resolved against what it offers — see
- * `stripeOffer`. `undefined` when it offers none.
+ * The edges of a worn garment stripes can go along, as it is cut: its
+ * collar's free edge, where its collar takes them; its neckline, with no
+ * collar sewn over it; each sleeve's hem, where it has sleeves on both sides;
+ * and its skirt's hem. The drawing's own edges, named — see `dressEdges`; a
+ * test holds the two to each other. None on a garment that takes no stripes.
  */
+export function stripeEdgesOf(worn: WornGarment): StripeEdgeId[] {
+  const garment = garmentById(worn.garmentId);
+  if (!garment?.stripes) return [];
+  const collar = collarOf(worn);
+  const neckline = necklineOf(worn);
+  const sleeve = sleeveOf(worn);
+  const out: StripeEdgeId[] = [];
+  if (collar?.takesStripes) out.push("collar");
+  if (!collar && neckline && (NECKLINE_EDGED as readonly string[]).includes(neckline.cut)) out.push("neckline");
+  if (sleeve && sleeve.length !== "sleeveless" && (!neckline || neckline.sleeves === "both")) out.push("sleeves");
+  if (garment.skirt) out.push("hem");
+  return out;
+}
+
+/** The edge along the neck, where a worn garment has one: its collar's, or its neckline's. */
+const neckEdge = (edges: StripeEdgeId[]): StripeEdgeId | undefined =>
+  edges.includes("collar") ? "collar" : edges.includes("neckline") ? "neckline" : undefined;
+
+/** The stripe count on a worn garment, resolved against what it offers. `undefined` when it takes none. */
 export function stripesOf(worn: WornGarment): StripesId | undefined {
-  const offer = stripeOffer(worn);
+  const offer = garmentById(worn.garmentId)?.stripes;
   if (!offer) return undefined;
   const wanted = worn.stripes ?? offer.default;
   return offer.offered.includes(wanted) ? wanted : offer.default;
 }
 
-/** Where a worn garment's stripes are sewn: along its collar, or along its neckline. `undefined` with none on. */
-export function stripesOn(worn: WornGarment): "collar" | "neckline" | undefined {
-  return (stripesOf(worn) ?? "none") === "none" ? undefined : stripeOffer(worn)?.on;
-}
-
 /**
- * How far a worn garment's stripes go — along the neck alone, round the
- * sleeves' hems as well, or the skirt's too — resolved against what its collar
- * or its neckline offers. `undefined` when they go nowhere else.
+ * The edges a worn garment's stripes are sewn along, of those it has — none
+ * without a count. Chosen ones it still has; before any is chosen, along the
+ * neck — or its first edge, with nothing at the neck to take them.
+ *
+ * Braid at the neck stays at the neck: chosen along the neckline, it moves to
+ * the free edge of a collar sewn over it that takes braid, and back to the
+ * neckline when that collar comes off — a sailor dress recut to a boat keeps
+ * its braid at the neck. And where a recut or a collar takes every chosen
+ * edge away, along the neck again, if it can.
  */
-export function stripesAtOf(worn: WornGarment): StripesAtId | undefined {
-  const at = stripeOffer(worn)?.at;
-  if (!at?.length) return undefined;
-  const wanted = worn.stripesAt ?? at[0];
-  return at.includes(wanted) ? wanted : at[0];
+export function stripesOnOf(worn: WornGarment): StripeEdgeId[] {
+  if ((stripesOf(worn) ?? "none") === "none") return [];
+  const can = stripeEdgesOf(worn);
+  const neck = neckEdge(can);
+  const chosen = worn.stripesOn;
+  if (!chosen) {
+    const first = neck ?? can[0];
+    return first ? [first] : [];
+  }
+  /* the neck as chosen, wherever the neck now is */
+  const asked = chosen.some((e) => e === "collar" || e === "neckline") && neck ? [...chosen, neck] : chosen;
+  const kept = can.filter((e) => asked.includes(e));
+  if (chosen.length > 0 && kept.length === 0) return neck ? [neck] : [];
+  return kept;
 }
 
 /** The tie at a worn garment's collar, resolved against what the collar offers. `undefined` when it takes none. */
@@ -426,10 +450,10 @@ export function choiceOf(w: WornGarment): GarmentChoice {
   const leg = legOf(w);
   const buttons = buttonsOf(w);
   const belt = beltOf(w);
-  /* its stripes and its tie — see `GarmentChoice` */
+  /* its stripes, along the edges they are sewn to, and its tie — see `GarmentChoice` */
   const count = stripesOf(w);
-  const on = stripesOn(w);
-  const stripes = count && count !== "none" && on ? { count, at: stripesAtOf(w) ?? "neck", on } : undefined;
+  const on = stripesOnOf(w);
+  const stripes = count && count !== "none" && on.length ? { count, on } : undefined;
   const tie = tieOf(w);
   return {
     neckline: necklineOf(w)?.cut,
@@ -451,43 +475,58 @@ export function choiceOf(w: WornGarment): GarmentChoice {
  * They arrive in `fabricId` — a second cloth, or they would not show at all
  * on cloth cut from the same one — unless they already have a cloth of their
  * own, which a new count keeps. Taken off, their cloth and thread go with
- * them.
+ * them, and the edges chosen for them.
  */
 export function setStripes(worn: WornGarment[], garmentId: string, stripes: StripesId, fabricId?: string): WornGarment[] {
   return worn.map((w) => {
     if (w.garmentId !== garmentId) return w;
     if (stripes === "none") return { ...unStriped(w), stripes };
     const cloth = w.fabrics.trim ?? fabricId ?? w.fabrics.collar ?? Object.values(w.fabrics)[0];
-    return { ...w, stripes, fabrics: { ...w.fabrics, ...(cloth ? { trim: cloth } : {}) } };
+    /* the edge they first go along is kept as chosen, so a later recut moves them only back to the neck, never on to an edge nobody chose */
+    const on = w.stripesOn ?? stripesOnOf({ ...w, stripes });
+    return { ...w, stripes, stripesOn: on, fabrics: { ...w.fabrics, ...(cloth ? { trim: cloth } : {}) } };
   });
 }
 
-/** Send a worn garment's stripes as far as `at` — see `StripesAtId`. Resolved when read. */
-export function setStripesAt(worn: WornGarment[], garmentId: string, at: StripesAtId): WornGarment[] {
-  return worn.map((w) => (w.garmentId === garmentId ? { ...w, stripesAt: at } : w));
+/**
+ * Sew a worn garment's stripes along an edge, or take them off it — the
+ * others stay as they are. Resolved when read: see `stripesOnOf`.
+ */
+export function toggleStripeEdge(worn: WornGarment[], garmentId: string, edge: StripeEdgeId): WornGarment[] {
+  return worn.map((w) => {
+    if (w.garmentId !== garmentId) return w;
+    const now = stripesOnOf(w);
+    const next = now.includes(edge) ? now.filter((e) => e !== edge) : STRIPE_EDGES.filter((e) => e === edge || now.includes(e));
+    return { ...w, stripesOn: next };
+  });
+}
+
+/** Sew a worn garment's stripes along exactly these edges — a look's, say. Resolved when read. */
+export function setStripeEdges(worn: WornGarment[], garmentId: string, edges: StripeEdgeId[]): WornGarment[] {
+  return worn.map((w) => (w.garmentId === garmentId ? { ...w, stripesOn: STRIPE_EDGES.filter((e) => edges.includes(e)) } : w));
 }
 
 /**
  * Tie a worn garment's collar, or untie it. A tie arrives in its stripes'
- * cloth when the collar is striped — the collar's own lost the knot on a busy
- * print — and in the collar's when it is plain, unless it already has one of
- * its own; untied, its cloth and thread go with it.
+ * cloth when it wears stripes — the collar's own lost the knot on a busy
+ * print — and in the collar's when it wears none, unless it already has one
+ * of its own; untied, its cloth and thread go with it.
  */
 export function setTie(worn: WornGarment[], garmentId: string, tie: TieId): WornGarment[] {
   return worn.map((w) => {
     if (w.garmentId !== garmentId) return w;
     if (tie === "none") return { ...untied(w), tie };
-    const stripes = (stripesOf(w) ?? "none") !== "none" ? w.fabrics.trim : undefined;
+    const stripes = stripesOnOf(w).length > 0 ? w.fabrics.trim : undefined;
     const cloth = w.fabrics.tie ?? stripes ?? w.fabrics.collar ?? Object.values(w.fabrics)[0];
     return { ...w, tie, fabrics: { ...w.fabrics, ...(cloth ? { tie: cloth } : {}) } };
   });
 }
 
-/** A worn garment with no stripes, and no cloth or thread kept for them. */
+/** A worn garment with no stripes, and no cloth, thread or edges kept for them. */
 function unStriped(w: WornGarment): WornGarment {
   const { trim: _cloth, ...fabrics } = w.fabrics;
   const { trim: _thread, ...stitch } = w.stitch;
-  const { stripes: _off, stripesAt: _at, ...rest } = w;
+  const { stripes: _off, stripesOn: _on, ...rest } = w;
   return { ...rest, fabrics, stitch };
 }
 
@@ -500,12 +539,13 @@ function untied(w: WornGarment): WornGarment {
 }
 
 /**
- * A worn garment with nothing kept for what it no longer offers: stripes
- * where neither its collar nor its neckline takes them, a tie where its
- * collar takes none — after a new collar, a collar taken off, or a recut.
+ * A worn garment with nothing kept for what it no longer offers: a tie where
+ * its collar takes none — after a new collar, a collar taken off, or a recut.
+ * Its stripes stay: they go along whatever edges it still has — see
+ * `stripesOnOf`.
  */
 function tidy(w: WornGarment): WornGarment {
-  const striped = stripeOffer(w) ? w : unStriped(w);
+  const striped = garmentById(w.garmentId)?.stripes ? w : unStriped(w);
   return tieOf(striped) ? striped : untied(striped);
 }
 

@@ -603,8 +603,8 @@ function offRow(d: string, y: number): string {
   return dropped ? out.join(" ") : d;
 }
 
-const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons: ButtonsId = "none", collared = false): RegionArt => {
-  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, placket } = bodiceFor(id, sleeve, waist, buttons, collared);
+const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons: ButtonsId = "none", collared = false, braided = false): RegionArt => {
+  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, placket } = bodiceFor(id, sleeve, waist, buttons, collared, braided);
   /*
     Its placket — one buttoned on, or a shirt-dress's own — lit as a collar
     is: no line round it, the soft shadow under its edges, and a little light
@@ -908,10 +908,12 @@ const topFor = (choice: GarmentChoice): RegionArt => {
   const placket = bodiceFor(id, sleeve, waist, choice.buttons).placket !== undefined;
   /* a collar sewn on covers the neck edge's topstitch, and takes a keyhole's own closure off it — see `underCollar` in dressCut */
   const collared = Boolean(choice.opening);
-  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placket ? "|placket" : ""}${collared ? "|collared" : ""}`;
+  /* braid along the neck edge covers its topstitch too */
+  const braided = !collared && Boolean(choice.stripes?.on.includes("neckline"));
+  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placket ? "|placket" : ""}${collared ? "|collared" : ""}${braided ? "|braided" : ""}`;
   let region = tops.get(key);
   if (!region) {
-    region = topRegion(id, sleeve, waist, placket ? choice.buttons : "none", collared);
+    region = topRegion(id, sleeve, waist, placket ? choice.buttons : "none", collared, braided);
     tops.set(key, region);
   }
   return region;
@@ -1128,9 +1130,9 @@ export const dressFront: GarmentArt = {
    * it, so it is drawn behind whatever cloth lies over them.
    */
   cut: (choice): Partial<Record<FabricRegionId, RegionArt>> => {
-    /* its stripes — round the sleeves' and the skirt's hems, or along a boat neckline — on the regions they lie on */
+    /* its stripes — along its neckline, round its sleeves' hems and its skirt's, as chosen — on the regions they lie on */
     const stripes = dressStripes(choice);
-    const stripesKey = choice.stripes ? `${choice.stripes.count}|${choice.stripes.at}|${choice.stripes.on}` : "";
+    const stripesKey = choice.stripes ? `${choice.stripes.count}|${choice.stripes.on.join(",")}` : "";
     const cut = cutRegions(choice);
     return {
       top: withStripes(cut.top, stripes.top, stripesKey),

@@ -8,7 +8,7 @@
   piece's own edges, and never past them.
 */
 import type { Pt } from "./fit.ts";
-import type { Edge, EdgePiece } from "./edges.ts";
+import type { Edge, EdgePiece, EdgeStop } from "./edges.ts";
 import type { StripesId } from "@/types";
 
 /** A stripe's near and far side, as distances in from the edge it runs along, in canvas units. */
@@ -236,6 +236,115 @@ export function offset(pts: Pt[], d: number, toward: Pt): Pt[] {
   });
 }
 
+/**
+ * Where a polyline turns sharply — more than `angle` degrees over `span`
+ * points either side, a unit apart — by index: one per turn, at its sharpest.
+ * A V's point, a square neckline's corners, where a shoulder meets the neck.
+ */
+export function cornersOf(pts: Pt[], angle = 35, span = 3): number[] {
+  const limit = Math.cos((angle * Math.PI) / 180);
+  const turns: { i: number; c: number }[] = [];
+  for (let i = span; i < pts.length - span; i++) {
+    const a = unit(sub(pts[i], pts[i - span]));
+    const b = unit(sub(pts[i + span], pts[i]));
+    const c = a[0] * b[0] + a[1] * b[1];
+    if (c < limit) turns.push({ i, c });
+  }
+  const out: number[] = [];
+  for (let k = 0; k < turns.length; ) {
+    let best = turns[k];
+    let j = k;
+    while (j + 1 < turns.length && turns[j + 1].i === turns[j].i + 1) {
+      j++;
+      if (turns[j].c < best.c) best = turns[j];
+    }
+    out.push(best.i);
+    k = j + 1;
+  }
+  return out;
+}
+
+/** A polyline smoothed run by run between its corners, each run's ends kept, so its corners stay sharp. */
+export function smoothRuns(pts: Pt[], radius: number, corners: number[]): Pt[] {
+  const cuts = [0, ...corners, pts.length - 1];
+  let out: Pt[] = [];
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const run = pts.slice(cuts[k], cuts[k + 1] + 1);
+    const done = run.length > 2 ? smooth(run, radius) : densify(run, 1);
+    out = k === 0 ? done : [...out, ...done.slice(1)];
+  }
+  return out;
+}
+
+/** Where segments ab and cd cross, if they do. */
+function crossAt(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
+  const r = sub(b, a);
+  const s = sub(d, c);
+  const den = r[0] * s[1] - r[1] * s[0];
+  if (Math.abs(den) < 1e-9) return null;
+  const q = sub(c, a);
+  const t = (q[0] * s[1] - q[1] * s[0]) / den;
+  const u = (q[0] * r[1] - q[1] * r[0]) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? add(a, r, t) : null;
+}
+
+/** Where the lines through ab and cd meet, if they are not parallel. */
+function meetAt(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
+  const r = sub(b, a);
+  const s = sub(d, c);
+  const den = r[0] * s[1] - r[1] * s[0];
+  if (Math.abs(den) < 1e-9) return null;
+  const q = sub(c, a);
+  return add(a, r, (q[0] * s[1] - q[1] * s[0]) / den);
+}
+
+/** How far out a mitred corner may reach, in stripe depths: past this, it is cut off square. */
+const MITRE_LIMIT = 4;
+
+/**
+ * A polyline moved `d` units off itself to one side — `side` 1 its left as
+ * it runs, -1 its right — run by run between its corners, each corner joined
+ * as braid turns one: where the runs moved apart, carried on to meet in a
+ * mitre; where they crossed, cut back to the crossing. Returns the line and
+ * the index on it nearest where `middle` of the line went.
+ */
+export function offsetRuns(pts: Pt[], d: number, side: 1 | -1, corners: number[], middle: number): { pts: Pt[]; keep: number } {
+  const cuts = [0, ...corners, pts.length - 1];
+  const normal = (run: Pt[], i: number): Pt => {
+    const u = unit(sub(run[Math.min(run.length - 1, i + 1)], run[Math.max(0, i - 1)]));
+    return [-u[1] * side, u[0] * side];
+  };
+  let out: Pt[] = [];
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const run = pts.slice(cuts[k], cuts[k + 1] + 1);
+    const moved = run.map((p, i) => add(p, normal(run, i), d));
+    if (k === 0) {
+      out = moved;
+      continue;
+    }
+    /* the two runs at the corner: crossed, or apart */
+    let best: { ia: number; ib: number; p: Pt } | null = null;
+    for (let ia = out.length - 2; ia >= Math.max(0, out.length - 80); ia--) {
+      for (let ib = 0; ib < Math.min(moved.length - 1, 80); ib++) {
+        const p = crossAt(out[ia], out[ia + 1], moved[ib], moved[ib + 1]);
+        if (p && (!best || out.length - ia + ib < out.length - best.ia + best.ib)) best = { ia, ib, p };
+      }
+    }
+    if (best) out = [...out.slice(0, best.ia + 1), best.p, ...moved.slice(best.ib + 1)];
+    else {
+      const x = meetAt(out[out.length - 2], out[out.length - 1], moved[0], moved[1]);
+      const corner = run[0];
+      out = x && len(sub(x, corner)) <= MITRE_LIMIT * d ? [...out, x, ...moved] : [...out, ...moved];
+    }
+  }
+  /* where the middle went: the point nearest the middle, moved off square */
+  const mid = pts[middle];
+  const goal = add(mid, normal(pts, middle), d);
+  let keep = 0;
+  for (let i = 1; i < out.length; i++) if (len(sub(out[i], goal)) < len(sub(out[keep], goal))) keep = i;
+  return { pts: out, keep };
+}
+
 /** The same polyline moved `d` units along `dir`. */
 export const translate = (pts: Pt[], dir: Pt, d: number): Pt[] => pts.map((p) => add(p, unit(dir), d));
 
@@ -319,8 +428,17 @@ export function guideAt(edge: Edge, d: number): { pts: Pt[]; keep: number } {
     const guide = extend(densify(edge.line, 1), 24);
     return { pts: translate(guide, lay.into, d + lay.inset), keep: Math.floor(guide.length / 2) };
   }
+  if (lay.side !== undefined) {
+    /* smoothed between its corners, carried on past its ends, and moved off to its cloth's side, the corners mitred */
+    const fine = densify(edge.line, 1);
+    const turns = lay.corners ? cornersOf(fine) : [];
+    const smoothed = smoothRuns(fine, lay.round, turns);
+    const guide = extend(smoothed, lay.ends[0], 1, lay.ends[1]);
+    const at = lay.corners ? cornersOf(guide) : [];
+    return offsetRuns(guide, d, lay.side, at, Math.floor(guide.length / 2));
+  }
   const guide = extend(smooth(edge.line, lay.round), lay.ends[0], 1, lay.ends[1]);
-  return { pts: offset(guide, d, lay.toward), keep: Math.floor(guide.length / 2) };
+  return { pts: offset(guide, d, lay.toward ?? [300, 262]), keep: Math.floor(guide.length / 2) };
 }
 
 /** One stripe's two long sides as laid on one piece, near side first. */
@@ -357,7 +475,118 @@ export function stripeSides(edge: Edge, bands: readonly StripeBand[]): StripeSid
       if (near.length > 1 && far.length > 1) out.push({ piece: index, stripe, near, far });
     });
   }
-  return out;
+  return edge.meets || edge.against?.length ? endNeatly(edge, out, fitted[fitted.length - 1][1]) : out;
+}
+
+/* ------------------------------------------------------- neat ends */
+
+/** How near another edge a stripe must end to have run into it, in units. */
+const RAN_INTO = 2;
+
+/** The arc length along a line to the point on it nearest `q`, and whether that falls on it rather than past an end. */
+function along(line: Pt[], q: Pt): { s: number; on: boolean; total: number } {
+  let best = { s: 0, d: Infinity };
+  let run = 0;
+  for (let i = 1; i < line.length; i++) {
+    const [a, b] = [line[i - 1], line[i]];
+    const ab = sub(b, a);
+    const l = len(ab) || 1e-9;
+    const t = Math.max(0, Math.min(1, ((q[0] - a[0]) * ab[0] + (q[1] - a[1]) * ab[1]) / (l * l)));
+    const d = len(sub(q, add(a, ab, t)));
+    if (d < best.d) best = { s: run + t * l, d };
+    run += l;
+  }
+  return { s: best.s, on: best.s > 0.5 && best.s < run - 0.5, total: run };
+}
+
+/** The point at arc length `s` along a line, and the line's direction there. */
+function pointAt(line: Pt[], s: number): { p: Pt; t: Pt } {
+  let run = 0;
+  for (let i = 1; i < line.length; i++) {
+    const [a, b] = [line[i - 1], line[i]];
+    const l = len(sub(b, a));
+    if (run + l >= s || i === line.length - 1) return { p: lerp(a, b, l ? Math.min(1, (s - run) / l) : 0), t: unit(sub(b, a)) };
+    run += l;
+  }
+  return { p: line[0], t: [1, 0] };
+}
+
+/** The distance from a point to a polyline. */
+function toLine(q: Pt, line: Pt[]): number {
+  let m = Infinity;
+  for (let i = 1; i < line.length; i++) {
+    const [a, b] = [line[i - 1], line[i]];
+    const ab = sub(b, a);
+    const l2 = ab[0] * ab[0] + ab[1] * ab[1] || 1e-9;
+    const t = Math.max(0, Math.min(1, ((q[0] - a[0]) * ab[0] + (q[1] - a[1]) * ab[1]) / l2));
+    m = Math.min(m, len(sub(q, add(a, ab, t))));
+  }
+  return m;
+}
+
+/** A run of points cut where it first crosses segment ab from its start — `fromHead` — or last from its end; the rest kept. */
+function cutAt(pts: Pt[], a: Pt, b: Pt, fromHead: boolean): Pt[] {
+  if (fromHead) {
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const x = crossAt(pts[i], pts[i + 1], a, b);
+      if (x) return [x, ...pts.slice(i + 1)];
+    }
+  } else {
+    for (let i = pts.length - 2; i >= 0; i--) {
+      const x = crossAt(pts[i], pts[i + 1], a, b);
+      if (x) return [...pts.slice(0, i + 1), x];
+    }
+  }
+  return pts;
+}
+
+/**
+ * Each stripe ended as braid is at a corner of its cloth — see `Edge.meets`
+ * and `Edge.against`. Where an end of the edge meets another edge, every
+ * stripe ends on the line halving the corner. And where some row would run
+ * into another finished edge near the edge's end, all of them end there
+ * together, square across the edge, just short of the first that would.
+ */
+function endNeatly(edge: Edge, sides: StripeSides[], deep: number): StripeSides[] {
+  const line = edge.line;
+  const reach = deep + 4;
+  /* the cross-sections every row ends at, by arc length from the edge's start, where another edge cuts in */
+  let lo = -Infinity;
+  let hi = Infinity;
+  if (edge.against?.length) {
+    const half = along(line, line[0]).total / 2;
+    for (const s of sides) {
+      for (const end of [s.near[0], s.near[s.near.length - 1], s.far[0], s.far[s.far.length - 1]]) {
+        const at = along(line, end);
+        if (!at.on || !edge.against.some((other) => toLine(end, other) < RAN_INTO)) continue;
+        /* near its ends only: a row that runs into another edge mid-way had room made for it — see `Edge.room` */
+        if (at.s < half * 0.5) lo = Math.max(lo, at.s + 0.6);
+        else if (at.s > half * 1.5) hi = Math.min(hi, at.s - 0.6);
+      }
+    }
+  }
+  const across = (s: number): [Pt, Pt] => {
+    const { p, t } = pointAt(line, s);
+    const n: Pt = [-t[1], t[0]];
+    return [add(p, n, -reach), add(p, n, reach)];
+  };
+  const mitre = (stop: EdgeStop): [Pt, Pt] => {
+    /* far enough along the halving line to cross the deepest row, however sharp the corner */
+    return [add(stop.at, stop.dir, -1), add(stop.at, stop.dir, Math.min(60, reach * 3))];
+  };
+  const head = edge.meets?.head ? mitre(edge.meets.head) : null;
+  const tail = edge.meets?.tail ? mitre(edge.meets.tail) : null;
+  const headCut = Number.isFinite(lo) ? across(lo) : null;
+  const tailCut = Number.isFinite(hi) ? across(hi) : null;
+  const finish = (pts: Pt[]): Pt[] => {
+    let out = pts;
+    if (head) out = cutAt(out, head[0], head[1], true);
+    if (tail) out = cutAt(out, tail[0], tail[1], false);
+    if (headCut) out = cutAt(out, headCut[0], headCut[1], true);
+    if (tailCut) out = cutAt(out, tailCut[0], tailCut[1], false);
+    return out;
+  };
+  return sides.map((s) => ({ ...s, near: finish(s.near), far: finish(s.far) })).filter((s) => s.near.length > 1 && s.far.length > 1);
 }
 
 /** Stripes along any edge, closed, each on the piece of its region it lies on — see `stripeSides`. */

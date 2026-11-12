@@ -10,7 +10,7 @@ import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { buttonsFor } from "@/lib/data/closures";
 import { DRESS_EDGE_SPECS, DRESS_POINT_SPEC, NECK_CENTRE, bodiceFor, dressEdges, dressPoints } from "./art/female/dressCut";
 import { TIE_AT, panelStripes, sailor, sailorEdges, sailorTie } from "./art/female/collarCuts";
-import { NECKLINE_EDGED } from "./necklines";
+import { NECKLINE_EDGED, NECKLINE_IDS } from "./necklines";
 import { BAND_STRIPE_ROOM, STRIPES, fittedBands, insideRings, ringsOf, stripesAlong } from "./stripes";
 import type { Edge, EdgeOffer } from "./edges";
 import {
@@ -33,6 +33,27 @@ import type { Pt } from "./fit";
 const dress = garmentById("female-dress")!;
 const offer: EdgeOffer = { sleeves: dress.sleeves!, skirt: { ...dress.skirt!, waists: dress.skirt!.waists ?? ["natural"] }, buttons: dress.buttons!.offered };
 const kinds = (edges: Edge[]) => edges.map((e) => `${e.kind}${e.side === undefined ? "" : e.side}`);
+
+/** The farthest any point of one set of rows lies from the matching row of the other — infinite if they differ in number. */
+function rowsApart(a: { d: string }[], b: { d: string }[]): number {
+  if (a.length !== b.length) return Infinity;
+  const toLine = (p: Pt, q: Pt[]) =>
+    Math.min(
+      ...q.map((x, i) => {
+        const y = q[(i + 1) % q.length];
+        const [dx, dy] = [y[0] - x[0], y[1] - x[1]];
+        const t = Math.max(0, Math.min(1, ((p[0] - x[0]) * dx + (p[1] - x[1]) * dy) / (dx * dx + dy * dy || 1e-9)));
+        return Math.hypot(p[0] - x[0] - t * dx, p[1] - x[1] - t * dy);
+      })
+    );
+  let m = 0;
+  a.forEach((row, i) => {
+    const [p, q] = [ringsOf(row.d)[0] ?? [], ringsOf(b[i].d)[0] ?? []];
+    for (const x of p) m = Math.max(m, toLine(x, q));
+    for (const x of q) m = Math.max(m, toLine(x, p));
+  });
+  return m;
+}
 
 /** A seeded random number in [0, 1): the same outfits every run. */
 function rng(seed: number) {
@@ -90,15 +111,16 @@ describe("a point on a piece of cloth", () => {
 });
 
 describe("the dress's edges", () => {
-  it("are its sleeves' hems and its skirt's — and a boat neckline's, with no collar over it", () => {
-    expect(kinds(dressEdges({ neckline: "v" }))).toEqual(["sleeve0", "sleeve1", "hem"]);
+  it("are its neckline's, with no collar over it, its sleeves' hems and its skirt's", () => {
+    expect(kinds(dressEdges({ neckline: "v" }))).toEqual(["neckline", "sleeve0", "sleeve1", "hem"]);
     expect(kinds(dressEdges({ neckline: "boat" }))).toEqual(["neckline", "sleeve0", "sleeve1", "hem"]);
     expect(kinds(dressEdges({ neckline: "boat", opening: "round" }))).toEqual(["sleeve0", "sleeve1", "hem"]);
-    // no sleeve, no sleeve edge; a cut with none, none either
+    // no sleeve, no sleeve edge; a halter's neckline is its two armholes up to the band
     expect(kinds(dressEdges({ neckline: "boat", sleeve: { type: "set-in", length: "sleeveless" } }))).toEqual(["neckline", "hem"]);
-    expect(kinds(dressEdges({ neckline: "halter" }))).toEqual(["hem"]);
-    // the neckline's only where it is drafted
-    expect(NECKLINE_EDGED).toEqual(["boat"]);
+    expect(kinds(dressEdges({ neckline: "halter" }))).toEqual(["neckline0", "neckline1", "hem"]);
+    // every cut has its neckline drafted
+    expect(NECKLINE_EDGED).toEqual(NECKLINE_IDS);
+    for (const cut of NECKLINE_IDS) expect(kinds(dressEdges({ neckline: cut })).some((k) => k.startsWith("neckline")), cut).toBe(true);
   });
 
   it("are each built again from what they declare, and each declared shape is listed", () => {
@@ -146,7 +168,8 @@ describe("the dress's edges", () => {
         mine.forEach((e, i) => {
           expect(declared[i].line, what).toEqual(e.line);
           expect(declared[i].room, what).toBe(e.room);
-          expect(stripesAlong(declared[i], STRIPES.three).map((s) => s.d), what).toEqual(stripesAlong(e, STRIPES.three).map((s) => s.d));
+          /* the same rows, to a tenth of a centimetre: where a row is cut to its cloth, the cut is found to a few hundredths */
+          expect(rowsApart(stripesAlong(declared[i], STRIPES.three), stripesAlong(e, STRIPES.three)), what).toBeLessThan(0.5);
           compared++;
         });
       }

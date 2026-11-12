@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { insideRing, panelStripes, sailor, type SailorPanel } from "./art/female/collarCuts";
 import { STRIPES } from "./stripes";
 import { bodiceFor } from "./art/female/dressCut";
-import { collarOf, cutFrom, regionsOf, setCollar, setNeckline, setStripes, stripesOf, wear } from "./outfit";
+import { collarOf, cutFrom, regionsOf, setCollar, setNeckline, setStripes, stripesOf, stripesOnOf, wear } from "./outfit";
 import { BODY_CANVAS } from "../mannequin/bodies";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { collarById, stripesFor } from "@/lib/data/collars";
@@ -222,9 +222,10 @@ describe("choosing the stripes", () => {
 
   it("are offered on the sailor collar — none, one, two or three — plain by default", () => {
     for (const id of ["female-peter-pan-collar", "female-shirt-collar", "female-mandarin-collar"]) {
-      expect(stripesFor(collarById(id)?.stripes), id).toEqual([]);
+      expect(collarById(id)?.takesStripes, id).toBeUndefined();
     }
-    expect(stripesFor(collarById("female-sailor-collar")?.stripes).map((t) => t.id)).toEqual(["none", "one", "two", "three"]);
+    expect(collarById("female-sailor-collar")?.takesStripes).toBe(true);
+    expect(stripesFor(dress.stripes).map((t) => t.id)).toEqual(["none", "one", "two", "three"]);
     expect(collarOf(one(sewn()))?.id).toBe("female-sailor-collar");
     expect(stripesOf(one(sewn()))).toBe("none");
     expect(regionsOf(dress, one(sewn()))).not.toContain("trim");
@@ -247,21 +248,17 @@ describe("choosing the stripes", () => {
     expect(off.fabrics.trim).toBeUndefined();
   });
 
-  it("come off with the collar, or when the collar changes to one that takes none", () => {
+  it("go from the collar with it — to the neckline beneath, at the neck — and from the neck under a collar that takes none", () => {
     const on = setStripes(sewn(), dress.id, "two", "fb-black-crepe");
+    // taken off: the V's own neckline takes the braid at the neck, in the same cloth
     const bare = one(setCollar(on, dress.id, undefined));
-    expect(bare.stripes).toBeUndefined();
-    expect(bare.fabrics.trim).toBeUndefined();
-    // changed straight to a collar that takes no stripes
-    const swapped = one(setCollar(on, dress.id, "female-peter-pan-collar"));
-    expect(swapped.stripes).toBeUndefined();
-    expect(swapped.fabrics.trim).toBeUndefined();
-    // and as the panel does it: the V offers the sailor alone, so cut it round — which takes the collar off — and sew a Peter Pan on
-    const round = setNeckline(on, dress.id, "female-round-neckline");
-    const pp = one(setCollar(round, dress.id, "female-peter-pan-collar"));
-    expect(pp.stripes).toBeUndefined();
-    expect(pp.fabrics.trim).toBeUndefined();
-    expect(stripesOf(pp)).toBeUndefined();
+    expect([stripesOf(bare), stripesOnOf(bare), bare.fabrics.trim]).toEqual(["two", ["neckline"], "fb-black-crepe"]);
+    // a collar the V cannot take is no collar at all: its neckline keeps the braid
+    expect(stripesOnOf(one(setCollar(on, dress.id, "female-peter-pan-collar")))).toEqual(["neckline"]);
+    // cut round — which takes the sailor off — and a Peter Pan sewn over the neckline: nothing at the neck, none drawn, no cloth asked for
+    const pp = one(setCollar(setNeckline(on, dress.id, "female-round-neckline"), dress.id, "female-peter-pan-collar"));
+    expect(stripesOnOf(pp)).toEqual([]);
+    expect(regionsOf(dress, pp)).not.toContain("trim");
   });
 
   it("arrive in the plain cloth that stands out most against the collar's: white on dark cloth", () => {

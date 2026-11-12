@@ -4067,6 +4067,7 @@ failures += timed("edges", () => {
     /* what the panel offers, by the panel's own rules — see `sleeveTypesFor` and `sleeveLengthsFor` in data/sleeves.ts */
     const world = {
       cuts: cutsOf(garment.asset.front),
+      lopsided: LOPSIDED,
       sleevesOn: (cut) => {
         const mode = NECKLINE_SLEEVES[cut];
         if (mode === "band") return SLEEVE_KIT.BAND_CUT_TYPES.filter((t) => kinds[t].bodies.includes("female") && (kinds[t].construction === "band" || offered.includes(t)));

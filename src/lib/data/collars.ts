@@ -1,4 +1,4 @@
-import type { BodyType, Collar, Garment, Localized, StripesAtId, StripesId, StripesOffer, TieId } from "@/types";
+import type { BodyType, Collar, Garment, Localized, StripeEdgeId, StripesId, TieId } from "@/types";
 
 /**
  * The collars.
@@ -47,8 +47,6 @@ import type { BodyType, Collar, Garment, Localized, StripesAtId, StripesId, Stri
  */
 export const STRIPE_COUNTS: StripesId[] = ["none", "one", "two", "three"];
 
-/** How far stripes can go, the neck alone first — see `StripesAtId`. */
-export const STRIPE_REACH: StripesAtId[] = ["neck", "sleeves", "hem"];
 
 /** Everything that closes a round neckline: the eight with a neckband. */
 const ROUND_NECK: Collar["compatibleWith"] = ["top", "dress"];
@@ -190,12 +188,8 @@ export const collars: Collar[] = [
      */
     opening: "v",
     asset: { front: "female-sailor-collar-front" },
-    /**
-     * Plain, or one, two or three thin stripes along its outer edge in a
-     * second cloth — on the collar alone, or round the sleeves' hems as
-     * well, or the skirt's too, every stripe the same.
-     */
-    stripes: { offered: STRIPE_COUNTS, default: "none", at: STRIPE_REACH },
+    /** Stripes along its outer edge, as the dress's other edges take them — see `Garment.stripes`. */
+    takesStripes: true,
     /** And at the point of its V, nothing, a small tied bow, or a necktie. */
     ties: { offered: ["none", "knot", "necktie"], default: "none" },
   },
@@ -430,11 +424,12 @@ const STRIPE_NAMES: Record<StripesId, Localized> = {
   three: { en: "Three", ar: "ثلاثة شرائط" },
 };
 
-/** How far stripes go, by name — the same on a collar and on a neckline. */
-const STRIPES_AT_NAMES: Record<StripesAtId, Localized> = {
-  neck: { en: "Neck only", ar: "الرقبة فقط" },
-  sleeves: { en: "With sleeves", ar: "مع الأكمام" },
-  hem: { en: "With sleeves & hem", ar: "مع الأكمام والذيل" },
+/** The edges stripes go along, by name. */
+const STRIPE_EDGE_NAMES: Record<StripeEdgeId, Localized> = {
+  collar: { en: "Collar", ar: "الياقة" },
+  neckline: { en: "Neckline", ar: "الرقبة" },
+  sleeves: { en: "Sleeves", ar: "الأكمام" },
+  hem: { en: "Hem", ar: "الذيل" },
 };
 
 /** Ties, by name. */
@@ -448,9 +443,9 @@ const TIE_NAMES: Record<TieId, Localized> = {
 export const stripesFor = (offer: { offered: StripesId[] } | undefined): { id: StripesId; name: Localized }[] =>
   offer ? offer.offered.map((id) => ({ id, name: STRIPE_NAMES[id] })) : [];
 
-/** How far stripes can go, by name, from a collar's or a neckline's offer — none where they stay along the neck. */
-export const stripesAtFor = (offer: StripesOffer | undefined): { id: StripesAtId; name: Localized }[] =>
-  offer?.at ? offer.at.map((id) => ({ id, name: STRIPES_AT_NAMES[id] })) : [];
+/** The edges stripes can go along, by name — see `stripeEdgesOf`. */
+export const stripeEdgesFor = (edges: readonly StripeEdgeId[]): { id: StripeEdgeId; name: Localized }[] =>
+  edges.map((id) => ({ id, name: STRIPE_EDGE_NAMES[id] }));
 
 /** The ties a collar can be worn with, by name — none for a collar that takes none. */
 export const tiesFor = (collar: Collar | undefined): { id: TieId; name: Localized }[] =>

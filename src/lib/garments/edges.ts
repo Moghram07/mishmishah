@@ -24,16 +24,20 @@ export type EdgeKind = "neckline" | "sleeve" | "hem" | "collar";
  * - `level`: the edge moved straight in along `into`, every point alike — a
  *   hem, whose waves and steps each stripe then keeps, `inset` further in
  *   past the hem's own turn.
- * - `follow`: the edge smoothed through its corners (`round` units) and
- *   offset square to itself `toward` a point on the cloth — a neckline and
- *   the shoulders either side of it, a cap sleeve's edge round the arm;
- *   carried on past its two ends by `ends`.
+ * - `follow`: the edge smoothed (`round` units) and offset square to
+ *   itself onto the cloth — a neckline and the shoulders either side of it,
+ *   a cap sleeve's edge round the arm; carried on past its two ends by
+ *   `ends`. The cloth is the side `toward` a point on it, or, given
+ *   `side`, always the same side of the edge as it runs: to its left (1) or
+ *   its right (-1) — which a V needs, its two sides facing each other. With
+ *   `corners`, it is smoothed between its corners and not through them, and
+ *   each stripe turns a corner square, mitred, as braid is folded at one.
  * - `own`: the edge lays its own, already cut to its piece — a sailor
  *   collar's outer edge, offset along its own curve.
  */
 export type EdgeLay =
   | { by: "level"; into: Pt; inset: number }
-  | { by: "follow"; toward: Pt; round: number; ends: readonly [head: number, tail: number] }
+  | { by: "follow"; toward?: Pt; side?: 1 | -1; round: number; ends: readonly [head: number, tail: number]; corners?: true }
   | { by: "own"; inFrom: (d: number) => Pt[] };
 
 /** A piece of cloth an edge lies on: its index in its region's `shape`, and its outline. */
@@ -57,6 +61,25 @@ export interface Edge {
    * fitted finer to it. Absent where the cloth runs on.
    */
   room?: number;
+  /**
+   * Where an end of it meets another edge at a corner — a cap sleeve's edge
+   * and the shoulder line, at the tip of the shoulder: the corner, and the
+   * line halving it, into the cloth. What is laid along it ends on that line,
+   * so braid along the two edges meets in a mitre, as a picture frame does.
+   */
+  meets?: { head?: EdgeStop; tail?: EdgeStop };
+  /**
+   * The other finished edges of its cloth, as lines — the neckline beside a
+   * cap sleeve. Braid that would run into one before reaching its own end is
+   * ended there, every row together, square across: not cut off at a slant.
+   */
+  against?: Pt[][];
+}
+
+/** A corner an edge ends at: the point, and the line halving the corner, pointing into the cloth. */
+export interface EdgeStop {
+  at: Pt;
+  dir: Pt;
 }
 
 /** What a point is: the centre front of the neck — a V's point, a round neck's lowest. */

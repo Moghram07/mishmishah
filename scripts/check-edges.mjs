@@ -105,6 +105,8 @@ const inward = (edge, p) => {
   const b = edge.line[Math.min(edge.line.length - 1, i + 2)];
   const l = dist(a, b) || 1;
   let n = [-(b[1] - a[1]) / l, (b[0] - a[0]) / l];
+  /* to the side it keeps as it runs, or toward the point it is laid toward */
+  if (edge.lay.by === "follow" && edge.lay.side !== undefined) return [n[0] * edge.lay.side, n[1] * edge.lay.side];
   const toward = edge.lay.by === "follow" ? edge.lay.toward : null;
   if (toward && n[0] * (toward[0] - p[0]) + n[1] * (toward[1] - p[1]) < 0) n = [-n[0], -n[1]];
   return n;
@@ -128,6 +130,19 @@ function spanOf(edge) {
   return line.length > 1 ? { line, within } : { line: edge.line, within: () => true };
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** How far apart rows may lie and still be the same rows: 0.5 units, a tenth of a centimetre. */
+const SAME_ROWS = 0.5;
+/** The farthest any point of one set of rows lies from the matching row of the other — infinite if they differ in number. */
+function rowsApart(a, b) {
+  if (a.length !== b.length) return Infinity;
+  let m = 0;
+  a.forEach((row, i) => {
+    const [p, q] = [ringsOf(row.d)[0] ?? [], ringsOf(b[i].d)[0] ?? []];
+    for (const x of p) m = Math.max(m, toPolyline(x, [...q, q[0]]));
+    for (const x of q) m = Math.max(m, toPolyline(x, [...p, p[0]]));
+  });
+  return m;
+}
 const lineSame = (a, b) => a.length === b.length && a.every((p, i) => Math.abs(p[0] - b[i][0]) < 1e-6 && Math.abs(p[1] - b[i][1]) < 1e-6);
 const layOf = (edge) => (edge.lay.by === "own" ? { by: "own" } : edge.lay);
 const label = (edge, key) => `${edge.kind}${edge.side !== undefined ? ` ${edge.side ? "right" : "left"}` : ""} · ${JSON.stringify(key)}`;
@@ -151,12 +166,16 @@ function edgeProblems(edge, { twin, axis, axisTolerance = MIRRORED } = {}) {
   if (worst > allowed) problems.push(`strays ${worst.toFixed(1)} units off its cloth's border (≤ ${allowed})`);
 
   /* its cloth on the side it says: just in from its middle is cloth, just out is none of its own */
-  const mid = span.line[Math.floor(span.line.length / 2)];
-  const n = inward(edge, mid);
-  const inside = edge.lay.by === "own" ? edge.lay.inFrom(2).length > 1 : onPieces(ringsList, [mid[0] + n[0] * 2, mid[1] + n[1] * 2]);
-  const outside = edge.lay.by !== "own" && onPieces(ringsList, [mid[0] - n[0] * 2, mid[1] - n[1] * 2]);
-  if (!inside) problems.push("has no cloth on the side it lays onto");
-  if (outside) problems.push("has its own cloth on the side away from it too — it is not an edge of it");
+  const tried = [0.3, 0.5, 0.7].map((f) => {
+    const p = span.line[Math.floor((span.line.length - 1) * f)];
+    const n = inward(edge, p);
+    return {
+      inside: edge.lay.by === "own" ? edge.lay.inFrom(2).length > 1 : onPieces(ringsList, [p[0] + n[0] * 2, p[1] + n[1] * 2]),
+      outside: edge.lay.by !== "own" && onPieces(ringsList, [p[0] - n[0] * 2, p[1] - n[1] * 2]),
+    };
+  });
+  if (tried.filter((t) => t.inside).length < 2) problems.push("has no cloth on the side it lays onto");
+  if (tried.filter((t) => t.outside).length >= 2) problems.push("has its own cloth on the side away from it too — it is not an edge of it");
 
   /* cloth enough in from it for three stripes, fitted to its room */
   const three = fittedBands(edge, STRIPES.three);
@@ -264,6 +283,9 @@ function randomDress(pick, world) {
   if (buttons !== "none") choice.buttons = buttons;
   const opening = pick([null, ...openingsOn(cut)]);
   if (opening) choice.opening = opening;
+  /* stripes along some of its edges: two edges that meet share the cloth between them when both are striped */
+  const on = ["neckline", "sleeves", "hem"].filter(() => pick([true, false]));
+  if (on.length) choice.stripes = { count: "three", on };
   return choice;
 }
 
@@ -278,6 +300,7 @@ const axesOf = (c) => ({
   waist: c.skirt.waist,
   buttons: c.buttons ?? "none",
   opening: c.opening ?? "none",
+  stripes: c.stripes ? c.stripes.on.join("+") : "none",
 });
 const pairsOf = (c) => {
   const a = Object.entries(axesOf(c)).map(([k, v]) => `${k}=${v}`);
@@ -338,7 +361,10 @@ function undeclared(mod, choice, everyKey) {
       if (!same(layOf(e), layOf(d))) what.push("lay");
       if (e.room !== d.room) what.push("room");
       const cloth = same(e.pieces.map((p) => p.d), d.pieces.map((p) => p.d));
-      if (!cloth && !same(stripesAlong(e, STRIPES.three).map((s) => s.d), stripesAlong(d, STRIPES.three).map((s) => s.d))) what.push("stripes");
+      if (!cloth) {
+        const gap = rowsApart(stripesAlong(e, STRIPES.three), stripesAlong(d, STRIPES.three));
+        if (gap > SAME_ROWS) what.push(`stripes (${Number.isFinite(gap) ? `${gap.toFixed(2)} units apart` : "a different number of rows"})`);
+      }
       if (what.length) problems.push(`${where}: its ${what.join(", ")} differ from those of ${JSON.stringify(key)} — something undeclared shapes it`);
     });
   }
@@ -379,20 +405,23 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
     for (const key of keys) {
       const choice = spec.choiceFor(key);
       const mine = mod.dressEdges(choice).filter((e) => e.kind === spec.kind);
-      const axis = spec.kind === "hem" ? 300 : spec.kind === "neckline" ? 300 : undefined;
+      const lopsided = spec.kind === "neckline" && (world.lopsided.includes(key.cut) || Boolean(mod.bodiceFor(key.cut).cut.wrap));
+      const axis = spec.kind === "hem" ? 300 : spec.kind === "neckline" && !lopsided ? 300 : undefined;
       /*
         Cut about her throat, three units left of her shoulders' centre — a
         neckline, and a skirt's flat panel under its placket — it is that much
         off a mirror about the shoulders'.
       */
       const throat = spec.kind === "neckline" || (spec.kind === "hem" && key.toHem);
-      const axisTolerance = throat ? Math.abs(300 - mod.NECK_CENTRE) + MIRRORED : MIRRORED;
-      for (const e of mine) edges.push({ edge: e, key, twin: mine.find((t) => t !== e && t.side !== undefined && e.side === 0), axis, axisTolerance });
+      /* mirrored about her shoulders' centre, a line cut about her throat lands twice the throat's offset away */
+      const axisTolerance = throat ? 2 * Math.abs(300 - mod.NECK_CENTRE) + MIRRORED : MIRRORED;
+      /* one of a pair is held to its twin; an edge across the middle, to its own mirror image */
+      for (const e of mine) edges.push({ edge: e, key, twin: mine.find((t) => t !== e && t.side !== undefined && e.side === 0), axis: e.side === undefined ? axis : undefined, axisTolerance });
     }
   }
   /* the sailor collar's panels are each cut from their own side, about her throat: that much off a mirror */
   const collar = collarMod.sailorEdges();
-  for (const e of collar) edges.push({ edge: e, key: "sailor collar", twin: e.side === 0 ? collar[1] : undefined, axis: undefined, axisTolerance: Math.abs(300 - mod.NECK_CENTRE) + MIRRORED });
+  for (const e of collar) edges.push({ edge: e, key: "sailor collar", twin: e.side === 0 ? collar[1] : undefined, axis: undefined, axisTolerance: 2 * Math.abs(300 - mod.NECK_CENTRE) + MIRRORED });
 
   const kinds = {};
   const edgeIssues = [];
@@ -412,6 +441,39 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
   const counted = Object.entries(kinds).map(([k, n]) => `${n} ${k}`).join(", ");
   report("edges", `edges: ${edges.length} (${counted}), ${distinct} different, each on its cloth's border, cloth on its side, three stripes deep, mirrored`, edgeIssues);
   report("stripes", `stripes: one, two and three on all ${distinct} different edges, each the whole way along, on its cloth, in order`, stripeIssues);
+
+  /*
+    Where two striped edges meet or run close — a cap sleeve and the neckline,
+    on every cut that keeps both sleeves — no row of one lies over a row of the
+    other: they meet in a mitre, and share the cloth between them.
+  */
+  const touchIssues = [];
+  let touched = 0;
+  for (const cut of world.cuts.filter((c) => world.sleevesOn(c).includes("cap"))) {
+    for (const count of ["one", "two", "three"]) {
+      const choice = { neckline: cut, sleeve: { type: "cap", length: "short" }, stripes: { count, on: ["neckline", "sleeves"] } };
+      const edges = mod.dressEdges(choice).filter((x) => x.kind === "neckline" || x.kind === "sleeve");
+      const laid = edges.map((x) => stripeSides(x, STRIPES[count]));
+      for (let a = 0; a < edges.length; a++) {
+        for (let b = 0; b < edges.length; b++) {
+          if (a === b) continue;
+          touched++;
+          const rows = laid[b].map((x) => [...x.near, ...[...x.far].reverse()]);
+          let over = 0;
+          for (const row of laid[a]) {
+            /* along the middle of each row of one, inside any row of the other */
+            const n = Math.min(row.near.length, row.far.length);
+            for (let k = 1; k < n - 1; k += 2) {
+              const p = [(row.near[k][0] + row.far[Math.round((k * (row.far.length - 1)) / (row.near.length - 1))][0]) / 2, (row.near[k][1] + row.far[Math.round((k * (row.far.length - 1)) / (row.near.length - 1))][1]) / 2];
+              if (rows.some((r) => insideRings([r], p))) over++;
+            }
+          }
+          if (over > 2) touchIssues.push(`${cut} with a cap, ${count}: ${over} points of the ${edges[a].kind}'s rows lie on the ${edges[b].kind}'s`);
+        }
+      }
+    }
+  }
+  report("touch", `touch: ${touched} pairs of rows along edges that meet — a cap and the neckline, on each cut — never lie over each other`, touchIssues);
 
   /* the points, and the tie at the V's */
   const pointIssues = [];

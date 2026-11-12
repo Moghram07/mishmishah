@@ -20,7 +20,7 @@ import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { productTemplates } from "@/lib/data/products";
 import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
-import { stripesAtFor, stripesFor, tiesFor } from "@/lib/data/collars";
+import { stripeEdgesFor, stripesFor, tiesFor } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { legsFor } from "@/lib/data/legs";
@@ -63,9 +63,10 @@ import {
   setBelt,
   beltOf,
   setStripes,
-  setStripesAt,
   setTie,
-  stripesAtOf,
+  stripeEdgesOf,
+  stripesOnOf,
+  toggleStripeEdge,
   stripesOf,
   tieOf,
   setSleeve,
@@ -117,7 +118,7 @@ import type {
   SkirtChoice,
   LegId,
   SleeveChoice,
-  StripesAtId,
+  StripeEdgeId,
   StripesId,
   TieId,
 } from "@/types";
@@ -446,10 +447,10 @@ export function FabricVisualizer() {
     } else setCutting({ garmentId: cuttingGarment.id, region: "trim" });
   };
 
-  /** Send the stripes as far as the sleeves' hems, or the skirt's too — the same cloth and count. */
-  const chooseStripesAt = (at: StripesAtId) => {
+  /** Sew the stripes along an edge, or take them off it — the same cloth and count on every edge. */
+  const toggleStripes = (edge: StripeEdgeId) => {
     if (!cuttingGarment) return;
-    setOutfit((o) => ({ ...o, worn: setStripesAt(o.worn, cuttingGarment.id, at) }));
+    setOutfit((o) => ({ ...o, worn: toggleStripeEdge(o.worn, cuttingGarment.id, edge) }));
   };
 
   /**
@@ -839,12 +840,10 @@ export function FabricVisualizer() {
     boat's — and how far they go; and, on a collar, its tie.
   */
   const wornCollar = cuttingEntry ? collarOf(cuttingEntry.worn) : undefined;
-  const wornNeckline = cuttingEntry ? necklineOf(cuttingEntry.worn) : undefined;
-  const stripeOffer = wornCollar ? wornCollar.stripes : wornNeckline?.stripes;
-  const stripeChoices = stripesFor(stripeOffer);
+  const stripeEdges = cuttingEntry ? stripeEdgesFor(stripeEdgesOf(cuttingEntry.worn)) : [];
+  const stripeChoices = stripeEdges.length > 0 ? stripesFor(cuttingGarment?.stripes) : [];
   const wornStripes = cuttingEntry ? stripesOf(cuttingEntry.worn) : undefined;
-  const stripesAtChoices = wornStripes && wornStripes !== "none" ? stripesAtFor(stripeOffer) : [];
-  const wornStripesAt = cuttingEntry ? stripesAtOf(cuttingEntry.worn) : undefined;
+  const wornStripesOn = cuttingEntry ? stripesOnOf(cuttingEntry.worn) : [];
   const tieChoices = tiesFor(wornCollar);
   const wornTie = cuttingEntry ? tieOf(cuttingEntry.worn) : undefined;
 
@@ -1061,24 +1060,25 @@ export function FabricVisualizer() {
       ),
     });
   }
-  /* stripes in a cloth of their own, along a sailor collar's edge or a boat neckline's: how many, and how far they go */
+  /*
+    Stripes in a cloth of their own: how many, and along which of its edges
+    — each on or off on its own, the same count and cloth on all of them.
+  */
   if (subject === "wardrobe" && stripeChoices.length > 1 && wornStripes) {
     extraRows.push({
       id: "stripes",
       label: t("viz.stripes"),
-      value: [named(stripeChoices, wornStripes), stripesAtChoices.length > 1 ? named(stripesAtChoices, wornStripesAt) : undefined]
-        .filter(Boolean)
-        .join(" · "),
-      region: wornStripes !== "none" ? "trim" : undefined,
+      value: [named(stripeChoices, wornStripes), ...(wornStripes !== "none" ? stripeEdges.filter((c) => wornStripesOn.includes(c.id)).map((c) => pick(c.name)) : [])].join(" · "),
+      region: wornStripesOn.length > 0 ? "trim" : undefined,
       body: (
         <>
           <Segmented label={t("viz.stripes")} choices={stripeChoices.map((c) => ({ id: c.id, label: pick(c.name) }))} active={wornStripes} onPick={chooseStripes} />
-          {stripesAtChoices.length > 1 && wornStripesAt && (
+          {wornStripes !== "none" && (
             <>
               <RowHeading>{t("viz.stripesAt")}</RowHeading>
               <div role="group" aria-label={t("viz.stripesAt")} className="flex flex-wrap gap-2">
-                {stripesAtChoices.map((c) => (
-                  <Chip key={c.id} label={pick(c.name)} active={wornStripesAt === c.id} onClick={() => chooseStripesAt(c.id)} />
+                {stripeEdges.map((c) => (
+                  <Chip key={c.id} label={pick(c.name)} active={wornStripesOn.includes(c.id)} onClick={() => toggleStripes(c.id)} />
                 ))}
               </div>
             </>

@@ -1304,12 +1304,10 @@ export const NECKLINE_OPENING: Record<NecklineId, OpeningShape | null> = {
  */
 /**
  * The cuts whose neckline edge is drafted for a part to be laid along it —
- * stripes now — with no collar on: the boat, whose wide straight line is
- * where a sailor dress without a collar wears its braid. The offer and the
- * drawing read this one list, so a cut cannot be offered stripes it has no
- * edge for.
+ * stripes now — with no collar on: every one. The offer and the drawing read
+ * this one list, so a cut cannot be offered stripes it has no edge for.
  */
-export const NECKLINE_EDGED: readonly NecklineId[] = ["boat"];
+export const NECKLINE_EDGED: readonly NecklineId[] = NECKLINE_IDS;
 
 export const NECKLINE_SLEEVES: Record<
   NecklineId,
