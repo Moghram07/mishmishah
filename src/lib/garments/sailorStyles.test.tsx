@@ -355,15 +355,21 @@ describe("choosing the stripes, the edges they go along, and the tie", () => {
   });
 
   it("keeps them through a recut, along the edges it still has — at the neck again where all of them went", () => {
-    // a sailor dress recut to a boat: its collar and tie go, its braid stays at the neck, with its cloth and its other edges
+    // a sailor dress recut to a high neck, which it does not follow: its collar and tie go, its braid stays at the neck, with its cloth and its other edges
     let sailed = setStripeEdges(setStripes(sailor(), dress.id, "three", "fb-white"), dress.id, ["collar", "sleeves"]);
     sailed = setTie(sailed, dress.id, "knot");
-    const recut = one(setNeckline(sailed, dress.id, "female-boat-neckline"));
+    const recut = one(setNeckline(sailed, dress.id, "female-high-neckline"));
     expect(collarOf(recut)).toBeUndefined();
     expect([stripesOf(recut), stripesOnOf(recut), recut.fabrics.trim]).toEqual(["three", ["neckline", "sleeves"], "fb-white"]);
     expect(tieOf(recut)).toBeUndefined();
-    // only the collar's chosen: recut, along the neckline instead
-    const neckOnly = one(setNeckline(setStripes(sailor(), dress.id, "two", "fb-white"), dress.id, "female-boat-neckline"));
+    // recut to a boat, which it follows: the collar stays, cut to it, its braid on it; the tie goes, with no V to knot it at
+    const boat = one(setNeckline(sailed, dress.id, "female-boat-neckline"));
+    expect(collarOf(boat)?.id).toBe("female-sailor-collar");
+    expect([stripesOf(boat), stripesOnOf(boat), boat.fabrics.trim]).toEqual(["three", ["collar", "sleeves"], "fb-white"]);
+    expect(tieOf(boat)).toBeUndefined();
+    expect(regionsOf(dress, boat)).not.toContain("tie");
+    // only the collar's chosen: recut to a high neck, along the neckline instead
+    const neckOnly = one(setNeckline(setStripes(sailor(), dress.id, "two", "fb-white"), dress.id, "female-high-neckline"));
     expect(stripesOnOf(neckOnly)).toEqual(["neckline"]);
     // and the other way: braid chosen along a neckline goes to a sailor collar sewn over it
     const onCollar = one(setCollar(setStripeEdges(setStripes(dressed("v"), dress.id, "two", "fb-white"), dress.id, ["neckline", "hem"]), dress.id, "female-sailor-collar"));

@@ -696,6 +696,16 @@ export interface Collar {
    */
   cuts?: OpeningShape[];
   /**
+   * On a garment with a choice of neckline, the cuts it is sewn to, each by
+   * name — `Neckline.cut` — and drawn to each its own way: a sailor collar's
+   * panels down the V, a wide flat collar round the boat, the round and the
+   * square, two bands down a wrap's edges. Where given, it decides alone;
+   * absent, the openings do — see `cuts`.
+   */
+  necklines?: string[];
+  /** Its size on each of `necklines` other than the one `footprint` is measured on, by cut — see `footprint`. */
+  footprintOn?: Record<string, { width: [number, number]; drop: [number, number] }>;
+  /**
    * The drawings. `front` is drawn over the garment, as everything else here
    * is. `behindBody` is drawn *under the mannequin photograph* — the arc of the
    * band that passes behind the neck and comes round to the front.
@@ -716,8 +726,12 @@ export interface Collar {
    */
   /** Whether stripes can be sewn along its free edge — a sailor collar's. The count is the garment's: see `Garment.stripes`. */
   takesStripes?: true;
-  /** The ties it can be worn with at the point of its V — a sailor collar's — and the one it arrives with. */
-  ties?: { offered: TieId[]; default: TieId };
+  /**
+   * The ties it can be worn with at the point of its V — a sailor collar's —
+   * and the one it arrives with; `on`, the cuts it has that point on, where
+   * not every cut it follows has one.
+   */
+  ties?: { offered: TieId[]; default: TieId; on?: string[] };
 }
 
 /**

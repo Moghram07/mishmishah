@@ -188,14 +188,16 @@ describe("cutting a dress, and what it does to the collar", () => {
     // a strapless bodice has nothing to sew one to
     expect(collarsFitting(dress, wornAs("sweetheart"))).toHaveLength(0);
 
-    // and a flat collar wants the wide opening, not the high one
+    // and a flat collar wants the wide opening, not the high one — besides the sailor, which follows it
     const round = collarsFitting(dress, wornAs("round"));
-    expect(round.every((c) => c.opening === "round")).toBe(true);
+    expect(round.filter((c) => c.id !== "female-sailor-collar").every((c) => c.opening === "round")).toBe(true);
 
-    // a V takes the sailor collar, which belongs on one, and nothing else — and it goes on nothing but a V
+    // a V takes the sailor collar, which began on one, and nothing else
     expect(collarsFitting(dress, wornAs("v")).map((c) => c.id)).toEqual(["female-sailor-collar"]);
-    for (const cut of ["high", "keyhole", "collared"] as const) {
-      expect(collarsFitting(dress, wornAs(cut)).map((c) => c.id), cut).not.toContain("female-sailor-collar");
+    // and the sailor goes on the cuts it follows, each cut its own way, and on no other
+    for (const cut of ["round", "scoop", "boat", "v", "square", "high", "keyhole", "cowl", "wrap", "collared", "off-shoulder", "sweetheart", "halter", "asymmetrical"] as const) {
+      const offered = collarsFitting(dress, wornAs(cut)).map((c) => c.id).includes("female-sailor-collar");
+      expect(offered, cut).toBe(["v", "boat", "wrap", "round", "square", "scoop"].includes(cut));
     }
     // nor on a top: neither her t-shirt nor her blouse has a V
     for (const id of ["female-t-shirt", "female-blouse"]) {

@@ -83,6 +83,9 @@ const FINISH: SkirtFinish = {
 /** The skirt the dress arrives with. Kept in step with its record by a test. */
 export const DEFAULT_SKIRT: SkirtChoice = { shape: "flared", length: "midi", waist: "natural" };
 
+/** Where the skirt starts at a waist: under the bodice, above the seam — what a band down a wrap's edge goes into. */
+export const skirtTopAt = (waist: WaistId = "natural"): number => seamAt(waist) + FINISH.rise;
+
 export const SKIRT = skirtCut(FINISH, DEFAULT_SKIRT);
 
 /**

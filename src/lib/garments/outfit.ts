@@ -114,12 +114,16 @@ function sewnOn(worn: WornGarment): Collar | undefined {
 }
 
 /**
- * Whether a collar can be sewn to a cut: the cut presents the opening the
- * collar names. A garment with no choice of neckline keeps the opening its own
+ * Whether a collar can be sewn to a cut: one of the cuts it names — see
+ * `Collar.necklines` — or, naming none, a cut presenting the opening it
+ * needs. A garment with no choice of neckline keeps the opening its own
  * drawing has, and takes any collar it lists.
  */
 const fitsCut = (collar: Collar, neckline: Neckline | undefined): boolean =>
-  !neckline || (neckline.opening !== null && sewsInto(collar, neckline.opening));
+  !neckline ||
+  (collar.necklines
+    ? collar.necklines.includes(neckline.cut)
+    : neckline.opening !== null && sewsInto(collar, neckline.opening));
 
 /** Whether a collar can be sewn into the opening a neckline presents — see `Collar.cuts`. */
 const sewsInto = (collar: Collar, opening: OpeningShape): boolean =>
@@ -466,6 +470,9 @@ export function stripesOnOf(worn: WornGarment): StripeEdgeId[] {
 export function tieOf(worn: WornGarment): TieId | undefined {
   const ties = collarOf(worn)?.ties;
   if (!ties) return undefined;
+  /* tied only at a point the cut has — see `Collar.ties` */
+  const cut = necklineOf(worn)?.cut;
+  if (ties.on && cut && !ties.on.includes(cut)) return undefined;
   const wanted = worn.tie ?? ties.default;
   return ties.offered.includes(wanted) ? wanted : ties.default;
 }
@@ -674,8 +681,7 @@ export function collarsFitting(
   const all = collarsForGarment(garment);
   const neckline = necklineOf(worn);
   if (!neckline) return all;
-  const opening = neckline.opening;
-  return opening === null ? [] : all.filter((c) => sewsInto(c, opening));
+  return all.filter((c) => fitsCut(c, neckline));
 }
 
 /** A garment cut from one fabric throughout — how it arrives on the body. */

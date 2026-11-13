@@ -505,7 +505,7 @@ const defaultSleeveOf = (assetId) =>
   garments.find((g) => g.asset.front === assetId)?.sleeves?.default;
 
 function artPaths(assetId, body, { behind = false, opening = null, cut = null, sleeve = null, skirt = null, inside = null, front = null, underTop = null, leg = null } = {}) {
-  if (COLLAR_CLOTH[assetId] && !behind) return COLLAR_CLOTH[assetId](cut ?? undefined);
+  if (COLLAR_CLOTH[assetId] && !behind) return COLLAR_CLOTH[assetId](cut ?? undefined, sleeve ?? undefined);
   const generated = CUT_MODULES[assetId];
   if (generated && !behind) {
     return generated.cloth({
@@ -563,11 +563,11 @@ function artPaths(assetId, body, { behind = false, opening = null, cut = null, s
  * than an area, which is why it is deliberately not named `*_PATH` and does not
  * end up in the cloth above.
  */
-function neckSeam(assetId, body, opening = null, cut = null) {
+function neckSeam(assetId, body, opening = null, cut = null, sleeve = null) {
   const generated = CUT_MODULES[assetId];
   if (generated) {
-    // A generated drawing has one seam per cut, and the cut owns the opening.
-    const d = generated.NECKLINE_SEAMS[cut ?? generated.DEFAULT_CUT];
+    // A generated drawing has one seam per cut, and the cut owns the opening — as the sleeve shapes it, where one is given.
+    const d = sleeve && generated.bodiceFor ? generated.bodiceFor(cut ?? generated.DEFAULT_CUT, sleeve).cut.seam : generated.NECKLINE_SEAMS[cut ?? generated.DEFAULT_CUT];
     return typeof d === "string" && d.length > 0 ? flatten(d).flat() : null;
   }
   const table = artTable(assetId, body);
@@ -2274,18 +2274,34 @@ function checkCollars(bodyKey, cover, body, painted, rows) {
    * was only ever checked on the round neck, and sat above the scoop's
    * opening and floated inside the boat's with every check passing.
    */
-  const cutsFor = (garment, collar) => cutsOf(garment.asset.front).filter((c) => sews(collar, NECKLINE_OPENING[c]));
+  /* a collar naming the cuts it follows — the sailor's — is sewn to those, each drawn its own way; any other, to the cuts presenting its opening */
+  const cutsFor = (garment, collar) =>
+    cutsOf(garment.asset.front).filter((c) => (collar.necklines ? collar.necklines.includes(c) : sews(collar, NECKLINE_OPENING[c])));
 
-  /** A garment's cloth, cut to an opening — on a garment with cuts, to one cut presenting it. */
-  const clothFor = (garment, opening, cut = null) => {
-    const key = cut ? `${garment.id}:${opening}:${cut}` : `${garment.id}:${opening}`;
+  /** A garment's cloth, cut to an opening — on a garment with cuts, to one cut presenting it — in its own sleeve, or one given. */
+  const clothFor = (garment, opening, cut = null, sleeve = null) => {
+    const key = `${cut ? `${garment.id}:${opening}:${cut}` : `${garment.id}:${opening}`}${sleeve ? `:${sleeve.type}:${sleeve.length}` : ""}`;
     if (!painted.has(key)) {
       painted.set(
         key,
-        rasterize(artPaths(garment.asset.front, body, { opening, cut }))
+        rasterize(artPaths(garment.asset.front, body, { opening, cut, sleeve }))
       );
     }
     return painted.get(key);
+  };
+
+  /*
+    The sleeves a collar is checked with on a cut. A collar cut to the bodice
+    as it is drawn — the sailor's, round a boat or a square — moves with it,
+    and a cap sleeve, cut in one with the bodice, or a dropped shoulder opens
+    those necks wider: so it is checked with every sleeve the cut takes, and
+    with none. Any other collar, with the garment's own sleeve, as before.
+  */
+  const sleevesFor = (garment, collar, cut) => {
+    if (!collar.necklines || !cut || !garment.sleeves || !CUT_MODULES[garment.asset.front]?.bodiceFor) return [null];
+    if (NECKLINE_SLEEVES[cut] !== "both") return [null];
+    const types = garment.sleeves.types.filter((t) => SLEEVE_KINDS[t].bodies.includes(bodyKey) && SLEEVE_KINDS[t].construction !== "band");
+    return [null, { type: "set-in", length: "sleeveless" }, ...types.map((type) => ({ type, length: SLEEVE_KINDS[type].lengths[0] }))];
   };
 
   for (const collar of mine) {
@@ -2396,16 +2412,37 @@ function checkCollars(bodyKey, cover, body, painted, rows) {
     }
 
     let sewnTo = 0;
+    let sleevedTo = 0;
     for (const garment of fits) {
     for (const cut of cutsOf(garment.asset.front).length > 0 ? cutsFor(garment, collar) : [null]) {
-      sewnTo++;
+    sewnTo++;
+    for (const sleeve of sleevesFor(garment, collar, cut)) {
+      if (sleeve) sleevedTo++;
       /* the opening this cut presents, and the collar as it is drawn on it */
-      const opening = cut ? NECKLINE_OPENING[cut] : collar.opening;
-      const cloth = clothFor(garment, opening, cut);
-      const sewn = COLLAR_CLOTH[collar.asset.front] && cut ? rasterize(artPaths(collar.asset.front, body, { cut })) : paint;
-      const pair = `${collar.id} × ${garment.id}${cut ? ` · ${cut}` : ""}`;
+      const opening = cut ? (NECKLINE_OPENING[cut] ?? collar.opening) : collar.opening;
+      const cloth = clothFor(garment, opening, cut, sleeve);
+      const sewn = COLLAR_CLOTH[collar.asset.front] && cut ? rasterize(artPaths(collar.asset.front, body, { cut, sleeve })) : paint;
+      const pair = `${collar.id} × ${garment.id}${cut ? ` · ${cut}` : ""}${sleeve ? ` · ${sleeve.type} ${sleeve.length}` : ""}`;
 
-      const seam = neckSeam(garment.asset.front, body, opening, cut);
+      /*
+        Its size on this cut, where its record gives one: a collar cut to
+        each neckline it follows — the sailor's round a boat, a round neck, a
+        square, down a wrap — is held to that cut's own footprint, as
+        `checkCollarShapes` holds it to its first.
+      */
+      const want = cut ? collar.footprintOn?.[cut] : undefined;
+      if (want) {
+        const box = boundingBox(sewn);
+        const got = box ? { width: cm(box.w), drop: cm(box.h) } : { width: 0, drop: 0 };
+        for (const axis of ["width", "drop"]) {
+          const [lo, hi] = want[axis];
+          if (got[axis] < lo || got[axis] > hi)
+            problems.push(`${pair}: ${got[axis].toFixed(1)} cm ${axis}, outside the ${lo}–${hi} cm its record declares on this cut`);
+        }
+        if (!sleeve) console.log(`     ${bodyKey.padEnd(6)} ${`${collar.id.replace(`${bodyKey}-`, "")} · ${cut}`.padEnd(28)} ${got.width.toFixed(1).padStart(5)} × ${got.drop.toFixed(1).padStart(5)} cm`);
+      }
+
+      const seam = neckSeam(garment.asset.front, body, opening, cut, sleeve);
       if (!seam) {
         problems.push(`${garment.id} accepts collars but exports no NECK_SEAM`);
       } else {
@@ -2550,7 +2587,7 @@ function checkCollars(bodyKey, cover, body, painted, rows) {
       const bares = cut ? (NECKLINE_BARES[cut] ?? []) : [];
       const bared = ownCoverage(garment).filter((z) => !bares.includes(z));
       const own = sleeved
-        ? sleeveCoverage(bodyKey, bared, garment.sleeves.default)
+        ? sleeveCoverage(bodyKey, bared, sleeve ?? garment.sleeves.default)
         : bared;
       const coverage = [...new Set([...own, ...collar.coverage])];
       const { holes, at } = countHoles(cover, erasedZones(body, coverage), [
@@ -2565,12 +2602,14 @@ function checkCollars(bodyKey, cover, body, painted, rows) {
       }
     }
     }
+    }
 
     const bad = problems.length - before;
     console.log(
       `${bad > 0 ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ` +
         `${collar.id.padEnd(26)} sewn to ${String(fits.length).padStart(2)} garment${fits.length === 1 ? "" : "s"}, ` +
         `checked on ${sewnTo === 1 ? "the one cut" : `each of the ${sewnTo} cuts`} that offer${sewnTo === 1 ? "s" : ""} it` +
+        (sleevedTo ? `, and on them with ${sleevedTo} sleeves` : "") +
         (bad > 0 ? `, ${bad} problem(s)` : "")
     );
   }
@@ -4084,7 +4123,7 @@ failures += timed("edges", () => {
       cuffsOn: (sleeve) => SLEEVE_KIT.cuffsOffered(garment.sleeves.cuffs, sleeve),
       skirt: { shapes: garment.skirt.shapes, waists: garment.skirt.waists, lengthsOf: (shape) => shapeLengths(shape, garment.skirt.lengths) },
       buttonsOn: (cut, shape) => buttonsOn(cut, garment.buttons?.offered ?? ["none"], shape),
-      openingsOn: (cut) => [...new Set(collarsForGarment(garment).filter((c) => sews(c, NECKLINE_OPENING[cut])).map((c) => c.opening))],
+      openingsOn: (cut) => [...new Set(collarsForGarment(garment).filter((c) => (c.necklines ? c.necklines.includes(cut) : sews(c, NECKLINE_OPENING[cut]))).map((c) => c.opening))],
       beltsOn: (cut) => (garment.belts ? beltsOn(cut, garment.belts.offered) : ["none"]),
     };
     /* a whole outfit's holes, as `checkCut` counts them */

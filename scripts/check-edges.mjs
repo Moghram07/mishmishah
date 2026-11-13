@@ -423,9 +423,30 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
       for (const e of mine) edges.push({ edge: e, key, twin: mine.find((t) => t !== e && t.side !== undefined && e.side === 0), axis: e.side === undefined ? axis : undefined, axisTolerance });
     }
   }
-  /* the sailor collar's panels are each cut from their own side, about her throat: that much off a mirror */
-  const collar = collarMod.sailorEdges();
-  for (const e of collar) edges.push({ edge: e, key: "sailor collar", twin: e.side === 0 ? collar[1] : undefined, axis: undefined, axisTolerance: 2 * Math.abs(300 - mod.NECK_CENTRE) + MIRRORED });
+  /*
+    The sailor collar on every cut it follows. Cut about her throat, each
+    piece from its own side: that much off a mirror. On the V its panels are
+    held to each other; round a boat, a round neck or a square, its one edge
+    to its own mirror image; down a wrap, whose top band crosses over the
+    other's end, to neither — at every waist, since the wrap's edge runs to it.
+  */
+  const throatTolerance = 2 * Math.abs(300 - mod.NECK_CENTRE) + MIRRORED;
+  for (const cut of collarMod.SAILOR_CUTS) {
+    /* cut to the bodice as drawn: with every sleeve the cut takes, since a cap or a dropped shoulder opens a neck wider — the same edge is checked once */
+    const sleeves = cut === "v" ? [undefined] : [undefined, { type: "set-in", length: "sleeveless" }, ...world.sleevesOn(cut).map((type) => ({ type, length: world.lengthsOf(type, cut).find((l) => l !== "sleeveless") }))];
+    for (const waist of cut === "wrap" ? offer.skirt.waists : ["natural"]) for (const sleeve of sleeves) {
+      const collar = collarMod.sailorEdges(cut, waist, sleeve);
+      const key = `sailor collar · ${cut}${cut === "wrap" ? ` · ${waist}` : ""}${sleeve ? ` · ${sleeve.type} ${sleeve.length}` : ""}`;
+      for (const e of collar)
+        edges.push({
+          edge: e,
+          key,
+          twin: cut === "v" && e.side === 0 ? collar[1] : undefined,
+          axis: e.side === undefined ? 300 : undefined,
+          axisTolerance: throatTolerance,
+        });
+    }
+  }
 
   const kinds = {};
   const edgeIssues = [];

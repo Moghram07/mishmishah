@@ -1,10 +1,14 @@
 import { FLAT_COLLAR_SHADOW, collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
-import { TIE_AT, sailor, sailorEdges, sailorTie } from "../collarCuts";
+import { SAILOR_CUTS, TIE_AT, sailor, sailorEdges, sailorOn, sailorTie, type SailorCut, type SailorPiece } from "../collarCuts";
+import type { SleeveChoice } from "@/lib/garments/sleeves";
 import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
 import { STRIPES, stripesAlong } from "@/lib/garments/stripes";
 import type { Pt } from "@/lib/garments/fit";
-import type { StripesId } from "@/types";
+import type { StripesId, WaistId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../../index";
+
+/** The cuts it is drawn to other than the V. */
+const SAILOR_ON = SAILOR_CUTS.filter((c) => c !== "v");
 
 /**
  * Sailor collar: two flat panels lying on the shoulders, sewn down the edges
@@ -79,6 +83,47 @@ const panelsWith = (count: Exclude<StripesId, "none">): RegionArt => {
   }
   return r;
 };
+
+/**
+ * The collar on the other cuts it follows — round a boat, a round neck or a
+ * square, or down a wrap's two edges: the same light, shadow and grain as
+ * the V's panels, its pieces cut to that neckline — see `sailorOn` — each
+ * with its stripes, as chosen, along its outer edge. Cached per cut, waist
+ * (which a wrap's edge runs to) and count.
+ */
+const FOCUS: Record<Exclude<SailorCut, "v">, [number, number]> = { boat: [300, 212], round: [300, 215], square: [300, 232], scoop: [300, 228], wrap: [300, 262] };
+const onCut = new WeakMap<SailorPiece[], Map<StripesId, RegionArt>>();
+function collarOn(cut: Exclude<SailorCut, "v">, waist: WaistId, sleeve: SleeveChoice | undefined, count: StripesId): RegionArt {
+  /* one per collar as cut — the same pieces wherever the bodice is the same — and count */
+  const pieces = sailorOn(cut, waist, sleeve);
+  let byCount = onCut.get(pieces);
+  if (!byCount) onCut.set(pieces, (byCount = new Map()));
+  let r = byCount.get(count);
+  if (!r) {
+    r = {
+      ...PANELS,
+      focus: FOCUS[cut],
+      shape: (fill) => (
+        <>
+          {pieces.map((p, i) => (
+            <path key={i} d={p.path} fill={fill} />
+          ))}
+        </>
+      ),
+      light: (uid) => edgeLight(uid, ...pieces.map((p) => p.free)),
+      edge: () => (
+        <>
+          {pieces.map((p, i) => (
+            <path key={i} d={p.free} />
+          ))}
+        </>
+      ),
+      ...(count !== "none" ? { inlay: sailorEdges(cut, waist, sleeve).flatMap((edge) => stripesAlong(edge, STRIPES[count])) } : {}),
+    };
+    byCount.set(count, r);
+  }
+  return r;
+}
 
 /** A fold placed relative to the V's point, as the tie is. */
 const at = (ridge: Pt[]): Pt[] => ridge.map(([x, y]) => [TIE_AT[0] + x, TIE_AT[1] + y] as Pt);
@@ -186,8 +231,15 @@ const TIES = { knot: tieArt("knot"), necktie: tieArt("necktie") };
 export const sailorCollarFront: GarmentArt = {
   regions: { collar: PANELS },
   /* its stripes along the outer edges, and its tie at the V, as chosen */
-  cut: (choice: GarmentChoice) => ({
-    collar: choice.stripes?.on.includes("collar") ? panelsWith(choice.stripes.count) : PANELS,
-    ...(choice.tie ? { tie: TIES[choice.tie] } : {}),
-  }),
+  cut: (choice: GarmentChoice) => {
+    const striped = choice.stripes?.on.includes("collar") ? choice.stripes.count : "none";
+    const cut = choice.neckline;
+    /* on the V, its panels as approved; on the other cuts it follows, cut to each */
+    if (cut && cut !== "v" && (SAILOR_ON as readonly string[]).includes(cut))
+      return { collar: collarOn(cut as Exclude<SailorCut, "v">, choice.skirt?.waist ?? "natural", choice.sleeve, striped) };
+    return {
+      collar: striped !== "none" ? panelsWith(striped) : PANELS,
+      ...(choice.tie ? { tie: TIES[choice.tie] } : {}),
+    };
+  },
 };

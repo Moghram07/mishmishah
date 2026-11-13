@@ -7,12 +7,14 @@
   rather than standing at the base of the neck whatever the cut: a flat collar
   follows its garment's own neckline, and a sailor collar is sewn down a V.
 */
-import { flatCollar, outline, run, type Neckline, type Pt } from "../../fit.ts";
+import { flatCollar, line, outline, run, type Neckline, type Pt } from "../../fit.ts";
 import { blade, mirror, nudge, type Point } from "../../collar.ts";
 import type { NecklineId } from "../../necklines.ts";
-import { stripeSides, stripesAlong, type StripeBand } from "../../stripes.ts";
+import { clipTo, cornersOf, densify, extend, offsetRuns, ringsOf, smoothRuns, stripeSides, stripesAlong, type StripeBand } from "../../stripes.ts";
+import type { WaistId } from "@/types";
 import type { Edge } from "../../edges.ts";
-import { bodiceFor, dressPoints } from "./dressCut.ts";
+import type { SleeveChoice } from "../../sleeves.ts";
+import { bodiceFor, dressPoints, skirtTopAt } from "./dressCut.ts";
 import { opening, standFront } from "./yoke.ts";
 
 /* ------------------------------------------------------------- Peter Pan */
@@ -247,10 +249,25 @@ export const panelEdge = (panel: SailorPanel, side: 0 | 1): Edge => ({
   lay: { by: "own", inFrom: panel.inFrom },
 });
 
-/** The sailor collar's two free edges, left then right — what its stripes are laid along. */
-export function sailorEdges(): Edge[] {
-  const { left, right } = sailor();
-  return [panelEdge(left, 0), panelEdge(right, 1)];
+/**
+ * A sailor collar's free edges on a cut it follows — what its stripes are
+ * laid along: on the V, its two panels', left then right; round a round,
+ * boat or square neckline, the one collar's, shoulder to shoulder; on a
+ * wrap, each band's, the one under first.
+ */
+export function sailorEdges(cut: NecklineId = "v", waist: WaistId = "natural", sleeve?: SleeveChoice): Edge[] {
+  if (cut === "v") {
+    const { left, right } = sailor();
+    return [panelEdge(left, 0), panelEdge(right, 1)];
+  }
+  return sailorOn(cut as Exclude<SailorCut, "v">, waist, sleeve).map((p, index) => ({
+    kind: "collar" as const,
+    ...(p.side !== undefined ? { side: p.side } : {}),
+    line: p.outer,
+    pieces: [{ index, d: p.path }],
+    lay: { by: "own" as const, inFrom: p.inFrom },
+    ...(p.room !== undefined ? { room: p.room } : {}),
+  }));
 }
 
 /**
@@ -276,6 +293,470 @@ export function sailor(): { left: SailorPanel; right: SailorPanel } {
     left: sailorPanel(vee!.apex, vee!.left, parts!.strapLeft),
     right: sailorPanel(vee!.apex, [...vee!.right].reverse(), [...parts!.strapRight].reverse()),
   };
+}
+
+/* ------------------------------------------ the sailor on the other necklines */
+
+/**
+ * The cuts a sailor collar follows, the V first: the V's two panels as
+ * approved, a wide flat collar round the boat (photo 1), the round, the
+ * square and the scoop, and two bands down a wrap's edges, the top one
+ * crossing over the other and running on to the tie (photos 2–3) — see
+ * `sailorOn`.
+ */
+export const SAILOR_CUTS = ["v", "boat", "wrap", "round", "square", "scoop"] as const satisfies readonly NecklineId[];
+export type SailorCut = (typeof SAILOR_CUTS)[number];
+
+/**
+ * How wide a sailor collar lies round the other necklines it follows — the
+ * round, the boat and the square — and along a wrap's two edges: 28 units,
+ * 5.3 cm, square off the seam. Photo 1's, round a boat, is about 5 cm;
+ * photos 2–3's, down a wrap, about 5.5.
+ */
+export const SAILOR_BAND = 28;
+
+/**
+ * How wide it lies round each neckline it lies round, square off the seam:
+ * round a boat 40 units, 7.6 cm, as photo 1's is — a wide shallow opening
+ * wants a broad collar, or it reads as a band — and round the others
+ * `SAILOR_BAND`.
+ */
+export const SAILOR_WIDTH: Record<"boat" | "round" | "square" | "scoop", number> = { boat: 40, round: SAILOR_BAND, square: SAILOR_BAND, scoop: SAILOR_BAND };
+
+/**
+ * How far along the seam from each collar point the outer edge sweeps from
+ * its corner on the shoulder before it runs on at the band's width — see
+ * `sweptFromCorner`.
+ */
+const SAILOR_TURN = 40;
+
+/**
+ * How far inside the armhole seam a sailor collar's outer edge keeps: 1 cm.
+ * A collar is sewn to the neck and lies on the bodice; past the armhole it
+ * would lie over the sleeve. Round the square, whose corners come within
+ * 2 cm of it, this is what shapes the collar's sides.
+ */
+export const ARMHOLE_CLEAR = 5;
+
+/** How far short of a wrap's crossing its under band's edge leaves the seam, which hooks round there — see `downWrap`. */
+const WRAP_HOOK = 6;
+
+/**
+ * One piece of a sailor collar as it is cut on a neckline: the collar round
+ * a round, boat or square, or one band of a wrap's.
+ */
+export interface SailorPiece {
+  /** The piece, closed. */
+  path: string;
+  /** Its free edges, as open paths: what throws its shadow and catches its light. */
+  free: string;
+  /** Its outline as points, for measuring. */
+  ring: Pt[];
+  /** Its outer edge as points, from the shoulder: what its stripes are laid along. */
+  outer: Pt[];
+  /** A line `d` units in from the outer edge, carried on past its ends and cut to the piece — see `SailorPanel.inFrom`. */
+  inFrom: (d: number) => Pt[];
+  /** Which of a pair: 0 the left (her right), 1 the other. Absent for a collar round the neck. */
+  side?: 0 | 1;
+  /**
+   * Where it is narrower than its stripes are deep — round the square's lower
+   * corners, between the opening and the armhole — how deep it is there: the
+   * stripes are drawn finer to pass, as on a narrow band, never cut off.
+   */
+  room?: number;
+}
+
+const lengthOf = (pts: Pt[]) => pts.slice(1).reduce((s, p, i) => s + len(sub(p, pts[i])), 0);
+
+/**
+ * How far short of the shoulder point a sailor collar's corner lies on the
+ * shoulder: as far as the V's panels' do, about 1.6 cm — whatever is left of
+ * a shoulder beside a wider neckline.
+ */
+const SHOULDER_SHORT = (1 - SAILOR.reach) * lengthOf(bodiceFor("v").cut.parts!.strapLeft);
+
+/**
+ * Her shoulder points, left and right, where a set-in sleeve is sewn: a cap
+ * sleeve, cut in one with the bodice, or a dropped shoulder runs the
+ * shoulder line on past them, over the arm.
+ */
+const SHOULDER_POINTS = (() => {
+  const { strapLeft, strapRight } = bodiceFor("round").cut.parts!;
+  return { left: strapLeft[strapLeft.length - 1], right: strapRight[0] };
+})();
+
+/** How far along a polyline the point on it nearest `q` is. */
+function lengthTo(pts: Pt[], q: Pt): number {
+  let best = { s: lengthOf(pts), d: Infinity };
+  let run = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const ab = sub(pts[i], pts[i - 1]);
+    const l = len(ab) || 1e-9;
+    const t = Math.max(0, Math.min(1, ((q[0] - pts[i - 1][0]) * ab[0] + (q[1] - pts[i - 1][1]) * ab[1]) / (l * l)));
+    const d = len(sub(q, add(pts[i - 1], ab, t)));
+    if (d < best.d) best = { s: run + t * l, d };
+    run += l;
+  }
+  return best.s;
+}
+
+/**
+ * A shoulder line, from the collar point out, walked to a sailor collar's
+ * corner on it — `SHOULDER_SHORT` short of her shoulder point, wherever the
+ * line runs on past it: the line there, and the corner.
+ */
+function toCorner(shoulder: Pt[], point: Pt): { along: Pt[]; corner: Pt } {
+  let left = Math.max(0, lengthTo(shoulder, point) - SHOULDER_SHORT);
+  const along: Pt[] = [shoulder[0]];
+  for (let i = 1; i < shoulder.length; i++) {
+    const step = len(sub(shoulder[i], shoulder[i - 1]));
+    if (step >= left) {
+      along.push(lerp(shoulder[i - 1], shoulder[i], step ? left / step : 0));
+      break;
+    }
+    left -= step;
+    along.push(shoulder[i]);
+  }
+  return { along, corner: along[along.length - 1] };
+}
+
+/**
+ * The armholes a collar keeps clear of on a bodice cut with `sleeve`, each
+ * from the shoulder down to the underarm and on down the side: the seam a
+ * set-in or dropped sleeve is sewn along — a dropped shoulder's lower on the
+ * arm, leaving the bodice wider — or the free edge a cap or a loose sleeve
+ * leaves round the arm. A raglan's seam runs up to the neck, and a collar
+ * lies over it as the V's panels do; with no sleeve, or one cut in one with
+ * the bodice, a set-in sleeve's.
+ */
+type Armholes = { left: Pt[]; right: Pt[] };
+const armholeCache = new Map<string, Armholes>();
+function armholesFor(sleeve?: SleeveChoice): Armholes {
+  const own = sleeve && sleeve.length !== "sleeveless" && sleeve.type !== "raglan" ? sleeve : { type: "set-in" as const, length: "short" as const };
+  const k = bodiceFor("round", own).sleeveCut;
+  const setIn = bodiceFor("round", { type: "set-in", length: "short" }).sleeveCut!.seamed!;
+  const lines: Armholes | null = k?.seamed
+    ? { left: ringsOf(k.seamed.seams[0])[0], right: ringsOf(k.seamed.seams[1])[0] }
+    : k?.left.armhole && k.left.armhole.length > 2
+      ? /* the right side mirrored about her shoulders' centre, as the sleeves are cut */
+        { left: k.left.armhole, right: k.left.armhole.map(([x, y]): Pt => [600 - x, y]) }
+      : null;
+  const { left, right } = lines ?? { left: ringsOf(setIn.seams[0])[0], right: ringsOf(setIn.seams[1])[0] };
+  const key = `${left.map(String).join(" ")}|${right.map(String).join(" ")}`;
+  let found = armholeCache.get(key);
+  if (!found) {
+    /* each run down from the shoulder, then the side seam below its underarm */
+    const down = (pts: Pt[]) => (pts[0][1] <= pts[pts.length - 1][1] ? pts : [...pts].reverse());
+    const side = ringsOf(setIn.sides)[0].filter(([, y]) => y < 340);
+    const [l, r] = [down(left), down(right)];
+    found = {
+      left: [...l, ...side.filter(([x, y]) => x < 300 && y > l[l.length - 1][1])],
+      right: [...r, ...side.filter(([x, y]) => x > 300 && y > r[r.length - 1][1]).reverse()],
+    };
+    armholeCache.set(key, found);
+  }
+  return found;
+}
+
+/** Where an armhole, run down from the shoulder, is at row `y`: above it, its top. */
+function armholeAt(armhole: Pt[], y: number): number {
+  if (y <= armhole[0][1]) return armhole[0][0];
+  for (let i = 1; i < armhole.length; i++) {
+    const [a, b] = [armhole[i - 1], armhole[i]];
+    if ((a[1] - y) * (b[1] - y) <= 0 && a[1] !== b[1]) return a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1]);
+  }
+  return armhole[armhole.length - 1][0];
+}
+
+/**
+ * An outer edge kept `ARMHOLE_CLEAR` inside both armholes, and inside her
+ * shoulder points, which a cap's edge and a dropped shoulder's seam run on
+ * past — each point drawn
+ * in square to the armhole beside it, where it would reach past it — with the
+ * points that land on one another dropped.
+ */
+function insideArmholes(pts: Pt[], centre: number, armholes: Armholes): Pt[] {
+  /* and never further out than her shoulder points: over a cap or a dropped shoulder the bodice runs on onto the arm */
+  const kept = pts.map(([x, y]): Pt => {
+    if (x < centre) return [Math.max(x, Math.max(armholeAt(armholes.left, y), SHOULDER_POINTS.left[0]) + ARMHOLE_CLEAR), y];
+    return [Math.min(x, Math.min(armholeAt(armholes.right, y), SHOULDER_POINTS.right[0]) - ARMHOLE_CLEAR), y];
+  });
+  return kept.filter((p, i) => i === 0 || len(sub(p, kept[i - 1])) > 0.4);
+}
+
+/**
+ * A run's outer edge from its start swept from a corner on the shoulder — see
+ * `SAILOR_TURN`. `outer[i]` is `inner[i]` moved square off it by the band's
+ * width; up to `join` units along `inner` that is replaced by one curve: off
+ * the corner square to the shoulder, into the bodice, and round into the
+ * band's edge where it joins it, running on along it. So the collar leaves
+ * the shoulder as the V's panels do, in one sweep, not standing out level
+ * with the neck point above a shoulder that slopes away below it.
+ */
+function sweptFromCorner(inner: Pt[], outer: Pt[], along: Pt[], join: number): Pt[] {
+  const corner = along[along.length - 1];
+  let j = 1;
+  for (let s = 0; j < inner.length - 1; j++) {
+    s += len(sub(inner[j], inner[j - 1]));
+    if (s >= join) break;
+  }
+  const end = outer[j];
+  const towards = unit(sub(outer[Math.min(j + 1, outer.length - 1)], outer[j - 1]));
+  /* square off the shoulder at the corner, into the bodice */
+  const shoulder = unit(sub(corner, along[along.length - 2]));
+  let off: Pt = [-shoulder[1], shoulder[0]];
+  if (off[1] < 0) off = [-off[0], -off[1]];
+  const reach = len(sub(end, corner)) * 0.4;
+  const curve: Pt[] = [corner, add(corner, off, reach), add(end, towards, -reach), end];
+  const n = Math.max(8, Math.ceil(len(sub(end, corner))));
+  const swept = Array.from({ length: n }, (_, k) => cubicAt(curve, k / n));
+  return [...swept, ...outer.slice(j)];
+}
+
+/** A polyline's points thinned to about one every `step` units, its ends and every corner kept — what a path is drawn through. */
+function thinned(pts: Pt[], step = 2.5): Pt[] {
+  /* each corner held square by the points either side of it, and each end by the one beside it — see `held` */
+  const keep = new Set([0, 1, pts.length - 2, pts.length - 1, ...cornersOf(pts).flatMap((i) => [i - 1, i, i + 1])]);
+  const out: Pt[] = [pts[0]];
+  let since = 0;
+  for (let i = 1; i < pts.length; i++) {
+    since += len(sub(pts[i], pts[i - 1]));
+    if (keep.has(i) || since >= step) {
+      out.push(pts[i]);
+      since = 0;
+    }
+  }
+  return out;
+}
+
+/**
+ * A short run — a shoulder line — with a point put in just inside each end,
+ * so the curve drawn through it turns square where it meets the next run
+ * rather than swinging round past the corner: see `outline` in fit.ts.
+ */
+function held(pts: Pt[]): Pt[] {
+  if (pts.length < 2) return pts;
+  const near = (a: Pt, b: Pt): Pt => lerp(a, b, Math.min(0.5, 0.6 / (len(sub(b, a)) || 1)));
+  return [pts[0], near(pts[0], pts[1]), ...pts.slice(1, -1), near(pts[pts.length - 1], pts[pts.length - 2]), pts[pts.length - 1]];
+}
+
+/** The least depth of a piece in from its outer edge to its seam, along the middle of the edge: where it is narrowest. */
+function leastDepth(outer: Pt[], inner: Pt[]): number {
+  let least = Infinity;
+  const from = Math.floor(outer.length * 0.1);
+  for (let i = from; i < outer.length - from; i++) {
+    let d = Infinity;
+    for (const q of inner) d = Math.min(d, len(sub(q, outer[i])));
+    least = Math.min(least, d);
+  }
+  return least;
+}
+
+/**
+ * The guide `d` units in from an outer edge, as `SailorPanel.inFrom`: the
+ * edge carried on 30 units past both ends, moved in square to itself to the
+ * side `side` (1 its left as it runs, -1 its right), its corners mitred,
+ * and cut to the piece round its middle.
+ */
+const inwardFrom = (outer: Pt[], ring: Pt[], side: 1 | -1) => (d: number): Pt[] => {
+  const long = extend(densify(outer, 1), 30);
+  const { pts, keep } = offsetRuns(long, d, side, cornersOf(long), Math.floor(long.length / 2));
+  return clipTo([ring], pts, keep);
+};
+
+/**
+ * A sailor collar round a round, boat or square neckline: one piece of flat
+ * cloth lying on the bodice outside the opening, `SAILOR_BAND` wide square
+ * off the seam — round the curve of a round or a boat, and turning each of a
+ * square's corners square — and over the shoulders, its ends lying on the
+ * shoulder line out to as near the shoulder point as the V's panels', where
+ * it turns over to the back. Its inner edge **is** the seam, so no skin
+ * shows between collar and cloth; its outer edge is free, and keeps
+ * `ARMHOLE_CLEAR` inside the armholes — round the square's sides, where the
+ * opening comes close to them, it follows them in.
+ */
+function aroundOpening(cut: keyof typeof SAILOR_WIDTH, sleeve?: SleeveChoice): SailorPiece {
+  const width = SAILOR_WIDTH[cut];
+  const c = bodiceFor(cut, sleeve).cut;
+  const parts = c.parts!;
+  /* the seam, from the left collar point round the front to the right one */
+  const seam = ringsOf(c.seam)[0];
+  const inner = densify(seam[0][0] > seam[seam.length - 1][0] ? [...seam].reverse() : seam, 1);
+  const corners = cornersOf(inner);
+  const { pts: moved } = offsetRuns(inner, width, 1, corners, Math.floor(inner.length / 2));
+  const left = toCorner(parts.strapLeft, SHOULDER_POINTS.left);
+  const right = toCorner([...parts.strapRight].reverse(), SHOULDER_POINTS.right);
+  /* turned to each corner on the shoulder, no further along the seam than its first corner, or a third of it */
+  const headRun = corners.length ? corners[0] : inner.length - 1;
+  const tailRun = corners.length ? corners[corners.length - 1] : 0;
+  const turn = Math.min(SAILOR_TURN, lengthOf(inner) / 3, 0.8 * lengthOf(inner.slice(0, headRun + 1)), 0.8 * lengthOf(inner.slice(tailRun)));
+  /* the runs before the first corner and after the last are moved point for point, so swept in place */
+  let outer = sweptFromCorner(inner, moved, left.along, turn);
+  const fromEnd = (pts: Pt[]) => [...pts].reverse();
+  outer = fromEnd(sweptFromCorner(fromEnd(inner), fromEnd(outer), right.along, turn));
+  /* kept inside the armholes, smoothed between its corners so it follows them in without a kink, and kept inside again */
+  const centre = (parts.neck[0] + parts.neckRight[0]) / 2;
+  const armholes = armholesFor(sleeve);
+  const kept = densify(insideArmholes(outer, centre, armholes), 1);
+  outer = insideArmholes(smoothRuns(kept, 4, cornersOf(kept)), centre, armholes);
+  const ring = [...left.along, ...outer.slice(1, -1), ...[...right.along].reverse(), ...[...inner].reverse().slice(1, -1)];
+  const drawn = thinned(outer);
+  const depth = leastDepth(outer, inner);
+  return {
+    path: outline(held(left.along), drawn.slice(1, -1), held([...right.along].reverse()), thinned([...inner].reverse()).slice(1, -1)),
+    free: line(drawn),
+    ring,
+    outer,
+    inFrom: inwardFrom(outer, ring, -1),
+    ...(depth < width - 1 ? { room: Math.floor(depth * 10) / 10 } : {}),
+  };
+}
+
+/** A run going down, as far as row `y`: its points above it, and where it crosses it. */
+function downTo(pts: Pt[], y: number): Pt[] {
+  const out: Pt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const [a, b] = [pts[i - 1], pts[i]];
+    if (b[1] >= y) {
+      out.push(lerp(a, b, (y - a[1]) / (b[1] - a[1] || 1)));
+      return out;
+    }
+    out.push(b);
+  }
+  return out;
+}
+
+/** The point on a polyline nearest `q`, by index. */
+const nearestIndex = (pts: Pt[], q: Pt): number => pts.reduce((best, p, i) => (len(sub(p, q)) < len(sub(pts[best], q)) ? i : best), 0);
+
+/** Points `width(s)` units square off a polyline to the side `side` (1 its left as it runs), `s` the length along it. */
+function offsetBy(pts: Pt[], side: 1 | -1, width: (s: number) => number): Pt[] {
+  let s = 0;
+  return pts.map((p, i) => {
+    if (i > 0) s += len(sub(p, pts[i - 1]));
+    const u = unit(sub(pts[Math.min(i + 1, pts.length - 1)], pts[Math.max(i - 1, 0)]));
+    return add(p, [-u[1] * side, u[0] * side], width(s));
+  });
+}
+
+/** Where two polylines first cross, walking `a` from its start: the point, and the segment of each it is on. */
+function firstCrossing(a: Pt[], b: Pt[]): { at: Pt; ia: number; ib: number } | null {
+  for (let i = 0; i + 1 < a.length; i++) {
+    for (let j = 0; j + 1 < b.length; j++) {
+      const r = sub(a[i + 1], a[i]);
+      const s = sub(b[j + 1], b[j]);
+      const den = r[0] * s[1] - r[1] * s[0];
+      if (Math.abs(den) < 1e-9) continue;
+      const q = sub(b[j], a[i]);
+      const t = (q[0] * s[1] - q[1] * s[0]) / den;
+      const u = (q[0] * r[1] - q[1] * r[0]) / den;
+      if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return { at: add(a[i], r, t), ia: i, ib: j };
+    }
+  }
+  return null;
+}
+
+/**
+ * A sailor collar down a wrap: a band `SAILOR_BAND` wide along each edge of
+ * its V, each from its corner on the shoulder, as photos 2–3 have it.
+ *
+ * - **The under band**, on the under panel's edge, runs down to the crossing
+ *   and on under the top panel: what shows of it ends on the top panel's
+ *   edge, where it goes under.
+ * - **The top band** runs on along the top panel's edge past the crossing —
+ *   over the under band's end — and down it to the tie, ending level where
+ *   it goes into the waist seam.
+ *
+ * Back to front: the under band first, so the top one lies over it.
+ */
+function downWrap(waist: WaistId, sleeve?: SleeveChoice): SailorPiece[] {
+  const c = bodiceFor("wrap", sleeve, waist).cut;
+  const parts = c.parts!;
+  const { over, apex } = c.wrap!;
+  /*
+    The seam runs from the under panel's collar point down to the crossing
+    and up the top panel's edge — drawn as one curve, so at the crossing it
+    hooks round from one edge into the other, and a band's edge moved out
+    from it there would loop. So the top band follows the top panel's own
+    edge, one line from the neck through the crossing, and the under band
+    the seam down to just short of the crossing, carried on straight.
+  */
+  const seam = ringsOf(c.seam)[0];
+  const at = nearestIndex(seam, apex);
+  const under = densify(seam.slice(0, at + 1).filter((p) => len(sub(p, apex)) > WRAP_HOOK), 1);
+  const below = densify(over, 1);
+  const top = densify(c.wrap!.edge, 1);
+  const centre = (parts.neck[0] + parts.neckRight[0]) / 2;
+
+  /* the under band, carried on past the crossing until its outer edge meets the top panel's edge */
+  const right = toCorner([...parts.strapRight].reverse(), SHOULDER_POINTS.right);
+  const underLong = extend(under, 0, 1, 80);
+  let underOuter = sweptFromCorner(underLong, offsetBy(underLong, -1, () => SAILOR_BAND), right.along, SAILOR_TURN);
+  const meets = firstCrossing(underOuter, below)!;
+  const armholes = armholesFor(sleeve);
+  underOuter = insideArmholes([...underOuter.slice(0, meets.ia + 1), meets.at], centre, armholes);
+  const goesUnder = [...below.slice(0, meets.ib + 1), meets.at];
+  const underRing = [...right.along, ...underOuter.slice(1), ...[...goesUnder].reverse().slice(1), ...[...under].reverse().slice(1, -1)];
+
+  /*
+    The top band, along the top panel's edge the whole way down to the tie,
+    as photos 2–3 have it: over the under band's end at the crossing, and on
+    down the edge to where it goes into the waist seam under the skirt's top
+    — ended level there, every stripe with it, as braid sewn into a seam is.
+  */
+  const left = toCorner(parts.strapLeft, SHOULDER_POINTS.left);
+  const crossing = nearestIndex(top, apex);
+  const level = skirtTopAt(waist);
+  const edge = downTo(top, level);
+  const topOuter = downTo(insideArmholes(sweptFromCorner(edge, offsetBy(edge, 1, () => SAILOR_BAND), left.along, SAILOR_TURN), centre, armholes), level);
+  const foot: Pt[] = [topOuter[topOuter.length - 1], edge[edge.length - 1]];
+  const topRing = [...left.along, ...topOuter.slice(1), ...[...edge].reverse().slice(0, -1)];
+  /* its edge past the crossing lies on the under panel and the under band: free, as its outer edge is */
+  const lapped = edge.slice(crossing);
+
+  const underDrawn = thinned(underOuter);
+  const topDrawn = thinned(topOuter);
+  return [
+    {
+      path: outline(held([...right.along]), underDrawn.slice(1), thinned([...goesUnder].reverse()).slice(1), thinned([...under].reverse()).slice(1, -1)),
+      free: line(underDrawn),
+      ring: underRing,
+      outer: underOuter,
+      inFrom: inwardFrom(underOuter, underRing, 1),
+      side: 1,
+    },
+    {
+      path: outline(held(left.along), topDrawn.slice(1, -1), held(foot), thinned([...edge].reverse()).slice(1, -1)),
+      free: `${line(topDrawn)} ${line(thinned(lapped))}`,
+      ring: topRing,
+      outer: topOuter,
+      inFrom: inwardFrom(topOuter, topRing, -1),
+      side: 0,
+    },
+  ];
+}
+
+const pieceCache = new Map<string, SailorPiece[]>();
+
+/**
+ * A sailor collar's pieces on a cut it follows other than the V, back to
+ * front — see `aroundOpening` and `downWrap` — cut to the bodice as it is
+ * drawn: a wrap's edge runs to its tie at its waist, and a cap sleeve, cut
+ * in one with the bodice, opens a boat's and a square's neck wider at the
+ * shoulders. So the same cut takes the same collar wherever its opening and
+ * shoulders are the same.
+ */
+export function sailorOn(cut: Exclude<SailorCut, "v">, waist: WaistId = "natural", sleeve?: SleeveChoice): SailorPiece[] {
+  const at = cut === "wrap" ? waist : "natural";
+  const { seam, parts } = bodiceFor(cut, sleeve, at).cut;
+  const holes = armholesFor(sleeve);
+  const key = `${cut}|${at}|${seam}|${parts!.strapLeft.at(-1)}|${parts!.strapRight[0]}|${holes.left.length}:${holes.left[1]}:${holes.right[1]}`;
+  let pieces = pieceCache.get(key);
+  if (!pieces) {
+    pieces = cut === "wrap" ? downWrap(at, sleeve) : [aroundOpening(cut, sleeve)];
+    pieceCache.set(key, pieces);
+  }
+  return pieces;
 }
 
 /* ------------------------------------------------------------- the tie */
@@ -411,12 +892,14 @@ export function bow(cut?: NecklineId): { band: string; tails: [string, string]; 
  * choice of cut when `cut` is absent. What `check:garments` rasterises, so it
  * measures the shape the browser draws on that cut.
  */
-export const COLLAR_CLOTH: Record<string, (cut?: NecklineId) => string[]> = {
+export const COLLAR_CLOTH: Record<string, (cut?: NecklineId, sleeve?: SleeveChoice) => string[]> = {
   "female-peter-pan-collar-front": (cut) => {
     const { left, right } = peterPan(cut);
     return [outline(left), outline(right)];
   },
-  "female-sailor-collar-front": () => {
+  "female-sailor-collar-front": (cut, sleeve) => {
+    /* round a boat, a round neck or a square, or down a wrap, as cut to each; on the V, its panels */
+    if (cut && cut !== "v" && (SAILOR_CUTS as readonly string[]).includes(cut)) return sailorOn(cut as Exclude<SailorCut, "v">, "natural", sleeve).map((p) => p.path);
     const { left, right } = sailor();
     return [left.path, right.path];
   },

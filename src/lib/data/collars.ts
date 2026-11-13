@@ -182,16 +182,40 @@ export const collars: Collar[] = [
      */
     build: { stand: 0, fall: "flat", front: "open" },
     /**
-     * Sewn down a V, and only a V, where it belongs: its panels down the V's
-     * edges, meeting at its point. A dress's V-neck is the one cut that
-     * offers it; neither top has a V.
+     * Sewn down a V, where it began: its panels down the V's edges, meeting
+     * at its point. Neither top has a V, or any of the cuts below.
      */
     opening: "v",
+    /**
+     * And it follows five more of the dress's necklines, cut to each — see
+     * `sailorOn` in `collarCuts.ts`: round a boat one wide flat collar
+     * 7.6 cm across (photo 1), and round a round neck, a square and a scoop
+     * 5.3 cm, its ends on the shoulders as the V's panels' are; and down a
+     * wrap, a band along each edge of its V, the top one crossing over the
+     * other's end and running on down its edge to the tie (photos 2–3).
+     */
+    necklines: ["v", "boat", "wrap", "round", "square", "scoop"],
+    /**
+     * Its size on each, as wide across the shoulders as on the V: round a
+     * boat 10.6 cm deep, a round neck 11.8, a square 14.4, a scoop 16.3;
+     * down a wrap 31, to the waist seam.
+     */
+    footprintOn: {
+      boat: { width: [32, 37], drop: [9.5, 12] },
+      round: { width: [32, 37], drop: [10.5, 13.5] },
+      square: { width: [32, 37], drop: [13, 16] },
+      scoop: { width: [32, 37], drop: [15, 17.5] },
+      wrap: { width: [32, 37], drop: [29, 33.5] },
+    },
     asset: { front: "female-sailor-collar-front" },
     /** Stripes along its outer edge, as the dress's other edges take them — see `Garment.stripes`. */
     takesStripes: true,
-    /** And at the point of its V, nothing, a small tied bow, or a necktie. */
-    ties: { offered: ["none", "knot", "necktie"], default: "none" },
+    /**
+     * And at the point of its V, nothing, a small tied bow, or a necktie —
+     * on the V alone for now, the one cut it has a point on: ties at every
+     * neckline's point and on the belt come next.
+     */
+    ties: { offered: ["none", "knot", "necktie"], default: "none", on: ["v"] },
   },
   {
     id: "female-ruffled-collar",
@@ -448,6 +472,8 @@ export const stripesFor = (offer: { offered: StripesId[] } | undefined): { id: S
 export const stripeEdgesFor = (edges: readonly StripeEdgeId[]): { id: StripeEdgeId; name: Localized }[] =>
   edges.map((id) => ({ id, name: STRIPE_EDGE_NAMES[id] }));
 
-/** The ties a collar can be worn with, by name — none for a collar that takes none. */
-export const tiesFor = (collar: Collar | undefined): { id: TieId; name: Localized }[] =>
-  collar?.ties ? collar.ties.offered.map((id) => ({ id, name: TIE_NAMES[id] })) : [];
+/** The ties a collar can be worn with on a cut, by name — none for a collar that takes none, or none there. */
+export const tiesFor = (collar: Collar | undefined, cut?: string): { id: TieId; name: Localized }[] =>
+  collar?.ties && !(collar.ties.on && cut && !collar.ties.on.includes(cut))
+    ? collar.ties.offered.map((id) => ({ id, name: TIE_NAMES[id] }))
+    : [];

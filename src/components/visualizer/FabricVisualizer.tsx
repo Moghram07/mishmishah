@@ -851,7 +851,7 @@ export function FabricVisualizer() {
   const stripeChoices = stripeEdges.length > 0 ? stripesFor(cuttingGarment?.stripes) : [];
   const wornStripes = cuttingEntry ? stripesOf(cuttingEntry.worn) : undefined;
   const wornStripesOn = cuttingEntry ? stripesOnOf(cuttingEntry.worn) : [];
-  const tieChoices = tiesFor(wornCollar);
+  const tieChoices = tiesFor(wornCollar, cuttingEntry ? necklineOf(cuttingEntry.worn)?.cut : undefined);
   const wornTie = cuttingEntry ? tieOf(cuttingEntry.worn) : undefined;
 
   /*
