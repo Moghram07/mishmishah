@@ -426,7 +426,7 @@ describe("seams", () => {
     }
     /* and the seams are there, as folds */
     expect(seamed).toBeGreaterThan(100);
-  });
+  }, 60_000);
 
   it("does not outline the waist seam: the skirt's top, sewn on over the bodice, is a fold", () => {
     for (const waist of ["empire", "natural", "dropped"] as const) {

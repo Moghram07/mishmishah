@@ -29,6 +29,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = (p) => pathToFileURL(join(ROOT, p)).href;
 const { STRIPES, ringsOf, insideRings, stripeSides, stripesAlong, guideAt, fittedBands } = await import(src("src/lib/garments/stripes.ts"));
 const { mirrorX } = await import(src("src/lib/garments/edges.ts"));
+const { tieAt } = await import(src("src/lib/garments/art/female/ties.ts"));
 
 /* --------------------------------------------------------------- tolerances */
 
@@ -289,6 +290,13 @@ function randomDress(pick, world) {
   /* stripes along some of its edges: two edges that meet share the cloth between them when both are striped */
   const on = ["neckline", "sleeves", "hem", "belt"].filter(() => pick([true, false]));
   if (on.length) choice.stripes = { count: "three", on };
+  /* a tie, where it has a place for one */
+  const style = pick(["none", ...world.tieStyles]);
+  const places = style === "none" ? [] : world.tiePlacesOn(cut, opening, choice.belt, style);
+  if (places.length) {
+    choice.tie = style;
+    choice.tieAt = pick(places);
+  }
   return choice;
 }
 
@@ -305,6 +313,7 @@ const axesOf = (c) => ({
   opening: c.opening ?? "none",
   belt: c.belt ?? "none",
   stripes: c.stripes ? c.stripes.on.join("+") : "none",
+  tie: c.tie ? `${c.tie}@${c.tieAt}` : "none",
 });
 const pairsOf = (c) => {
   const a = Object.entries(axesOf(c)).map(([k, v]) => `${k}=${v}`);
@@ -372,10 +381,15 @@ function undeclared(mod, choice, everyKey) {
       if (what.length) problems.push(`${where}: its ${what.join(", ")} differ from those of ${JSON.stringify(key)} — something undeclared shapes it`);
     });
   }
-  /* and its points */
-  const key = mod.DRESS_POINT_SPEC.shapedBy(choice);
-  if (!same(mod.dressPoints(choice), mod.dressPoints(mod.DRESS_POINT_SPEC.choiceFor(key)))) {
-    problems.push(`points of ${JSON.stringify(axesOf(choice))} differ from those of ${JSON.stringify(key)}`);
+  /* and its points: its neck's, from its cut; its belt's, from its belt and skirt */
+  const all = mod.dressPoints(choice);
+  for (const [spec, mine] of [
+    [mod.DRESS_POINT_SPEC, (p) => p.kind === "neck"],
+    [mod.BELT_POINT_SPEC, (p) => p.kind !== "neck"],
+  ]) {
+    const key = spec.shapedBy(choice);
+    const declared = mod.dressPoints(spec.choiceFor(key)).filter(mine);
+    if (!same(all.filter(mine), declared)) problems.push(`points of ${JSON.stringify(axesOf(choice))} differ from those of ${JSON.stringify(key)}`);
   }
   return problems;
 }
@@ -500,31 +514,87 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
   }
   report("touch", `touch: ${touched} pairs of rows along edges that meet — a cap and the neckline, on each cut — never lie over each other`, touchIssues);
 
-  /* the points, and the tie at the V's */
+  /*
+    The points, and every tie at each. A neck point lies on its neckline, on
+    the opening's own centre line: halfway between the opening's two edges
+    just above it — a wrap's are mirrored about a line that leans. A belt's
+    front lies at the buckle's place, its side inside the belt near her left
+    end, both on the belt's middle row. Every tie the dress offers, at every
+    place it can be knotted there, is centred on its point, over it, hangs
+    down from it, and stays on the canvas.
+  */
   const pointIssues = [];
   let points = 0;
-  for (const key of mod.DRESS_POINT_SPEC.every()) {
+  let tied = 0;
+  const checkTie = (where, style, at) => {
+    tied++;
+    const { parts, pieces } = tieAt(style, at);
+    const knot = ringsOf(parts.knot).flat();
+    const [kx, ky] = [knot.map(([x]) => x), knot.map(([, y]) => y)];
+    if (Math.abs((Math.min(...kx) + Math.max(...kx)) / 2 - at[0]) > ON_CENTRE) pointIssues.push(`${where}: the ${style}'s knot is off its point`);
+    if (Math.min(...ky) > at[1] || Math.max(...ky) < at[1]) pointIssues.push(`${where}: the ${style}'s knot is not over its point`);
+    const all = pieces.flatMap((d) => ringsOf(d).flat());
+    const [ax, ay] = [all.map(([x]) => x), all.map(([, y]) => y)];
+    /* a knot and a necktie are mirrored about their point; a scarf's two tails are not alike, but fall one each side of it */
+    if (style === "scarf") {
+      if (Math.min(...ax) > at[0] - 15 || Math.max(...ax) < at[0] + 15) pointIssues.push(`${where}: the scarf's tails do not fall either side of its point`);
+    } else if (Math.abs((Math.min(...ax) + Math.max(...ax)) / 2 - at[0]) > ON_CENTRE) pointIssues.push(`${where}: the ${style} is not mirrored about its point`);
+    if (Math.max(...ay) - at[1] < 20) pointIssues.push(`${where}: the ${style} does not hang down from its point`);
+    if (Math.min(...ax) < 0 || Math.max(...ax) > 600 || Math.min(...ay) < 0 || Math.max(...ay) > 1000) pointIssues.push(`${where}: the ${style} runs off the canvas`);
+  };
+  /* the opening's own middle at a row just above a point: halfway between the two edges either side of it */
+  const middleAt = (outline, at, top) => {
+    const y = at[1] - Math.max(1, Math.min(6, (at[1] - (top ?? at[1] - 12)) / 2));
+    const xs = outline.flatMap((ring) => ring.flatMap((a, i) => {
+      const b = ring[(i + 1) % ring.length];
+      return (a[1] - y) * (b[1] - y) < 0 ? [a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1])] : [];
+    })).sort((a, b) => a - b);
+    const right = xs.findIndex((x) => x > at[0]);
+    return right > 0 ? (xs[right - 1] + xs[right]) / 2 : NaN;
+  };
+  for (const key of mod.DRESS_POINT_SPEC.every(offer)) {
     const choice = mod.DRESS_POINT_SPEC.choiceFor(key);
     const b = mod.drawnBodice(choice);
     const outline = ringsOf(b.pieces[0]);
-    /* the opening's own centre line: midway between its two corners — a boat's lies between her throat's and her shoulders' */
-    const parts = b.cut.parts;
-    const centre = parts ? (parts.neck[0] + parts.neckRight[0]) / 2 : mod.NECK_CENTRE;
+    const where = `${key.cut}${key.waist ? ` · ${key.waist}` : ""}`;
     for (const pt of mod.dressPoints(choice)) {
       points++;
-      if (Math.abs(pt.at[0] - centre) > ON_CENTRE) pointIssues.push(`${key.cut} ${pt.kind}: ${Math.abs(pt.at[0] - centre).toFixed(2)} units off its opening's centre line`);
-      if (toRings(pt.at, outline) > ON_BORDER) pointIssues.push(`${key.cut} ${pt.kind}: ${toRings(pt.at, outline).toFixed(1)} units off the neckline`);
+      const off = Math.abs(pt.at[0] - middleAt(outline, pt.at, b.cut.parts?.neck[1]));
+      if (!(off <= ON_CENTRE)) pointIssues.push(`${where} ${pt.kind}: ${off.toFixed(2)} units off its opening's centre line`);
+      if (toRings(pt.at, outline) > ON_BORDER) pointIssues.push(`${where} ${pt.kind}: ${toRings(pt.at, outline).toFixed(1)} units off the neckline`);
+      for (const style of world.tieStyles) checkTie(`${where} ${pt.kind}`, style, pt.at);
+    }
+  }
+  for (const key of mod.BELT_POINT_SPEC.every(offer)) {
+    const choice = mod.BELT_POINT_SPEC.choiceFor(key);
+    const belt = mod.beltFor(choice.skirt);
+    const ring = ringsOf(belt.path);
+    const where = `belt · ${key.skirt.shape} ${key.skirt.length} ${key.skirt.waist}`;
+    const belted = mod.dressPoints(choice).filter((p) => p.kind !== "neck");
+    if (belted.length !== 2) pointIssues.push(`${where}: ${belted.length} points on the belt, not its front and its side`);
+    for (const pt of belted) {
+      points++;
+      if (!insideRings(ring, pt.at)) pointIssues.push(`${where} ${pt.kind}: off the belt`);
+      if (Math.abs(pt.at[1] - belt.mid) > 0.01) pointIssues.push(`${where} ${pt.kind}: not on the belt's middle row`);
+      if (pt.kind === "belt-front" && Math.abs(pt.at[0] - belt.buckle.x) > ON_CENTRE) pointIssues.push(`${where}: its front is not where its buckle is`);
+      if (pt.kind === "belt-side") {
+        /* the belt's end at her left, on that row: from its own outline */
+        const ends = ring.flat().filter(([, y]) => Math.abs(y - belt.mid) < 1.5).map(([x]) => x);
+        const end = Math.max(...ends);
+        if (end - pt.at[0] < 8 || pt.at[0] - belt.buckle.x < 25) pointIssues.push(`${where}: its side point is ${(end - pt.at[0]).toFixed(1)} units in from the belt's end, ${(pt.at[0] - belt.buckle.x).toFixed(1)} from its front`);
+        /* every tie knotted there lies on the dress — the belt, or the skirt below it — and off her arm, which is drawn again over the clothes */
+        const skirtRings = ringsOf(mod.skirtFor(undefined, choice.skirt).path);
+        for (const style of world.tieStyles.filter((s) => s !== "necktie")) {
+          const off = tieAt(style, pt.at).pieces.flatMap((d) => ringsOf(d).flat()).filter((q) => !(insideRings(ring, q) || insideRings(skirtRings, q)) || insideRings(world.armRings, q));
+          if (off.length) pointIssues.push(`${where}: the ${style} at its side runs off the dress or onto her arm at ${off[0].map((v) => v.toFixed(1)).join(",")} (${off.length} points)`);
+        }
+      }
+      for (const style of world.tieStyles.filter((s) => s !== "necktie")) checkTie(`${where} ${pt.kind}`, style, pt.at);
     }
   }
   const vPoint = mod.dressPoints({ neckline: "v" }).find((p) => p.kind === "neck");
   if (!vPoint || !same(collarMod.TIE_AT, vPoint.at)) pointIssues.push("the sailor collar's tie is not knotted at the V's neck point");
-  for (const kind of ["knot", "necktie"]) {
-    const { parts } = collarMod.sailorTie(kind);
-    const knot = ringsOf(parts.knot).flat();
-    const xs = knot.map(([x]) => x);
-    if (Math.abs((Math.min(...xs) + Math.max(...xs)) / 2 - collarMod.TIE_AT[0]) > ON_CENTRE) pointIssues.push(`the ${kind}'s knot is off its point`);
-  }
-  report("points", `points: ${points} neck points on the centre line and the neckline; the tie at the V's`, pointIssues);
+  report("points", `points: ${points} — necks and belts — each on its neckline's centre line or its belt; ${tied} ties, every style at every place, centred, hanging down`, pointIssues);
 
   /* layer 3: whole outfits — random ones, then every pair */
   const pick = pickOf(rng(SEED));

@@ -761,47 +761,8 @@ export function sailorOn(cut: Exclude<SailorCut, "v">, waist: WaistId = "natural
 
 /* ------------------------------------------------------------- the tie */
 
-/** Where a sailor collar's tie is knotted: the V's neck point, where its two panels meet — see `dressPoints`. */
+/** Where a sailor collar's tie is knotted on the V: the V's neck point, where its two panels meet — see `dressPoints`. Its ties are in `ties.ts`. */
 export const TIE_AT: Pt = dressPoints({ neckline: "v" }).find((p) => p.kind === "neck")!.at;
-
-/** Corners and bows relative to the V's point, laid on it — see `blade` for the bows' sign. */
-const atV = (corners: Pt[]): Point[] => corners.map(([x, y]) => [TIE_AT[0] + x, TIE_AT[1] + y] as const);
-
-/**
- * The knot: a small tied bow at the V's point, about 7 cm across — a knot
- * 1.7 cm across, two loops pinched into it, each 2.4 cm long and twice as
- * tall at its end as at the knot, and two short tails, 5 cm, falling from under it and cut on a
- * slant, the outer corner lower. Written left side only and reflected about
- * the point, each piece anticlockwise, so a positive bow is convex.
- */
-const KNOT = { corners: atV([[-4.5, -3.6], [-3.6, 5.6], [3.6, 5.6], [4.5, -3.6]]), bows: [1.2, 0.8, 1.2, 0.8] };
-const KNOT_LOOP = { corners: atV([[-3.8, -2.6], [-16.2, -5.6], [-15, 6.2], [-3.8, 4.6]]), bows: [1.3, 3.6, 1.3, 0] };
-const KNOT_TAIL = { corners: atV([[-4.6, 3.4], [-10.6, 29.4], [-3.4, 26.6], [0.4, 3.4]]), bows: [1, 0, -0.6, 0] };
-
-/**
- * The necktie: a knot at the V's point, 2.5 cm across at the top and
- * narrowing under it, and its blade hanging down the centre from under the
- * knot, widening to 5.5 cm and ending in a point 12.5 cm below the V —
- * cut on the bias, as a tie is, and lying flat on the dress.
- */
-const NECKTIE_KNOT = { corners: atV([[-6.6, -4], [-4.2, 7.2], [4.2, 7.2], [6.6, -4]]), bows: [0.8, 0.6, 0.8, 0.6] };
-const NECKTIE_BLADE = { corners: atV([[-4.4, 5], [-14.6, 46], [0, 66], [14.6, 46], [4.4, 5]]), bows: [1.2, 0.8, 0.8, 1.2, 0] };
-
-/** A sailor collar's tie, back to front: each piece closed, its own path. */
-export function sailorTie(kind: "knot" | "necktie"): { pieces: string[]; parts: { tails?: string[]; loops?: string[]; knot: string; blade?: string } } {
-  const piece = ({ corners, bows }: { corners: Point[]; bows: number[] }) => blade(corners, bows);
-  if (kind === "knot") {
-    const tail = piece(KNOT_TAIL);
-    const loop = piece(KNOT_LOOP);
-    const tails = [tail, mirror(tail, TIE_AT[0])];
-    const loops = [loop, mirror(loop, TIE_AT[0])];
-    const knot = piece(KNOT);
-    return { pieces: [...tails, ...loops, knot], parts: { tails, loops, knot } };
-  }
-  const bladePath = piece(NECKTIE_BLADE);
-  const knot = piece(NECKTIE_KNOT);
-  return { pieces: [bladePath, knot], parts: { blade: bladePath, knot } };
-}
 
 /* ------------------------------------------------------------------- bow */
 

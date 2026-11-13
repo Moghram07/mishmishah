@@ -158,6 +158,8 @@ export const garments: Garment[] = [
     stripes: { offered: ["none", "one", "two", "three"], default: "none" },
     /* its cuffs and bands, and a fabric belt, each in a cloth of its own if wanted */
     partCloths: ["cuff", "belt"],
+    /* a tie at the centre front of its neck, or on a fabric belt — see `tiePlacesOf` */
+    ties: { offered: ["none", "knot", "necktie", "scarf"], default: "none" },
     asset: { front: "female-dress-front" },
   },
   {

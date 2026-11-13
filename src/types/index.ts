@@ -360,8 +360,11 @@ export type StripesId = "none" | "one" | "two" | "three";
  */
 export type StripeEdgeId = "collar" | "neckline" | "sleeves" | "hem" | "belt";
 
-/** A tie at the point of a sailor collar's V: none, a small tied bow, or a necktie hanging down the centre. */
-export type TieId = "none" | "knot" | "necktie";
+/** A tie: none, a small tied bow, a necktie hanging down the centre, or a scarf «وشاح» with two broad tails. */
+export type TieId = "none" | "knot" | "necktie" | "scarf";
+
+/** Where a tie is knotted: at the centre front of the neck, or on a fabric belt — at its front, or at its side. */
+export type TieAtId = "neck" | "belt-front" | "belt-side";
 
 /**
  * The drawing a body or a garment is rendered from.
@@ -597,6 +600,11 @@ export interface Garment {
    * `clothOf`. Absent, none.
    */
   partCloths?: ("cuff" | "belt")[];
+  /**
+   * The ties it can be worn with, and the one it arrives with — each knotted
+   * wherever it has a place for one: see `tiePlacesOf`. Absent, it takes none.
+   */
+  ties?: { offered: TieId[]; default: TieId };
   /** Which drawing to use, per view. Ids resolved by `lib/garments/art`. */
   asset: ViewAssets;
 }
@@ -727,11 +735,11 @@ export interface Collar {
   /** Whether stripes can be sewn along its free edge — a sailor collar's. The count is the garment's: see `Garment.stripes`. */
   takesStripes?: true;
   /**
-   * The ties it can be worn with at the point of its V — a sailor collar's —
-   * and the one it arrives with; `on`, the cuts it has that point on, where
-   * not every cut it follows has one.
+   * Whether a tie can be knotted at its front, over it — a sailor collar's,
+   * a Peter Pan's. Absent, a garment wearing it is tied anywhere but the neck:
+   * a bow collar is its own tie, and a standing collar covers the neck.
    */
-  ties?: { offered: TieId[]; default: TieId; on?: string[] };
+  takesTie?: true;
 }
 
 /**
@@ -830,8 +838,10 @@ export interface WornGarment {
   stripes?: StripesId;
   /** The edges they are sewn along, as chosen — see `stripesOnOf`, which resolves them against the edges it has. */
   stripesOn?: StripeEdgeId[];
-  /** Its collar's tie, if the collar takes one and one was chosen. Its cloth lives below under `tie`. */
+  /** Its tie, if one was chosen. Its cloth lives below under `tie`. */
   tie?: TieId;
+  /** Where it is knotted, as chosen — see `tieAtOf`, which resolves it against the places it has. */
+  tieAt?: TieAtId;
   /** Fabric id per region. */
   fabrics: Partial<Record<FabricRegionId, string>>;
   stitch: Partial<Record<FabricRegionId, StitchId>>;

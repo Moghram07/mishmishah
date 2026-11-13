@@ -1,4 +1,4 @@
-import type { BodyType, Collar, Garment, Localized, StripeEdgeId, StripesId, TieId } from "@/types";
+import type { BodyType, Collar, Garment, Localized, StripeEdgeId, StripesId, TieAtId, TieId } from "@/types";
 
 /**
  * The collars.
@@ -93,6 +93,8 @@ export const collars: Collar[] = [
     build: { stand: 0, fall: "flat" },
     opening: "round",
     asset: { front: "female-peter-pan-collar-front" },
+    /** A tie knotted where its two rounded ends meet, over them. */
+    takesTie: true,
   },
   {
     id: "female-mandarin-collar",
@@ -210,12 +212,8 @@ export const collars: Collar[] = [
     asset: { front: "female-sailor-collar-front" },
     /** Stripes along its outer edge, as the dress's other edges take them — see `Garment.stripes`. */
     takesStripes: true,
-    /**
-     * And at the point of its V, nothing, a small tied bow, or a necktie —
-     * on the V alone for now, the one cut it has a point on: ties at every
-     * neckline's point and on the belt come next.
-     */
-    ties: { offered: ["none", "knot", "necktie"], default: "none", on: ["v"] },
+    /** And a tie knotted at its front, over it, on every cut it follows — see `Garment.ties`. */
+    takesTie: true,
   },
   {
     id: "female-ruffled-collar",
@@ -462,6 +460,14 @@ const TIE_NAMES: Record<TieId, Localized> = {
   none: { en: "None", ar: "بدون" },
   knot: { en: "Knot", ar: "عقدة" },
   necktie: { en: "Necktie", ar: "ربطة عنق" },
+  scarf: { en: "Scarf", ar: "وشاح" },
+};
+
+/** The places a tie is knotted, by name. */
+const TIE_AT_NAMES: Record<TieAtId, Localized> = {
+  neck: { en: "At the neck", ar: "عند الرقبة" },
+  "belt-front": { en: "Belt, front", ar: "الحزام من الأمام" },
+  "belt-side": { en: "Belt, side", ar: "الحزام من الجنب" },
 };
 
 /** The stripe counts on offer, by name, from a collar's or a neckline's offer — none for one that takes none. */
@@ -472,8 +478,8 @@ export const stripesFor = (offer: { offered: StripesId[] } | undefined): { id: S
 export const stripeEdgesFor = (edges: readonly StripeEdgeId[]): { id: StripeEdgeId; name: Localized }[] =>
   edges.map((id) => ({ id, name: STRIPE_EDGE_NAMES[id] }));
 
-/** The ties a collar can be worn with on a cut, by name — none for a collar that takes none, or none there. */
-export const tiesFor = (collar: Collar | undefined, cut?: string): { id: TieId; name: Localized }[] =>
-  collar?.ties && !(collar.ties.on && cut && !collar.ties.on.includes(cut))
-    ? collar.ties.offered.map((id) => ({ id, name: TIE_NAMES[id] }))
-    : [];
+/** Ties, by name, in the order given — see `tiesOffered`. */
+export const tiesFor = (ties: readonly TieId[]): { id: TieId; name: Localized }[] => ties.map((id) => ({ id, name: TIE_NAMES[id] }));
+
+/** The places a tie can be knotted, by name — see `tiePlacesOf`. */
+export const tiePlacesFor = (places: readonly TieAtId[]): { id: TieAtId; name: Localized }[] => places.map((id) => ({ id, name: TIE_AT_NAMES[id] }));

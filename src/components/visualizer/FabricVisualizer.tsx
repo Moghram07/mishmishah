@@ -20,7 +20,7 @@ import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { productTemplates } from "@/lib/data/products";
 import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
-import { stripeEdgesFor, stripesFor, tiesFor } from "@/lib/data/collars";
+import { stripeEdgesFor, stripesFor, tiePlacesFor, tiesFor } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { legsFor } from "@/lib/data/legs";
@@ -65,6 +65,10 @@ import {
   beltOf,
   setStripes,
   setTie,
+  setTieAt,
+  tieAtOf,
+  tiePlacesOf,
+  tiesOffered,
   stripeEdgesOf,
   stripesOnOf,
   toggleStripeEdge,
@@ -121,6 +125,7 @@ import type {
   SleeveChoice,
   StripeEdgeId,
   StripesId,
+  TieAtId,
   TieId,
 } from "@/types";
 
@@ -456,16 +461,23 @@ export function FabricVisualizer() {
   };
 
   /**
-   * Tie the collar at its V, or untie it. The tie arrives in the stripes'
-   * cloth on a striped collar, the collar's on a plain one — see `setTie` —
-   * and the picker moves to it, to cut it from another if wanted.
+   * Tie the garment being cut, or untie it. The tie arrives in the stripes'
+   * cloth when it wears stripes, otherwise in the cloth of what it is knotted
+   * on — see `setTie` — and the picker moves to it, to cut it from another if
+   * wanted.
    */
   const chooseTie = (tie: TieId) => {
-    if (!cuttingGarment) return;
+    if (!cuttingGarment || !cuttingEntry) return;
     setOutfit((o) => ({ ...o, worn: setTie(o.worn, cuttingGarment.id, tie) }));
     if (tie === "none") {
-      if (cutting.region === "tie") setCutting({ garmentId: cuttingGarment.id, region: "collar" });
+      if (cutting.region === "tie") setCutting({ garmentId: cuttingGarment.id, region: collarOf(cuttingEntry.worn) ? "collar" : cuttingGarment.fabricRegions[0] });
     } else setCutting({ garmentId: cuttingGarment.id, region: "tie" });
+  };
+
+  /** Knot the tie somewhere else — at the neck, or at the belt's front or side. */
+  const chooseTieAt = (at: TieAtId) => {
+    if (!cuttingGarment) return;
+    setOutfit((o) => ({ ...o, worn: setTieAt(o.worn, cuttingGarment.id, at) }));
   };
 
   const chooseNeckline = (necklineId: string) => {
@@ -851,8 +863,10 @@ export function FabricVisualizer() {
   const stripeChoices = stripeEdges.length > 0 ? stripesFor(cuttingGarment?.stripes) : [];
   const wornStripes = cuttingEntry ? stripesOf(cuttingEntry.worn) : undefined;
   const wornStripesOn = cuttingEntry ? stripesOnOf(cuttingEntry.worn) : [];
-  const tieChoices = tiesFor(wornCollar, cuttingEntry ? necklineOf(cuttingEntry.worn)?.cut : undefined);
+  const tieChoices = cuttingEntry ? tiesFor(tiesOffered(cuttingEntry.worn)) : [];
   const wornTie = cuttingEntry ? tieOf(cuttingEntry.worn) : undefined;
+  const tiePlaces = cuttingEntry && wornTie && wornTie !== "none" ? tiePlacesFor(tiePlacesOf(cuttingEntry.worn, wornTie)) : [];
+  const wornTieAt = cuttingEntry ? tieAtOf(cuttingEntry.worn) : undefined;
 
   /*
     The panel, as rows: each choice closed to a line saying what is chosen,
@@ -1094,14 +1108,24 @@ export function FabricVisualizer() {
       ),
     });
   }
-  /* a sailor collar's tie */
+  /* a tie: which, and where it is knotted — at the neck, or on a fabric belt */
   if (subject === "wardrobe" && tieChoices.length > 1 && wornTie) {
     extraRows.push({
       id: "tie",
       label: t("viz.tie"),
-      value: named(tieChoices, wornTie),
+      value: [named(tieChoices, wornTie), ...(tiePlaces.length > 1 && wornTieAt ? [named(tiePlaces, wornTieAt)] : [])].join(" · "),
       region: wornTie !== "none" ? "tie" : undefined,
-      body: <Segmented label={t("viz.tie")} choices={tieChoices.map((c) => ({ id: c.id, label: pick(c.name) }))} active={wornTie} onPick={chooseTie} />,
+      body: (
+        <>
+          <Segmented label={t("viz.tie")} choices={tieChoices.map((c) => ({ id: c.id, label: pick(c.name) }))} active={wornTie} onPick={chooseTie} />
+          {tiePlaces.length > 1 && wornTieAt && (
+            <>
+              <RowHeading>{t("viz.tieAt")}</RowHeading>
+              <Segmented label={t("viz.tieAt")} choices={tiePlaces.map((c) => ({ id: c.id, label: pick(c.name) }))} active={wornTieAt} onPick={chooseTieAt} />
+            </>
+          )}
+        </>
+      ),
     });
   }
   /* a dress's buttons down its front, on a cut with a straight centre front */

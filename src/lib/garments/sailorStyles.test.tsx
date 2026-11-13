@@ -9,7 +9,11 @@ import { garmentById } from "@/lib/data/garments";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { BODY_CANVAS } from "../mannequin/bodies";
 import { bodiceFor, dressStripes, drawnBodice, skirtFor } from "./art/female/dressCut";
-import { TIE_AT, sailorTie } from "./art/female/collarCuts";
+import { TIE_AT } from "./art/female/collarCuts";
+import { tieAt } from "./art/female/ties";
+
+/** The tie at the V, as round 16 drew it. */
+const sailorTie = (kind: "knot" | "necktie") => tieAt(kind, TIE_AT);
 import { SKIRT_SHAPES, shapeLengths, WAISTS } from "./skirts";
 import { SLEEVE_KINDS } from "./sleeves";
 import { STRIPES, clipTo, insideRings, ringsOf } from "./stripes";
@@ -30,6 +34,7 @@ import {
   stripesOf,
   stripesOnOf,
   toggleStripeEdge,
+  tieAtOf,
   tieOf,
   wear,
 } from "./outfit";
@@ -311,13 +316,14 @@ describe("choosing the stripes, the edges they go along, and the tie", () => {
     expect(stripesFor(dress.stripes).map((s) => s.name.ar)).toEqual(["بدون", "شريط", "شريطان", "ثلاثة شرائط"]);
     expect(stripesFor(dress.stripes).map((s) => s.id)).toEqual(STRIPE_COUNTS);
     expect(stripeEdgesFor(["collar", "neckline", "sleeves", "hem"]).map((s) => s.name.ar)).toEqual(["الياقة", "الرقبة", "الأكمام", "الذيل"]);
-    expect(tiesFor(c).map((s) => s.name.ar)).toEqual(["بدون", "عقدة", "ربطة عنق"]);
+    expect(tiesFor(dress.ties!.offered).map((s) => s.name.ar)).toEqual(["بدون", "عقدة", "ربطة عنق", "وشاح"]);
     // the sailor's free edge takes them; no other collar's
     expect(c?.takesStripes).toBe(true);
-    for (const id of ["female-peter-pan-collar", "female-shirt-collar", "female-bow-collar"]) {
-      expect(collarById(id)?.takesStripes, id).toBeUndefined();
-      expect(tiesFor(collarById(id)), id).toEqual([]);
-    }
+    for (const id of ["female-peter-pan-collar", "female-shirt-collar", "female-bow-collar"]) expect(collarById(id)?.takesStripes, id).toBeUndefined();
+    // a tie is knotted over the sailor and the Peter Pan; the bow is its own, a standing collar covers the neck
+    expect(c?.takesTie).toBe(true);
+    expect(collarById("female-peter-pan-collar")?.takesTie).toBe(true);
+    for (const id of ["female-shirt-collar", "female-bow-collar", "female-mandarin-collar"]) expect(collarById(id)?.takesTie, id).toBeUndefined();
   });
 
   it("offers each edge the dress has as it is cut: the collar's, or the neckline's; the sleeves' and the hem", () => {
@@ -328,10 +334,10 @@ describe("choosing the stripes, the edges they go along, and the tie", () => {
     // no sleeves, no sleeve edge
     expect(stripeEdgesOf(one(dressed("halter")))).toEqual(["neckline", "hem"]);
     expect(stripeEdgesOf(one(setSleeve(dressed("round"), dress.id, { type: "set-in", length: "sleeveless" })))).toEqual(["neckline", "hem"]);
-    // every cut, with no collar, has a neckline edge to offer
+    // every cut, with no collar, has a neckline edge to offer — but the cowl, whose drape is its own trimming
     for (const cut of NECKLINE_IDS) {
       const w = one(setCollar(dressed(cut), dress.id, undefined));
-      expect(stripeEdgesOf(w), cut).toContain("neckline");
+      expect(stripeEdgesOf(w).includes("neckline"), cut).toBe(cut !== "cowl");
     }
   });
 
@@ -355,19 +361,22 @@ describe("choosing the stripes, the edges they go along, and the tie", () => {
   });
 
   it("keeps them through a recut, along the edges it still has — at the neck again where all of them went", () => {
-    // a sailor dress recut to a high neck, which it does not follow: its collar and tie go, its braid stays at the neck, with its cloth and its other edges
+    // a sailor dress recut to a high neck, which it does not follow: its collar goes, its braid stays at the neck, with its cloth and its other edges — and its tie, knotted at the high neck's front
     let sailed = setStripeEdges(setStripes(sailor(), dress.id, "three", "fb-white"), dress.id, ["collar", "sleeves"]);
     sailed = setTie(sailed, dress.id, "knot");
     const recut = one(setNeckline(sailed, dress.id, "female-high-neckline"));
     expect(collarOf(recut)).toBeUndefined();
     expect([stripesOf(recut), stripesOnOf(recut), recut.fabrics.trim]).toEqual(["three", ["neckline", "sleeves"], "fb-white"]);
-    expect(tieOf(recut)).toBeUndefined();
-    // recut to a boat, which it follows: the collar stays, cut to it, its braid on it; the tie goes, with no V to knot it at
+    expect([tieOf(recut), tieAtOf(recut)]).toEqual(["knot", "neck"]);
+    // to a keyhole, closed at its front with its own button: nowhere to knot it, and it comes off
+    const keyhole = one(setNeckline(sailed, dress.id, "female-keyhole-neckline"));
+    expect([tieOf(keyhole), keyhole.tie, keyhole.fabrics.tie]).toEqual([undefined, undefined, undefined]);
+    // recut to a boat, which it follows: the collar stays, cut to it, its braid on it, and the tie over it at the boat's front
     const boat = one(setNeckline(sailed, dress.id, "female-boat-neckline"));
     expect(collarOf(boat)?.id).toBe("female-sailor-collar");
     expect([stripesOf(boat), stripesOnOf(boat), boat.fabrics.trim]).toEqual(["three", ["collar", "sleeves"], "fb-white"]);
-    expect(tieOf(boat)).toBeUndefined();
-    expect(regionsOf(dress, boat)).not.toContain("tie");
+    expect(tieOf(boat)).toBe("knot");
+    expect(regionsOf(dress, boat)).toContain("tie");
     // only the collar's chosen: recut to a high neck, along the neckline instead
     const neckOnly = one(setNeckline(setStripes(sailor(), dress.id, "two", "fb-white"), dress.id, "female-high-neckline"));
     expect(stripesOnOf(neckOnly)).toEqual(["neckline"]);
@@ -401,12 +410,15 @@ describe("choosing the stripes, the edges they go along, and the tie", () => {
     expect(off.fabrics.tie).toBeUndefined();
   });
 
-  it("takes the tie off with the collar, and moves its braid to the neckline beneath", () => {
+  it("keeps the tie at the neck when the collar comes off, and moves its braid to the neckline beneath", () => {
     let worn = setTie(setStripes(sailor(), dress.id, "two", "fb-white"), dress.id, "necktie");
     worn = setStripeEdges(worn, dress.id, ["collar", "hem"]);
     const bare = one(setCollar(worn, dress.id, undefined));
-    expect(bare.tie).toBeUndefined();
-    expect(bare.fabrics.tie).toBeUndefined();
+    // the V's point is still there to knot it at, in the cloth it was cut from
+    expect([tieOf(bare), tieAtOf(bare), bare.fabrics.tie]).toEqual(["necktie", "neck", "fb-white"]);
+    // under a bow collar, which is its own tie, it comes off
+    const bowed = one(setCollar(setNeckline(worn, dress.id, "female-high-neckline"), dress.id, "female-bow-collar"));
+    expect([tieOf(bowed), bowed.tie, bowed.fabrics.tie]).toEqual([undefined, undefined, undefined]);
     // the collar's rows go to the neckline beneath; the hem keeps its own
     expect(stripesOnOf(bare)).toEqual(["neckline", "hem"]);
     expect(bare.fabrics.trim).toBe("fb-white");

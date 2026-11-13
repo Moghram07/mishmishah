@@ -44,12 +44,15 @@ import {
   NECKLINE_IDS,
   NECKLINE_OPENING,
   NECKLINE_SLEEVES,
+  NECKLINE_TIED,
   necklineCut,
   type NecklineCut,
   type NecklineId,
   type OffShoulderBand,
 } from "../../necklines.ts";
 import { NECK_BASE_SEAM, NECK_LEFT, NECK_RIGHT, SHOULDER_EASE, TIP_LEFT } from "./yoke.ts";
+import { tieAt } from "./ties.ts";
+import { bodies } from "../../../mannequin/bodies.ts";
 
 /**
  * Where the bodice ends and the skirt is sewn on: **her** waist, as measured.
@@ -1444,16 +1447,95 @@ function hemEdge(choice: GarmentChoice): Edge {
 /** The middle of her throat, which the neckline is cut about: three units left of her shoulders' centre. */
 export const NECK_CENTRE = (NECK_LEFT[0] + NECK_RIGHT[0]) / 2;
 
+/** How far in from a fabric belt's end, at her left side, a tie is knotted at its side, at most: about where a wrap's is. */
+export const BELT_SIDE_IN = 18;
+
+/** How far a tie on the belt keeps inside the dress's side, and clear of her arm: 0.4 cm. */
+export const TIE_CLEAR = 2;
+
 /**
- * The points of the dress a part can be set at, as a choice cuts it: the
- * centre front of its neck — a V's point, or a scooped or round neck's lowest
- * — where a tie is knotted.
+ * Her left arm's inner edge, row by row, where the photograph is drawn again
+ * over the clothes — see `inFront` in `MannequinStage`: the forearm's and the
+ * hand's zones. Anything laid past it is painted over there.
+ */
+const ARM_LEFT: Pt[][] = (["forearm", "hand"] as const).flatMap((z) =>
+  flatten(bodies.female.zones[z] ?? "").filter((ring) => ring.every(([x]) => x > 300))
+);
+const armInnerAt = (y: number): number => Math.min(...ARM_LEFT.map((ring) => spanAt([ring], y)?.[0] ?? Infinity));
+
+/** Every tie a belt is tied with, at the origin, as points: what has to fit where it is knotted — see `beltSideAt`. */
+const BELT_TIES: Pt[] = (["knot", "scarf"] as const).flatMap((s) => tieAt(s, [0, 0]).pieces.flatMap((d) => flatten(d).flat()));
+
+/**
+ * Where a tie is knotted at a fabric belt's side: `BELT_SIDE_IN` in from
+ * its end at her left — or further in, as far as every tie the belt takes
+ * then fits: on the belt, inside the skirt's side below it, and clear of her
+ * arm beside her hip, `TIE_CLEAR` from each, so no tail runs off the dress
+ * or under her arm.
+ */
+function beltSideAt(skirt: SkirtChoice, b: ReturnType<typeof beltFor>, end: number): number {
+  const sk = flattened(skirtFor(undefined, skirt).path);
+  let x = end - BELT_SIDE_IN;
+  for (const [px, py] of BELT_TIES) {
+    const y = b.mid + py;
+    const side = y <= b.bottom ? end : Math.min(spanAt(sk, y)?.[1] ?? end, armInnerAt(y));
+    x = Math.min(x, side - TIE_CLEAR - px);
+  }
+  return x;
+}
+
+/**
+ * The centre front of a cut's neck, where a tie is knotted: a V's point, a
+ * round, scooped or boat neck's lowest, the middle of a square's lower edge,
+ * where a wrap's two panels cross — at its waist, which a wrap's edge runs
+ * to. None on a cut whose front has no middle.
+ */
+function neckPoint(id: NecklineId, waist: WaistId = "natural"): Pt | null {
+  const { cut } = bodiceFor(id, undefined, id === "wrap" ? waist : "natural");
+  if (cut.vee) return cut.vee.apex;
+  if (cut.neck) return [cut.neck.center, cut.neck.seamY + cut.neck.dip];
+  if (cut.wrap) return cut.wrap.apex;
+  if (id === "square" && cut.parts) {
+    /* where the lower edge crosses the middle of the opening */
+    const mid = (cut.parts.neck[0] + cut.parts.neckRight[0]) / 2;
+    const seam = ringsOf(cut.seam)[0];
+    for (let i = 1; i < seam.length; i++) {
+      const [a, b] = [seam[i - 1], seam[i]];
+      if ((a[0] - mid) * (b[0] - mid) <= 0 && a[0] !== b[0]) return [mid, a[1] + ((mid - a[0]) * (b[1] - a[1])) / (b[0] - a[0])];
+    }
+  }
+  return null;
+}
+
+/**
+ * The points of the dress a part can be set at, as a choice cuts it — where
+ * a tie is knotted: the centre front of its neck, see `neckPoint`; and, on a
+ * fabric belt, its front, over the buckle's place, and its side, at her
+ * left, `BELT_SIDE_IN` in from its end — each on the belt's middle.
  */
 export function dressPoints(choice: GarmentChoice): EdgePoint[] {
-  const { cut } = bodiceFor(cutOf(choice.neckline));
-  if (cut.vee) return [{ kind: "neck", at: cut.vee.apex, down: [0, 1] }];
-  if (cut.neck) return [{ kind: "neck", at: [cut.neck.center, cut.neck.seamY + cut.neck.dip], down: [0, 1] }];
-  return [];
+  const id = cutOf(choice.neckline);
+  /* only on a cut a tie is knotted at the neck of — see `NECKLINE_TIED`: a cowl's drape is its own trimming */
+  const at = NECKLINE_TIED.includes(id) ? neckPoint(id, choice.skirt?.waist) : null;
+  const neck: EdgePoint[] = at ? [{ kind: "neck", at, down: [0, 1] }] : [];
+  if (!fabricBelt(choice)) return neck;
+  const b = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
+  /* the belt's end at her left, on its middle row: its left end, mirrored */
+  const i = Math.max(1, b.left.findIndex(([, y]) => y >= b.mid));
+  const [p, q] = [b.left[i - 1], b.left[i]];
+  const end = 600 - (p[0] + ((b.mid - p[1]) * (q[0] - p[0])) / (q[1] - p[1] || 1));
+  return [
+    ...neck,
+    { kind: "belt-front", at: [b.buckle.x, b.mid], down: [0, 1] },
+    { kind: "belt-side", at: [beltSideAt({ ...DEFAULT_SKIRT, ...choice.skirt }, b, end), b.mid], down: [0, 1] },
+  ];
+}
+
+/** Where a choice's tie is knotted, if it wears one: at its neck, or on its belt — see `dressPoints`. */
+export function tiePoint(choice: GarmentChoice): Pt | null {
+  if (!choice.tie) return null;
+  const kind = choice.tieAt ?? "neck";
+  return dressPoints(choice).find((p) => p.kind === kind)?.at ?? null;
 }
 
 /** Whether a sleeve's own edge turns, and so meets the neckline's at the shoulder: a cap's. */
@@ -1559,7 +1641,7 @@ export const DRESS_EDGE_SPECS: EdgeSpec<any>[] = [
               return [
                 { ...base, open: true, shared: false },
                 { ...base, open: true, shared: true },
-                ...(NECKLINE_OPENING[cut ?? DEFAULT_CUT] ? [{ ...base, open: false, shared: false }] : []),
+                ...((offer.collared ? offer.collared.includes(cut ?? DEFAULT_CUT) : NECKLINE_OPENING[cut ?? DEFAULT_CUT]) ? [{ ...base, open: false, shared: false }] : []),
               ];
             })
           )
@@ -1663,9 +1745,30 @@ export const DRESS_EDGE_SPECS: EdgeSpec<any>[] = [
   },
 ];
 
-/** What shapes the dress's points: its cut alone. */
+/**
+ * What shapes the dress's points, declared as its edges' are — see
+ * `EdgeSpec`: its neck's, the cut (and a wrap's waist); its belt's, a
+ * fabric belt and the skirt it is worn on — not the cut, which only says
+ * whether it takes one.
+ */
+export const BELT_POINT_SPEC = {
+  shapedBy: (c: GarmentChoice) => ({ belted: fabricBelt(c), skirt: fabricBelt(c) ? { ...DEFAULT_SKIRT, ...c.skirt } : null }),
+  choiceFor: (k: { belted: boolean; skirt: SkirtChoice | null }): GarmentChoice => ({ neckline: DEFAULT_CUT, ...(k.belted ? { belt: "self" as const } : {}), ...(k.skirt ? { skirt: k.skirt } : {}) }),
+  every: (offer: EdgeOffer) =>
+    offer.skirt.shapes.flatMap((shape) =>
+      shapeLengths(shape as SkirtChoice["shape"], offer.skirt.lengths as SkirtChoice["length"][]).flatMap((length) =>
+        offer.skirt.waists.map((waist) => ({ belted: true, skirt: { shape, length, waist } as SkirtChoice }))
+      )
+    ),
+};
+
+/** What shapes the dress's neck point: its cut, and a wrap's waist. */
 export const DRESS_POINT_SPEC = {
-  shapedBy: (c: GarmentChoice) => ({ cut: cutOf(c.neckline) }),
-  choiceFor: (k: { cut: NecklineId }): GarmentChoice => ({ neckline: k.cut }),
-  every: () => NECKLINE_IDS.map((cut) => ({ cut })),
+  /* the cut — and a wrap's waist, which its edge runs to */
+  shapedBy: (c: GarmentChoice) => ({ cut: cutOf(c.neckline), waist: cutOf(c.neckline) === "wrap" ? (c.skirt?.waist ?? "natural") : null }),
+  choiceFor: (k: { cut: NecklineId; waist: WaistId | null }): GarmentChoice => ({ neckline: k.cut, ...(k.waist ? { skirt: { ...DEFAULT_SKIRT, waist: k.waist } } : {}) }),
+  every: (offer?: EdgeOffer) =>
+    NECKLINE_IDS.flatMap((cut): { cut: NecklineId; waist: WaistId | null }[] =>
+      cut === "wrap" ? ((offer?.skirt.waists ?? ["natural"]) as WaistId[]).map((waist) => ({ cut, waist })) : [{ cut, waist: null }]
+    ),
 };

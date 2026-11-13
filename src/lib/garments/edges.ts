@@ -89,7 +89,7 @@ export interface EdgeStop {
 }
 
 /** What a point is: the centre front of the neck — a V's point, a round neck's lowest. */
-export type PointKind = "neck";
+export type PointKind = "neck" | "belt-front" | "belt-side";
 
 /** A place a part is set at — a tie, later a brooch: where, and which way is down from it. */
 export interface EdgePoint {
@@ -122,6 +122,8 @@ export interface EdgeOffer {
   sleeves: { types: readonly string[]; cuffs?: readonly string[] };
   skirt: { shapes: readonly string[]; lengths: readonly string[]; waists: readonly string[] };
   buttons: readonly string[];
+  /** The cuts some collar it takes can be sewn to — the sailor's follow cuts with no collar opening of their own. Absent, those with one. */
+  collared?: readonly string[];
 }
 
 /** The same points mirrored about the column at `x`. */

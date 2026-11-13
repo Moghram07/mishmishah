@@ -71,7 +71,7 @@ const { legWiden } = await import(src("src/lib/garments/legs.ts"));
 const { BELT_ABOVE_SEAM, BELT_WIDTH, BUTTONED_CUTS, BUTTON_LAST, beltsOn, buttonsOn } = await import(src("src/lib/garments/closures.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
-const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES } = await import(
+const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES, NECKLINE_TIED } = await import(
   src("src/lib/garments/necklines.ts")
 );
 
@@ -4124,6 +4124,18 @@ failures += timed("edges", () => {
       skirt: { shapes: garment.skirt.shapes, waists: garment.skirt.waists, lengthsOf: (shape) => shapeLengths(shape, garment.skirt.lengths) },
       buttonsOn: (cut, shape) => buttonsOn(cut, garment.buttons?.offered ?? ["none"], shape),
       openingsOn: (cut) => [...new Set(collarsForGarment(garment).filter((c) => (c.necklines ? c.necklines.includes(cut) : sews(c, NECKLINE_OPENING[cut]))).map((c) => c.opening))],
+      /* the ties it offers, and where each can be knotted — the panel's own rules, see `tiePlacesOf` */
+      tieStyles: (garment.ties?.offered ?? []).filter((t) => t !== "none"),
+      /* her left arm where the photograph is drawn again over the clothes — the forearm's and the hand's zones */
+      armRings: ["forearm", "hand"].flatMap((z) => flatten(bodies.female.zones[z]).filter((r) => r.every(([x]) => x > 300))),
+      tiePlacesOn: (cut, opening, belt, style) => {
+        const collared = opening
+          ? collarsForGarment(garment).filter((c) => c.opening === opening && (c.necklines ? c.necklines.includes(cut) : sews(c, NECKLINE_OPENING[cut])))
+          : [];
+        const neck = NECKLINE_TIED.includes(cut) && (!opening || collared.some((c) => c.takesTie));
+        const onBelt = belt === "self" && style !== "necktie";
+        return [...(neck ? ["neck"] : []), ...(onBelt ? ["belt-front", "belt-side"] : [])];
+      },
       beltsOn: (cut) => (garment.belts ? beltsOn(cut, garment.belts.offered) : ["none"]),
     };
     /* a whole outfit's holes, as `checkCut` counts them */
@@ -4143,7 +4155,7 @@ failures += timed("edges", () => {
       garment,
       mod,
       collarMod: COLLAR_CUTS,
-      offer: { sleeves: garment.sleeves, skirt: garment.skirt, buttons: garment.buttons?.offered ?? ["none"] },
+      offer: { sleeves: garment.sleeves, skirt: garment.skirt, buttons: garment.buttons?.offered ?? ["none"], collared: world.cuts.filter((cut) => world.openingsOn(cut).length > 0) },
       world,
       holes,
     });

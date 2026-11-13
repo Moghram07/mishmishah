@@ -17,6 +17,7 @@ import type {
   StitchId,
   StripeEdgeId,
   StripesId,
+  TieAtId,
   TieId,
   WornGarment,
 } from "@/types";
@@ -39,7 +40,7 @@ import {
   defaultCollar,
 } from "@/lib/data/collars";
 import { beltsOn, buttonsOn } from "@/lib/garments/closures";
-import { NECKLINE_EDGED } from "@/lib/garments/necklines";
+import { NECKLINE_EDGED, NECKLINE_TIED } from "@/lib/garments/necklines";
 import {
   defaultSleeve,
   sleeveCuffsFor,
@@ -278,9 +279,9 @@ export function beltOf(worn: WornGarment): BeltId | undefined {
   return offered.includes(wanted) ? wanted : garment.belts.default;
 }
 
-/** Belt a worn dress. The choice is resolved when it is read. */
+/** Belt a worn dress. The choice is resolved when it is read; a tie that has nowhere left to go comes off — see `tidy`. */
 export function setBelt(worn: WornGarment[], garmentId: string, belt: BeltId): WornGarment[] {
-  return worn.map((w) => (w.garmentId === garmentId ? { ...w, belt } : w));
+  return worn.map((w) => (w.garmentId === garmentId ? tidy({ ...w, belt }) : w));
 }
 
 /** Recut a worn pair of trousers' legs. The choice is resolved when it is read. */
@@ -368,7 +369,7 @@ export function regionsOf(
   const parts: FabricRegionId[] = partsOf(worn);
   const striped: FabricRegionId[] = stripesOnOf(worn).length > 0 ? ["trim"] : [];
   const tied: FabricRegionId[] = (tieOf(worn) ?? "none") !== "none" ? ["tie"] : [];
-  if (!collar && !parts.length && !striped.length) return garment.fabricRegions;
+  if (!collar && !parts.length && !striped.length && !tied.length) return garment.fabricRegions;
   return [...garment.fabricRegions, ...(collar ? collar.fabricRegions : []), ...parts, ...striped, ...tied];
 }
 
@@ -466,15 +467,69 @@ export function stripesOnOf(worn: WornGarment): StripeEdgeId[] {
   return kept;
 }
 
-/** The tie at a worn garment's collar, resolved against what the collar offers. `undefined` when it takes none. */
-export function tieOf(worn: WornGarment): TieId | undefined {
-  const ties = collarOf(worn)?.ties;
-  if (!ties) return undefined;
-  /* tied only at a point the cut has — see `Collar.ties` */
+/** Every place a tie is knotted, in the order one arrives at: the neck first. */
+export const TIE_PLACES: readonly TieAtId[] = ["neck", "belt-front", "belt-side"];
+
+/**
+ * The places a worn garment can be tied at, as it is cut — for one style,
+ * or for any:
+ *
+ * - **At the neck**, on a cut with a centre front to knot it at — see
+ *   `NECKLINE_TIED` — with no collar over it, or one a tie is knotted over:
+ *   a sailor's, a Peter Pan's. A bow collar is its own tie; a standing
+ *   collar covers the neck.
+ * - **On the belt**, at its front or its side — a fabric belt's: a leather
+ *   one is buckled. Not a necktie, which hangs from a neck.
+ */
+export function tiePlacesOf(worn: WornGarment, style?: TieId): TieAtId[] {
+  const garment = garmentById(worn.garmentId);
+  if (!garment?.ties) return [];
   const cut = necklineOf(worn)?.cut;
-  if (ties.on && cut && !ties.on.includes(cut)) return undefined;
+  const collar = collarOf(worn);
+  const neck = Boolean(cut && (NECKLINE_TIED as readonly string[]).includes(cut) && (!collar || collar.takesTie));
+  const belt = beltOf(worn) === "self" && style !== "necktie";
+  return TIE_PLACES.filter((p) => (p === "neck" ? neck : belt));
+}
+
+/**
+ * The ties a worn garment can be worn with as it is cut, none first: each
+ * the garment offers that has somewhere to be knotted. Empty when it has
+ * nowhere — no tie row at all.
+ */
+export function tiesOffered(worn: WornGarment): TieId[] {
+  const offered = garmentById(worn.garmentId)?.ties?.offered ?? [];
+  if (tiePlacesOf(worn).length === 0) return [];
+  return offered.filter((t) => t === "none" || tiePlacesOf(worn, t).length > 0);
+}
+
+/**
+ * A worn garment's tie, resolved against what it offers where it can be
+ * knotted: `undefined` when it has nowhere to knot one, and none where the
+ * style chosen has no place left — a necktie with only a belt to hang from.
+ */
+export function tieOf(worn: WornGarment): TieId | undefined {
+  const ties = garmentById(worn.garmentId)?.ties;
+  const offered = tiesOffered(worn);
+  if (!ties || offered.length === 0) return undefined;
   const wanted = worn.tie ?? ties.default;
-  return ties.offered.includes(wanted) ? wanted : ties.default;
+  return offered.includes(wanted) ? wanted : "none";
+}
+
+/**
+ * Where a worn garment's tie is knotted: where it was put, while that place
+ * is still there; otherwise the first place it has — the neck, then the
+ * belt's front. `undefined` with no tie on.
+ */
+export function tieAtOf(worn: WornGarment): TieAtId | undefined {
+  const tie = tieOf(worn);
+  if (!tie || tie === "none") return undefined;
+  const places = tiePlacesOf(worn, tie);
+  return worn.tieAt && places.includes(worn.tieAt) ? worn.tieAt : places[0];
+}
+
+/** Knot a worn garment's tie somewhere else. Resolved when it is read — see `tieAtOf`. */
+export function setTieAt(worn: WornGarment[], garmentId: string, at: TieAtId): WornGarment[] {
+  return worn.map((w) => (w.garmentId === garmentId ? { ...w, tieAt: at } : w));
 }
 
 /**
@@ -494,6 +549,7 @@ export function choiceOf(w: WornGarment): GarmentChoice {
   const on = stripesOnOf(w);
   const stripes = count && count !== "none" && on.length ? { count, on } : undefined;
   const tie = tieOf(w);
+  const tieAt = tieAtOf(w);
   return {
     neckline: necklineOf(w)?.cut,
     opening: collarOf(w)?.opening,
@@ -504,7 +560,7 @@ export function choiceOf(w: WornGarment): GarmentChoice {
     ...(buttons ? { buttons } : {}),
     ...(belt ? { belt } : {}),
     ...(stripes ? { stripes } : {}),
-    ...(tie && tie !== "none" ? { tie } : {}),
+    ...(tie && tie !== "none" && tieAt ? { tie, tieAt } : {}),
   };
 }
 
@@ -556,7 +612,10 @@ export function setTie(worn: WornGarment[], garmentId: string, tie: TieId): Worn
     if (w.garmentId !== garmentId) return w;
     if (tie === "none") return { ...untied(w), tie };
     const stripes = stripesOnOf(w).length > 0 ? w.fabrics.trim : undefined;
-    const cloth = w.fabrics.tie ?? stripes ?? w.fabrics.collar ?? Object.values(w.fabrics)[0];
+    /* where it will be knotted: on a belt, in the belt's cloth; at the neck, the collar's, or the bodice's */
+    const at = tieAtOf({ ...w, tie });
+    const under = at && at !== "neck" ? clothOf(w, "belt") : w.fabrics.collar;
+    const cloth = w.fabrics.tie ?? stripes ?? under ?? Object.values(w.fabrics)[0];
     return { ...w, tie, fabrics: { ...w.fabrics, ...(cloth ? { tie: cloth } : {}) } };
   });
 }
@@ -569,11 +628,11 @@ function unStriped(w: WornGarment): WornGarment {
   return { ...rest, fabrics, stitch };
 }
 
-/** A worn garment with no tie, and no cloth or thread kept for one. */
+/** A worn garment with no tie, and no cloth, thread or place kept for one. */
 function untied(w: WornGarment): WornGarment {
   const { tie: _cloth, ...fabrics } = w.fabrics;
   const { tie: _thread, ...stitch } = w.stitch;
-  const { tie: _off, ...rest } = w;
+  const { tie: _off, tieAt: _at, ...rest } = w;
   return { ...rest, fabrics, stitch };
 }
 
@@ -585,7 +644,9 @@ function untied(w: WornGarment): WornGarment {
  */
 function tidy(w: WornGarment): WornGarment {
   const striped = garmentById(w.garmentId)?.stripes ? w : unStriped(w);
-  return tieOf(striped) ? striped : untied(striped);
+  /* a tie with nowhere left to knot it comes off; with a place left, it moves there — see `tieAtOf` */
+  const tie = tieOf(striped);
+  return tie && (tie !== "none" || !striped.tie || striped.tie === "none") ? striped : untied(striped);
 }
 
 /**

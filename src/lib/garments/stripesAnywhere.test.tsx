@@ -49,8 +49,9 @@ describe("stripes on any edge", () => {
     expect(tried).toBeGreaterThan(200);
   }, 120_000);
 
-  it("go along every cut's neckline: all three rows, on the cloth, the length of it", () => {
-    for (const cut of NECKLINE_IDS) {
+  it("go along every cut's neckline — but the cowl's: all three rows, on the cloth, the length of it", () => {
+    expect(dressEdges({ neckline: "cowl", stripes: { count: "three", on: ["neckline"] } }).filter((e) => e.kind === "neckline")).toEqual([]);
+    for (const cut of NECKLINE_IDS.filter((c) => c !== "cowl")) {
       const choice: GarmentChoice = { neckline: cut, stripes: { count: "three", on: ["neckline"] } };
       const edges = dressEdges(choice).filter((e) => e.kind === "neckline");
       expect(edges.length, cut).toBeGreaterThan(0);
@@ -85,8 +86,8 @@ describe("stripes on any edge", () => {
     expect(Math.max(...below)).toBeGreaterThan(STRIPES.three[2][1]);
   });
 
-  it("meet in a mitre where a cap sleeve's edge meets the neckline, on every cut that keeps both sleeves: no row over another", () => {
-    for (const cut of NECKLINE_IDS.filter((c) => NECKLINE_SLEEVES[c] === "both")) {
+  it("meet in a mitre where a cap sleeve's edge meets the neckline, on every cut that keeps both sleeves and takes them at the neck: no row over another", () => {
+    for (const cut of NECKLINE_IDS.filter((c) => NECKLINE_SLEEVES[c] === "both" && c !== "cowl")) {
       const choice: GarmentChoice = { neckline: cut, sleeve: { type: "cap", length: "short" }, stripes: { count: "three", on: ["neckline", "sleeves"] } };
       const edges = dressEdges(choice).filter((e) => e.kind === "neckline" || e.kind === "sleeve");
       expect(edges.filter((e) => e.meets).length, cut).toBeGreaterThan(0);

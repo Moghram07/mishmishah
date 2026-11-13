@@ -192,8 +192,8 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
       const collarCut = (drawing: GarmentArt | undefined) => drawing?.cut?.(choiceOf(w))?.collar ?? drawing?.regions.collar;
       const front = collar ? collarCut(collarArt(collar.asset.front)) : undefined;
       const behind = collar?.asset.behindBody ? collarCut(collarArt(collar.asset.behindBody)) : undefined;
-      /* the tie at its collar's V, when it has one on */
-      const tie = collar ? collarArt(collar.asset.front)?.cut?.(choiceOf(w))?.tie : undefined;
+      /* its tie, where it is knotted — at the neck, over any collar, or on its belt */
+      const tie = art?.cut?.(choiceOf(w))?.tie;
       return { garment, index, cutFor, front, behind, tie };
     });
 
@@ -517,8 +517,8 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
                   collarFront,
                   `${garment.id}-${collar!.id}`
                 )}
-              {/* its tie, over the collar — drawn only with a cloth of its own, which it has only when it is on */}
-              {collarTie && cut("tie", collarTie, `${garment.id}-${collar!.id}-tie`)}
+              {/* its tie, over the collar and the belt — drawn only with a cloth of its own, which it has only when it is on */}
+              {collarTie && cut("tie", collarTie, collar ? `${garment.id}-${collar.id}-tie` : `${garment.id}-tie`)}
               {/* a band collar's placket buttons from just under the band; otherwise the opening's, or the garment's own */}
               {(collar?.build.fall === "none" ? art.bandTrim : undefined) ??
                 (collar && art.openingTrim?.[collar.opening]) ??

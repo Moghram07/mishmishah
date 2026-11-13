@@ -9,7 +9,9 @@ import { sleeveCuffsFor, sleeveLengthsFor, sleeveTypesFor } from "@/lib/data/sle
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { buttonsFor } from "@/lib/data/closures";
 import { DRESS_EDGE_SPECS, DRESS_POINT_SPEC, NECK_CENTRE, bodiceFor, dressEdges, dressPoints } from "./art/female/dressCut";
-import { TIE_AT, panelStripes, sailor, sailorEdges, sailorTie } from "./art/female/collarCuts";
+import { TIE_AT, panelStripes, sailor, sailorEdges } from "./art/female/collarCuts";
+import { tieAt } from "./art/female/ties";
+import { NECKLINE_TIED } from "./necklines";
 import { NECKLINE_EDGED, NECKLINE_IDS } from "./necklines";
 import { BAND_STRIPE_ROOM, STRIPES, fittedBands, insideRings, ringsOf, stripesAlong } from "./stripes";
 import type { Edge, EdgeOffer } from "./edges";
@@ -118,9 +120,9 @@ describe("the dress's edges", () => {
     // no sleeve, no sleeve edge; a halter's neckline is its two armholes up to the band
     expect(kinds(dressEdges({ neckline: "boat", sleeve: { type: "set-in", length: "sleeveless" } }))).toEqual(["neckline", "hem"]);
     expect(kinds(dressEdges({ neckline: "halter" }))).toEqual(["neckline0", "neckline1", "hem"]);
-    // every cut has its neckline drafted
-    expect(NECKLINE_EDGED).toEqual(NECKLINE_IDS);
-    for (const cut of NECKLINE_IDS) expect(kinds(dressEdges({ neckline: cut })).some((k) => k.startsWith("neckline")), cut).toBe(true);
+    // every cut has its neckline drafted but the cowl, whose drape is its own trimming
+    expect(NECKLINE_EDGED).toEqual(NECKLINE_IDS.filter((c) => c !== "cowl"));
+    for (const cut of NECKLINE_IDS) expect(kinds(dressEdges({ neckline: cut })).some((k) => k.startsWith("neckline")), cut).toBe(cut !== "cowl");
   });
 
   it("are each built again from what they declare, and each declared shape is listed", () => {
@@ -206,11 +208,24 @@ describe("the sailor collar's edges and the dress's points", () => {
 
   it("set the tie at the V's neck point, and every neck point on its opening's own centre line", () => {
     expect(dressPoints({ neckline: "v" })).toEqual([{ kind: "neck", at: TIE_AT, down: [0, 1] }]);
-    for (const { cut } of DRESS_POINT_SPEC.every()) {
-      const parts = bodiceFor(cut).cut.parts;
-      const centre = parts ? (parts.neck[0] + parts.neckRight[0]) / 2 : NECK_CENTRE;
-      for (const p of dressPoints({ neckline: cut })) expect(Math.abs(p.at[0] - centre), cut).toBeLessThan(0.5);
+    for (const { cut, waist } of DRESS_POINT_SPEC.every({ sleeves: { types: [] }, skirt: { shapes: [], lengths: [], waists: ["empire", "natural", "dropped"] }, buttons: [] })) {
+      const choice = DRESS_POINT_SPEC.choiceFor({ cut, waist });
+      const outline = ringsOf(bodiceFor(cut, undefined, choice.skirt?.waist).pieces[0]);
+      for (const p of dressPoints(choice)) {
+        /* the opening's own middle, a little above the point: halfway between its two edges there — a wrap's mirrored about a line that leans */
+        const top = bodiceFor(cut).cut.parts?.neck[1] ?? p.at[1] - 12;
+        const y = p.at[1] - Math.max(1, Math.min(6, (p.at[1] - top) / 2));
+        const xs = outline.flatMap((ring) => ring.flatMap((a, i) => {
+          const b = ring[(i + 1) % ring.length];
+          return (a[1] - y) * (b[1] - y) < 0 ? [a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1])] : [];
+        })).sort((a, b) => a - b);
+        const right = xs.findIndex((x) => x > p.at[0]);
+        expect(right, cut).toBeGreaterThan(0);
+        expect(Math.abs(p.at[0] - (xs[right - 1] + xs[right]) / 2), `${cut} ${waist ?? ""}`).toBeLessThan(0.5);
+      }
     }
+    // every cut a tie can be knotted at the neck of has the point, and no other
+    for (const { cut } of DRESS_POINT_SPEC.every()) expect(dressPoints({ neckline: cut }).length, cut).toBe(NECKLINE_TIED.includes(cut) ? 1 : 0);
     // a round neck's at its lowest, on her throat's centre
     expect(dressPoints({ neckline: "round" })[0].at[0]).toBeCloseTo(NECK_CENTRE, 6);
   });
@@ -229,7 +244,7 @@ describe("where parts touch", () => {
     const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
     const markup = renderToStaticMarkup(<MannequinStage outfit={outfit} fabrics={{ [dress.id]: regions }} zoom={1} focus={[300, 500]} />);
     const lastButton = markup.lastIndexOf('fill="#2b211b"');
-    const tie = markup.indexOf(`d="${sailorTie("necktie").pieces[0]}"`);
+    const tie = markup.indexOf(`d="${tieAt("necktie", TIE_AT).pieces[0]}"`);
     expect(lastButton).toBeGreaterThan(0);
     expect(tie).toBeGreaterThan(lastButton);
   });

@@ -22,7 +22,8 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, drawnBodice, dressStripes, frontButtons, seamAt, skirtFor, skirtPlacketFor, sleeveEndPieces } from "./dressCut";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, drawnBodice, dressStripes, frontButtons, seamAt, skirtFor, skirtPlacketFor, sleeveEndPieces, tiePoint } from "./dressCut";
+import { tieArt as knottedTie } from "./tieArt";
 import type { Inlay } from "@/lib/garments/stripes";
 import type { Inlaid } from "../index";
 import { BELTLESS_CUTS, LEATHER } from "@/lib/garments/closures";
@@ -1160,9 +1161,12 @@ export const dressFront: GarmentArt = {
     /* its cuffs first, each laid whole in the cuffs' cloth, then the stripes over them */
     const cuffs = cuffsOf(choice);
     const bottom = cut.bottom || stripes.bottom.length ? withStripes(cut.bottom ?? BOTTOM, stripes.bottom, stripesKey) : undefined;
+    /* its tie, knotted at its neck or on its belt — drawn over everything else it wears */
+    const at = tiePoint(choice);
     return {
       top: withStripes(cut.top, [...cuffs, ...stripes.top], `${stripesKey}|${cuffs.length}`),
       ...(bottom ? { bottom: withBeltStripes(bottom, stripes.belt, stripesKey) } : {}),
+      ...(choice.tie && at ? { tie: knottedTie(choice.tie, at) } : {}),
     };
   },
 
@@ -1194,7 +1198,8 @@ export const dressFront: GarmentArt = {
         </>
       );
     const belt = beltOn(choice);
-    if (!belt) return buttons;
+    /* a belt with a tie on it, at its front or its side, is tied, not buckled: the tie is its fastening */
+    if (!belt || (choice.tie && choice.tieAt && choice.tieAt !== "neck")) return buttons;
     const { buckle } = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
     return (
       <>

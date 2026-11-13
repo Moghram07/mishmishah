@@ -1304,10 +1304,22 @@ export const NECKLINE_OPENING: Record<NecklineId, OpeningShape | null> = {
  */
 /**
  * The cuts whose neckline edge is drafted for a part to be laid along it —
- * stripes now — with no collar on: every one. The offer and the drawing read
- * this one list, so a cut cannot be offered stripes it has no edge for.
+ * stripes now — with no collar on: every one but the cowl, whose drape is its
+ * own trimming. The offer and the drawing read this one list, so a cut
+ * cannot be offered stripes it has no edge for.
  */
-export const NECKLINE_EDGED: readonly NecklineId[] = NECKLINE_IDS;
+export const NECKLINE_EDGED: readonly NecklineId[] = NECKLINE_IDS.filter((id) => id !== "cowl");
+
+/**
+ * The cuts with a centre front to knot a tie at — a V's point, a round,
+ * scooped or boat neck's lowest, the middle of a square's lower edge, the
+ * crossing of a wrap's: every cut but the one-sided and strapless ones,
+ * whose fronts have no middle, the keyhole, closed there with its own
+ * button, and the cowl, whose drape is its own trimming. The offer and the
+ * drawing read this one list; a test holds it to the cuts whose drawing has
+ * the point — see `dressPoints`.
+ */
+export const NECKLINE_TIED: readonly NecklineId[] = ["round", "scoop", "boat", "v", "square", "high", "wrap", "collared"];
 
 export const NECKLINE_SLEEVES: Record<
   NecklineId,

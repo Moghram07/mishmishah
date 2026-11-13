@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { BeltId, ButtonsId, FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice, StripeEdgeId, StripesId, TieId } from "@/types";
+import type { BeltId, ButtonsId, FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice, StripeEdgeId, StripesId, TieAtId, TieId } from "@/types";
 import type { Uid } from "@/lib/garments/shading";
 import type { Encloses } from "@/lib/garments/sleeves";
 import type { Tuck } from "@/lib/garments/fit";
@@ -190,8 +190,9 @@ export interface GarmentChoice {
    * along — see `StripeEdgeId`.
    */
   stripes?: { count: Exclude<StripesId, "none">; on: readonly StripeEdgeId[] };
-  /** The tie at its collar's V, if it wears one. */
+  /** The tie it wears, if any, and where it is knotted — see `tiePoint`. */
   tie?: Exclude<TieId, "none">;
+  tieAt?: TieAtId;
   /**
    * The hem of a jacket it is worn under, if it is: it comes out from under it
    * no wider than the jacket — see `tucked` in `garments/fit.ts`.

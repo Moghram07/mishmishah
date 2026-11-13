@@ -4,7 +4,7 @@ import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { garmentById } from "@/lib/data/garments";
 import { fabricById } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
-import { collarById, tiesFor } from "@/lib/data/collars";
+import { collarById } from "@/lib/data/collars";
 import { SLEEVE_KINDS, type SleeveChoice } from "./sleeves";
 import { bodiceFor, seamAt, skirtTopAt } from "./art/female/dressCut";
 import {
@@ -78,19 +78,17 @@ const draw = (worn: WornGarment[], cloths: Partial<Record<FabricRegionId, Fabric
 };
 
 describe("the sailor collar on every neckline it follows", () => {
-  it("goes on the V, the boat, the wrap, the round, the square and the scoop, stays on through a recut among them, and is tied at the V alone", () => {
+  it("goes on the V, the boat, the wrap, the round, the square and the scoop, and stays on through a recut among them, its tie with it", () => {
     expect(collarById(SAILOR)!.necklines).toEqual([...SAILOR_CUTS]);
     let worn = setTie(dressed("v"), dress.id, "knot");
     expect(tieOf(one(worn))).toBe("knot");
     for (const cut of ["boat", "wrap", "round", "square", "scoop"]) {
       worn = setNeckline(worn, dress.id, `female-${cut}-neckline`);
       expect(collarOf(one(worn))?.id, cut).toBe(SAILOR);
-      // no point to knot a tie at, and nothing offered — see `Collar.ties.on`
-      expect(tieOf(one(worn)), cut).toBeUndefined();
-      expect(tiesFor(collarOf(one(worn)), cut), cut).toEqual([]);
-      expect(regionsOf(dress, one(worn)), cut).not.toContain("tie");
+      // its tie stays, knotted at the new cut's centre front, over the collar — see `tiePlacesOf`
+      expect(tieOf(one(worn)), cut).toBe("knot");
+      expect(regionsOf(dress, one(worn)), cut).toContain("tie");
     }
-    expect(tiesFor(collarById(SAILOR), "v").map((t) => t.id)).toEqual(["none", "knot", "necktie"]);
     // and off a cut it does not follow
     expect(collarOf(one(setNeckline(worn, dress.id, "female-high-neckline")))).toBeUndefined();
   });
