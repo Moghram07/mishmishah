@@ -35,7 +35,7 @@ const placketOf = (cut: string, waist: WaistId) => frontButtons({ neckline: cut,
 
 describe("buttons and belt: what is offered", () => {
   it("offers buttons on the seven cuts with a straight centre front, the shirt-dress always buttoned, and a belt on every cut but the wrap", () => {
-    expect(dress.buttons).toEqual({ offered: ["none", "waist", "hem"], default: "none" });
+    expect(dress.buttons).toEqual({ offered: ["none", "waist", "hem"], default: "none", rows: ["one", "two"] });
     expect(dress.belts).toEqual({ offered: ["none", "self", "brown", "black"], default: "none" });
     /* not the keyhole, which closes with its own button and loop; not the halter, wrap, cowl or one-shoulder */
     expect([...BUTTONED_CUTS].sort()).toEqual(["boat", "collared", "high", "off-shoulder", "round", "scoop", "square", "sweetheart", "v"]);

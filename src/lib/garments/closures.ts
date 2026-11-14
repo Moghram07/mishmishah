@@ -23,6 +23,23 @@ import type { BeltId, ButtonsId, SkirtShapeId } from "@/types";
 export const BUTTONED_CUTS: readonly NecklineId[] = ["round", "scoop", "boat", "v", "square", "high", "sweetheart", "collared", "off-shoulder"];
 
 /**
+ * The cuts that can be buttoned in two rows, double-breasted, as photo 1's:
+ * every buttoned cut but the shirt-dress, which is closed by its own placket.
+ * Two rows go to the waist only — a double-breasted front down through a
+ * skirt would lie over its folds and pleats.
+ */
+export const DOUBLE_CUTS: readonly NecklineId[] = BUTTONED_CUTS.filter((c) => c !== "collared");
+
+/**
+ * Two rows of buttons, in canvas units: each row `apart` from the centre
+ * front, 4.9 cm, so the two stand about 10 cm apart, as photo 1's; spaced
+ * down the bodice nearest `pitch`, 9.5 cm; the last `last` above the waist
+ * seam, 4.9 cm — higher than one row's, as a double-breasted front's are,
+ * and clear of a belt. Buttons the size of one row's.
+ */
+export const DOUBLE = { apart: 26, pitch: 50, last: 26 } as const;
+
+/**
  * The skirts that cannot be buttoned on to the hem, only to the waist: a
  * mermaid's flare is cut in panels and could not open down the front.
  */

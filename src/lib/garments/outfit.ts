@@ -1,6 +1,7 @@
 import type {
   BeltId,
   BodyType,
+  ButtonRowsId,
   ButtonsId,
   BodyZone,
   Collar,
@@ -39,7 +40,7 @@ import {
   collarsForGarment,
   defaultCollar,
 } from "@/lib/data/collars";
-import { beltsOn, buttonsOn } from "@/lib/garments/closures";
+import { DOUBLE_CUTS, beltsOn, buttonsOn } from "@/lib/garments/closures";
 import { NECKLINE_EDGED, NECKLINE_TIED } from "@/lib/garments/necklines";
 import {
   defaultSleeve,
@@ -263,6 +264,30 @@ export function buttonsOf(worn: WornGarment): ButtonsId | undefined {
 /** Button a worn dress down its front so far. The choice is resolved when it is read, so it waits out a cut that cannot take it. */
 export function setButtons(worn: WornGarment[], garmentId: string, buttons: ButtonsId): WornGarment[] {
   return worn.map((w) => (w.garmentId === garmentId ? { ...w, buttons } : w));
+}
+
+/**
+ * The rows of buttons a worn dress can be buttoned in, as cut and buttoned:
+ * one or two — see `DOUBLE_CUTS` — when it is buttoned to the waist; none to
+ * choose otherwise.
+ */
+export function buttonRowsOffered(worn: WornGarment): ButtonRowsId[] {
+  const rows = garmentById(worn.garmentId)?.buttons?.rows ?? [];
+  const cut = necklineOf(worn)?.cut;
+  if (rows.length < 2 || buttonsOf(worn) !== "waist" || !cut || !(DOUBLE_CUTS as readonly string[]).includes(cut)) return [];
+  return rows;
+}
+
+/** A worn dress's rows of buttons, resolved: two only where they are offered and chosen, else one. `undefined` unbuttoned. */
+export function buttonRowsOf(worn: WornGarment): ButtonRowsId | undefined {
+  const buttons = buttonsOf(worn);
+  if (!buttons || buttons === "none") return undefined;
+  return worn.buttonRows === "two" && buttonRowsOffered(worn).includes("two") ? "two" : "one";
+}
+
+/** Button a worn dress in one row or two. Resolved when it is read — see `buttonRowsOf`. */
+export function setButtonRows(worn: WornGarment[], garmentId: string, rows: ButtonRowsId): WornGarment[] {
+  return worn.map((w) => (w.garmentId === garmentId ? { ...w, buttonRows: rows } : w));
 }
 
 /**
@@ -550,6 +575,7 @@ export function choiceOf(w: WornGarment): GarmentChoice {
   const stripes = count && count !== "none" && on.length ? { count, on } : undefined;
   const tie = tieOf(w);
   const tieAt = tieAtOf(w);
+  const rows = buttonRowsOf(w);
   return {
     neckline: necklineOf(w)?.cut,
     opening: collarOf(w)?.opening,
@@ -558,6 +584,7 @@ export function choiceOf(w: WornGarment): GarmentChoice {
     ...(front ? { front } : {}),
     ...(leg ? { leg } : {}),
     ...(buttons ? { buttons } : {}),
+    ...(rows === "two" ? { buttonRows: "two" as const } : {}),
     ...(belt ? { belt } : {}),
     ...(stripes ? { stripes } : {}),
     ...(tie && tie !== "none" && tieAt ? { tie, tieAt } : {}),

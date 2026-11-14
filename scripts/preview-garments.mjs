@@ -68,7 +68,7 @@ const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
 const { HEM_AT, WAIST_DROP, besideArms, fallOf, fallRun, hangs, shapeLengths, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
 const { legWiden } = await import(src("src/lib/garments/legs.ts"));
-const { BELT_ABOVE_SEAM, BELT_WIDTH, BUTTONED_CUTS, BUTTON_LAST, beltsOn, buttonsOn } = await import(src("src/lib/garments/closures.ts"));
+const { BELT_ABOVE_SEAM, BELT_WIDTH, BUTTONED_CUTS, BUTTON_LAST, DOUBLE_CUTS, beltsOn, buttonsOn } = await import(src("src/lib/garments/closures.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES, NECKLINE_TIED } = await import(
@@ -3014,6 +3014,16 @@ const PLACKET_SPILL = 2;
  * agreed with.
  */
 const HEM_CLEAR_CM = [3.9, 13];
+
+/**
+ * Two rows of buttons, double-breasted, as photo 1's — in centimetres, not
+ * read from the numbers that place them: the two rows 9–11 cm apart, each the
+ * same distance from the centre front; spaced 7–11.5 cm down the bodice; the
+ * last 4–6 cm above the waist seam.
+ */
+const DOUBLE_APART_CM = [9, 11];
+const DOUBLE_PITCH_CM = [7, 11.5];
+const DOUBLE_LAST_CM = [4, 6];
 /** How far inside a pleated skirt's flat panel its placket keeps: a pleat's fold is 1.8 units across at most — see `pleatFolds`. */
 const PANEL_FOLD = 1.8;
 
@@ -3056,8 +3066,56 @@ function checkClosures(bodyKey, wardrobe) {
       }
     }
     const bounds = (path, y) => mod.across(path, y);
+    let doubles = 0;
+    const doubleCuts = DOUBLE_CUTS.filter((c) => cutsOf(garment.asset.front).includes(c));
+    /* two rows are offered only where one row is, to the waist, and never on a cut closed by its own placket */
+    for (const c of doubleCuts) if (!cuts.includes(c)) bad.push(`${c}: offered two rows of buttons and not one`);
     for (const waist of garment.skirt.waists) {
       const seam = mod.seamAt(waist);
+      /*
+        Two rows: on the bodice itself — no placket, every button whole on the
+        cloth — level with each other across the centre front, evenly spaced,
+        the last above the seam and clear of a belt; and the same over every
+        skirt, since they stop at the waist.
+      */
+      for (const cut of doubleCuts) {
+        const skirt = { ...mod.DEFAULT_SKIRT, waist };
+        const name = `${cut} · ${waist}, two rows`;
+        const choice = { neckline: cut, skirt, buttons: "waist", buttonRows: "two" };
+        const cloth = mod.cloth(choice);
+        const bare = mod.cloth({ neckline: cut, skirt });
+        if (cloth.length !== bare.length || cloth.some((d, i) => d !== bare[i])) bad.push(`${name}: a placket is sewn on with two rows`);
+        const sewn = rasterize(cloth);
+        const run = mod.frontButtons(choice);
+        const group = run.groups[run.groups.length - 1];
+        doubles++;
+        const xs = [...new Set(group.at.map(([x]) => x.toFixed(3)))].map(Number).sort((a, b) => a - b);
+        if (xs.length !== 2) {
+          bad.push(`${name}: its buttons are in ${xs.length} rows`);
+          continue;
+        }
+        if (Math.abs((xs[0] + xs[1]) / 2 - mod.FRONT_X) > 0.01) bad.push(`${name}: its rows are not either side of the centre front`);
+        if (cm(xs[1] - xs[0]) < DOUBLE_APART_CM[0] || cm(xs[1] - xs[0]) > DOUBLE_APART_CM[1]) bad.push(`${name}: its rows are ${cm(xs[1] - xs[0]).toFixed(1)} cm apart`);
+        const [left, right] = xs.map((x) => group.at.filter(([bx]) => Math.abs(bx - x) < 1e-6).map(([, y]) => y).sort((a, b) => a - b));
+        if (left.length !== right.length || left.some((y, i) => Math.abs(y - right[i]) > 1e-6)) bad.push(`${name}: its two rows are not level`);
+        const gaps = left.slice(1).map((y, i) => y - left[i]);
+        if (gaps.length && Math.max(...gaps) - Math.min(...gaps) > 0.01) bad.push(`${name}: its buttons are not evenly spaced`);
+        if (gaps.length && (cm(gaps[0]) < DOUBLE_PITCH_CM[0] || cm(gaps[0]) > DOUBLE_PITCH_CM[1])) bad.push(`${name}: its buttons are ${cm(gaps[0]).toFixed(2)} cm apart down it`);
+        const last = cm(seam - left[left.length - 1]);
+        if (last < DOUBLE_LAST_CM[0] || last > DOUBLE_LAST_CM[1]) bad.push(`${name}: its last buttons are ${last.toFixed(1)} cm above the seam`);
+        const belt = mod.beltFor(skirt);
+        for (const [x, y] of group.at) {
+          const rim = [[0, 0], ...Array.from({ length: 8 }, (_, k) => [Math.cos((k * Math.PI) / 4), Math.sin((k * Math.PI) / 4)])];
+          const off = rim.filter(([dx, dy]) => sewn[Math.round(y + dy * (group.r - 0.5)) * W + Math.round(x + dx * (group.r - 0.5))] < 0.5);
+          if (off.length) bad.push(`${name}: the button at ${x.toFixed(1)},${y.toFixed(1)} hangs off the cloth`);
+          if (y + group.r > belt.top - 1) bad.push(`${name}: the button at y ${y.toFixed(1)} is under the belt`);
+        }
+        /* to the waist whatever the skirt: the same buttons over each shape */
+        for (const shape of garment.skirt.shapes) {
+          const other = mod.frontButtons({ ...choice, skirt: { ...skirt, shape, length: shapeLengths(shape, garment.skirt.lengths)[0] } });
+          if (JSON.stringify(other.groups) !== JSON.stringify(run.groups)) bad.push(`${name}: buttoned otherwise over a ${shape} skirt`);
+        }
+      }
       for (const shape of garment.skirt.shapes) {
         for (const length of shapeLengths(shape, garment.skirt.lengths)) {
           const skirt = { shape, length, waist };
@@ -3149,7 +3207,7 @@ function checkClosures(bodyKey, wardrobe) {
     failed += bad.length;
     console.log(
       `${bad.length ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${garment.id} · front`.padEnd(28)} ` +
-        `buttons and belt: ${plackets} plackets on the cloth, ${panels} pleated panels level, ${buttons} buttons ${lo.toFixed(1)}–${hi.toFixed(1)} cm apart, ` +
+        `buttons and belt: ${plackets} plackets on the cloth, ${panels} pleated panels level, ${buttons} buttons ${lo.toFixed(1)}–${hi.toFixed(1)} cm apart, ${doubles} double-breasted fronts, ` +
         `the belt ${cm(BELT_WIDTH).toFixed(1)} cm on the seam at every waist`
     );
     for (const line of bad.slice(0, 12)) console.log(`     ${bodyKey.padEnd(6)} ${line}`);
@@ -4126,6 +4184,7 @@ failures += timed("edges", () => {
       openingsOn: (cut) => [...new Set(collarsForGarment(garment).filter((c) => (c.necklines ? c.necklines.includes(cut) : sews(c, NECKLINE_OPENING[cut]))).map((c) => c.opening))],
       /* the ties it offers, and where each can be knotted — the panel's own rules, see `tiePlacesOf` */
       tieStyles: (garment.ties?.offered ?? []).filter((t) => t !== "none"),
+      doubleCuts: garment.buttons?.rows?.includes("two") ? DOUBLE_CUTS : [],
       /* her left arm where the photograph is drawn again over the clothes — the forearm's and the hand's zones */
       armRings: ["forearm", "hand"].flatMap((z) => flatten(bodies.female.zones[z]).filter((r) => r.every(([x]) => x > 300))),
       tiePlacesOn: (cut, opening, belt, style) => {

@@ -25,7 +25,7 @@ import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { legsFor } from "@/lib/data/legs";
 import { frontsFor } from "@/lib/data/fronts";
-import { beltsFor, buttonsFor } from "@/lib/data/closures";
+import { beltsFor, buttonRowsFor, buttonsFor } from "@/lib/data/closures";
 import {
   sleeveCuffById,
   sleeveCuffsFor,
@@ -59,7 +59,10 @@ import {
   setSkirt,
   setLeg,
   legOf,
+  setButtonRows,
   setButtons,
+  buttonRowsOf,
+  buttonRowsOffered,
   buttonsOf,
   setBelt,
   beltOf,
@@ -112,6 +115,7 @@ import { FEATURES } from "@/lib/features";
 import type {
   BeltId,
   BodyType,
+  ButtonRowsId,
   ButtonsId,
   Design,
   Fabric,
@@ -540,6 +544,12 @@ export function FabricVisualizer() {
     setOutfit((o) => ({ ...o, worn: setButtons(o.worn, cuttingGarment.id, buttons) }));
   };
 
+  /** Button the dress being cut in one row or two — resolved when read, see `buttonRowsOf`. */
+  const chooseButtonRows = (rows: ButtonRowsId) => {
+    if (!cuttingGarment) return;
+    setOutfit((o) => ({ ...o, worn: setButtonRows(o.worn, cuttingGarment.id, rows) }));
+  };
+
   /** Belt the dress being cut — resolved when read, see `beltOf`. */
   const chooseBelt = (belt: BeltId) => {
     if (!cuttingGarment) return;
@@ -793,6 +803,9 @@ export function FabricVisualizer() {
   const buttonChoices = cuttingGarment ? buttonsFor(cuttingGarment, cutNow, wornSkirt?.shape) : [];
   const wornButtons = cuttingEntry ? buttonsOf(cuttingEntry.worn) : undefined;
   const showButtons = subject === "wardrobe" && buttonChoices.length > 1 && wornButtons !== undefined;
+  /* one row or two, buttoned to the waist on a cut that takes two */
+  const rowChoices = cuttingEntry ? buttonRowsFor(buttonRowsOffered(cuttingEntry.worn)) : [];
+  const wornRows = cuttingEntry ? buttonRowsOf(cuttingEntry.worn) : undefined;
   const beltChoices = cuttingGarment ? beltsFor(cuttingGarment, cutNow) : [];
   const wornBelt = cuttingEntry ? beltOf(cuttingEntry.worn) : undefined;
   const showBelt = beltChoices.length > 1 && wornBelt !== undefined;
@@ -1133,9 +1146,19 @@ export function FabricVisualizer() {
     extraRows.push({
       id: "buttons",
       label: t("viz.buttons"),
-      value: named(buttonChoices, wornButtons),
+      value: [named(buttonChoices, wornButtons), ...(rowChoices.length > 1 && wornRows ? [named(rowChoices, wornRows)] : [])].join(" · "),
       region: "top",
-      body: <Segmented label={t("viz.buttons")} choices={buttonChoices.map((b) => ({ id: b.id, label: pick(b.name) }))} active={wornButtons} onPick={chooseButtons} />,
+      body: (
+        <>
+          <Segmented label={t("viz.buttons")} choices={buttonChoices.map((b) => ({ id: b.id, label: pick(b.name) }))} active={wornButtons} onPick={chooseButtons} />
+          {rowChoices.length > 1 && wornRows && (
+            <>
+              <RowHeading>{t("viz.buttonRows")}</RowHeading>
+              <Segmented label={t("viz.buttonRows")} choices={rowChoices.map((r) => ({ id: r.id, label: pick(r.name) }))} active={wornRows} onPick={chooseButtonRows} />
+            </>
+          )}
+        </>
+      ),
     });
   }
   /* a belt on its waist seam, a dress's: none, its own cloth, or leather */

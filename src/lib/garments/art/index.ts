@@ -190,6 +190,8 @@ export interface GarmentChoice {
    * along — see `StripeEdgeId`.
    */
   stripes?: { count: Exclude<StripesId, "none">; on: readonly StripeEdgeId[] };
+  /** Two rows of buttons rather than one, if it is buttoned so — see `frontButtons`. */
+  buttonRows?: "two";
   /** The tie it wears, if any, and where it is knotted — see `tiePoint`. */
   tie?: Exclude<TieId, "none">;
   tieAt?: TieAtId;

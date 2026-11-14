@@ -343,6 +343,9 @@ export type FrontId = "open" | "closed";
  */
 export type ButtonsId = "none" | "waist" | "hem";
 
+/** How many rows of buttons down a dress's front: one, on a placket down the centre, or two, either side of it — double-breasted, as photo 1's. */
+export type ButtonRowsId = "one" | "two";
+
 /** The belt a dress is worn with on its waist seam: none, one of its own cloth, or leather in brown or black. */
 export type BeltId = "none" | "self" | "brown" | "black";
 
@@ -584,7 +587,7 @@ export interface Garment {
    * dress's, on the cuts with a straight centre front only: see `buttonsOn`.
    * Absent, it has no such choice.
    */
-  buttons?: { offered: ButtonsId[]; default: ButtonsId };
+  buttons?: { offered: ButtonsId[]; default: ButtonsId; rows?: ButtonRowsId[] };
   /** The belts it can be worn with on its waist seam, and the one it arrives with. Absent, it takes none. */
   belts?: { offered: BeltId[]; default: BeltId };
   /**
@@ -842,6 +845,8 @@ export interface WornGarment {
   tie?: TieId;
   /** Where it is knotted, as chosen — see `tieAtOf`, which resolves it against the places it has. */
   tieAt?: TieAtId;
+  /** Its rows of buttons, as chosen — see `buttonRowsOf`, which resolves it against what its cut and buttons take. */
+  buttonRows?: ButtonRowsId;
   /** Fabric id per region. */
   fabrics: Partial<Record<FabricRegionId, string>>;
   stitch: Partial<Record<FabricRegionId, StitchId>>;

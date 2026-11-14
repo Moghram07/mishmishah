@@ -282,6 +282,8 @@ function randomDress(pick, world) {
   };
   const buttons = pick(buttonsOn(cut, shape));
   if (buttons !== "none") choice.buttons = buttons;
+  /* to the waist, on a cut that takes them, two rows or one */
+  if (buttons === "waist" && world.doubleCuts.includes(cut) && pick([true, false])) choice.buttonRows = "two";
   /* a belt the cut takes: none, in cloth, or leather */
   const belt = pick(beltsOn(cut));
   if (belt && belt !== "none") choice.belt = belt;
@@ -309,7 +311,7 @@ const axesOf = (c) => ({
   shape: c.skirt.shape,
   skirtLength: c.skirt.length,
   waist: c.skirt.waist,
-  buttons: c.buttons ?? "none",
+  buttons: c.buttons ? `${c.buttons}${c.buttonRows === "two" ? "×2" : ""}` : "none",
   opening: c.opening ?? "none",
   belt: c.belt ?? "none",
   stripes: c.stripes ? c.stripes.on.join("+") : "none",

@@ -28,6 +28,8 @@ import {
   BUTTON_R,
   BUTTON_SLIDE,
   BELTLESS_CUTS,
+  DOUBLE,
+  DOUBLE_CUTS,
   OWN_PLACKET,
   PANEL_HALF,
   PLACKET_HALF,
@@ -111,6 +113,13 @@ export function skirtFor(inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIRT, toHe
  * over a skirt that can open so far — see `BUTTONED_TO_WAIST_ONLY`. Asked to,
  * over a mermaid it is buttoned to the waist.
  */
+/**
+ * What a choice's bodice is buttoned with, as its placket sees it: its
+ * buttons, or none in two rows — a double-breasted front is buttoned on the
+ * bodice itself, either side of the centre, with no placket down it.
+ */
+export const placketButtons = (choice: GarmentChoice): ButtonsId => (choice.buttonRows === "two" ? "none" : (choice.buttons ?? "none"));
+
 export const buttonedToHem = (choice: GarmentChoice): boolean =>
   choice.buttons === "hem" &&
   BUTTONED_CUTS.includes(cutOf(choice.neckline)) &&
@@ -851,8 +860,7 @@ function withPlacket(b: Bodice, waist: WaistId): Bodice {
  * free to sit up to `BUTTON_SLIDE` lower than it might, to take up the
  * difference.
  */
-export function buttonRun(first: number, last: number): { at: number[]; pitch: number } {
-  const [, want] = BUTTON_PITCH;
+export function buttonRun(first: number, last: number, want: number = BUTTON_PITCH[1]): { at: number[]; pitch: number } {
   const run = last - first;
   if (run < want / 2) return { at: [last], pitch: want };
   let best = { k: 1, pitch: run, off: Infinity };
@@ -921,9 +929,11 @@ export function frontButtons(choice: GarmentChoice = {}): { groups: { at: Pt[]; 
   const buttons = asked === "hem" && !buttonedToHem(choice) ? "waist" : asked;
   const waist = choice.skirt?.waist ?? "natural";
   /* a cut's own closure stays only with no collar over it — see `underCollar` */
-  const b = bodiceFor(id, choice.sleeve, waist, buttons, Boolean(choice.opening));
+  const b = bodiceFor(id, choice.sleeve, waist, choice.buttonRows === "two" ? "none" : buttons, Boolean(choice.opening));
   const own = b.cut.buttons;
   if (buttons === "none" || !BUTTONED_CUTS.includes(id)) return { groups: own ? [own] : [] };
+  /* two rows, to the waist, on a cut that takes them — see `doubleRows` */
+  if (choice.buttonRows === "two" && buttons === "waist" && DOUBLE_CUTS.includes(id)) return doubleRows(b, waist);
   const last = seamAt(waist) - BUTTON_LAST;
   /* the shirt-dress's first button clears its collar's points, as it always has; any other cut's, its opening */
   const shirt = OWN_PLACKET.includes(id) && own ? own : undefined;
@@ -942,6 +952,35 @@ export function frontButtons(choice: GarmentChoice = {}): { groups: { at: Pt[]; 
   /* a cut's own buttons that are not its placket's — a keyhole's at its closure — stay */
   const extra = own && !shirt ? [own] : [];
   return { groups: [...extra, placket], pitch: run.pitch };
+}
+
+/**
+ * Two rows of buttons on a bodice, double-breasted, as photo 1's: one each
+ * side of the centre front, `DOUBLE.apart` from it, level with each other;
+ * spaced down it nearest `DOUBLE.pitch` — see `buttonRun` — from below the
+ * opening where it runs over either row, and anything of the bodice's own
+ * drawn over it there (an off-shoulder's band), to `DOUBLE.last` above the
+ * waist seam. On the bodice itself: no placket.
+ */
+function doubleRows(b: Bodice, waist: WaistId): { groups: { at: Pt[]; r: number }[]; pitch: number } {
+  const body = flatten(b.pieces[0]);
+  const xs = [FRONT_X - DOUBLE.apart, FRONT_X + DOUBLE.apart];
+  let first = 0;
+  for (const c of xs) {
+    /* the opening's lowest across the button, then below what covers it */
+    let top = 0;
+    for (let x = c - BUTTON_R; x <= c + BUTTON_R + 1e-9; x += 1) top = Math.max(top, firstRow(body, x, 140, 420) ?? 0);
+    let clear = top;
+    for (const piece of b.pieces.slice(1)) {
+      const polys = flatten(piece);
+      let y = top;
+      while (y < top + 80 && inside(polys, c, y)) y += 0.25;
+      clear = Math.max(clear, y);
+    }
+    first = Math.max(first, clear + BUTTON_FIRST + BUTTON_R);
+  }
+  const run = buttonRun(first, seamAt(waist) - DOUBLE.last, DOUBLE.pitch);
+  return { groups: [{ at: xs.flatMap((x) => run.at.map((y) => [x, y] as Pt)), r: BUTTON_R }], pitch: run.pitch };
 }
 
 /** The cut a choice names, or the one the dress arrives in. */
@@ -1016,11 +1055,11 @@ export const DEFAULT_CUT: NecklineId = "round";
  * two different answers.
  */
 export const cloth = (choice: GarmentChoice = {}): string[] => {
-  const { neckline, sleeve, inside, skirt, buttons, opening } = choice;
+  const { neckline, sleeve, inside, skirt, opening } = choice;
   const toHem = buttonedToHem(choice);
   return [
-    /* with a collar on it, a keyhole without its own loop — see `underCollar` */
-    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, buttons, Boolean(opening)).pieces,
+    /* with a collar on it, a keyhole without its own loop — see `underCollar`; in two rows, no placket */
+    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, placketButtons(choice), Boolean(opening)).pieces,
     /* buttoned to the hem: its placket on through the skirt, and a pleated skirt's flat panel under it */
     skirtFor(inside, skirt, toHem).path,
     ...(toHem ? [skirtPlacketFor(inside, skirt).path] : []),
@@ -1056,8 +1095,9 @@ export function drawnBodice(choice: GarmentChoice): Bodice {
   const id = cutOf(choice.neckline);
   const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
   const waist = choice.skirt?.waist ?? "natural";
-  const placket = bodiceFor(id, sleeve, waist, choice.buttons).placket !== undefined;
-  return bodiceFor(id, sleeve, waist, placket ? choice.buttons : "none", Boolean(choice.opening));
+  const buttons = placketButtons(choice);
+  const placket = bodiceFor(id, sleeve, waist, buttons).placket !== undefined;
+  return bodiceFor(id, sleeve, waist, placket ? buttons : "none", Boolean(choice.opening));
 }
 
 /**
@@ -1084,7 +1124,7 @@ export function dressStripes(choice: GarmentChoice): { top: Inlay[]; bottom: Inl
     sleeve.length,
     sleeve.cuff ?? "",
     skirtKey(skirt),
-    choice.buttons ?? "",
+    placketButtons(choice),
     choice.opening ?? "",
     choice.inside ? `${choice.inside.y}|${choice.inside.x}` : "",
     choice.belt ?? "",
@@ -1685,7 +1725,7 @@ export const DRESS_EDGE_SPECS: EdgeSpec<any>[] = [
         cut,
         collared: Boolean(c.opening),
         sleeve: keeps ? armholeKey(sleeve) : null,
-        placket: placketOn(cut, c.buttons ?? "none"),
+        placket: placketOn(cut, placketButtons(c)),
         shared: NECKLINE_SLEEVES[cut] === "both" && turnsAt(sleeve) && !c.opening ? sharing(c) : null,
         /* a wrap's crossing edge runs down to its waist */
         waist: bodiceFor(cut).cut.wrap ? (c.skirt?.waist ?? "natural") : null,

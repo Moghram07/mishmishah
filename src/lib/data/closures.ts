@@ -1,4 +1,4 @@
-import type { BeltId, ButtonsId, Garment, SkirtShapeId } from "@/types";
+import type { BeltId, ButtonRowsId, ButtonsId, Garment, SkirtShapeId } from "@/types";
 import { beltsOn, buttonsOn } from "@/lib/garments/closures";
 
 /**
@@ -18,6 +18,11 @@ const BUTTON_NAMES: Record<ButtonsId, { en: string; ar: string }> = {
   hem: { en: "All the way down", ar: "حتى الأسفل" },
 };
 
+const BUTTON_ROW_NAMES: Record<ButtonRowsId, { en: string; ar: string }> = {
+  one: { en: "One row", ar: "صف واحد" },
+  two: { en: "Two rows", ar: "صفّان" },
+};
+
 const BELT_NAMES: Record<BeltId, { en: string; ar: string }> = {
   none: { en: "None", ar: "بدون" },
   /* in any cloth now, the dress's own to begin with — see `clothOf` */
@@ -29,6 +34,9 @@ const BELT_NAMES: Record<BeltId, { en: string; ar: string }> = {
 /** The buttons a garment can be worn with, cut as it is: none where its cut cannot be buttoned, and only to the waist over a mermaid. */
 export const buttonsFor = (garment: Garment, cut: string | undefined, shape?: SkirtShapeId): Choice<ButtonsId>[] =>
   garment.buttons && cut ? buttonsOn(cut, garment.buttons.offered, shape).map((id) => ({ id, name: BUTTON_NAMES[id] })) : [];
+
+/** Rows of buttons, by name, in the order given — see `buttonRowsOffered`. */
+export const buttonRowsFor = (rows: readonly ButtonRowsId[]): Choice<ButtonRowsId>[] => rows.map((id) => ({ id, name: BUTTON_ROW_NAMES[id] }));
 
 /** The belts a garment can be worn with, cut as it is: none on a cut that ties its own. */
 export const beltsFor = (garment: Garment, cut: string | undefined): Choice<BeltId>[] =>

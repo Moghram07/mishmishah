@@ -22,7 +22,7 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, drawnBodice, dressStripes, frontButtons, seamAt, skirtFor, skirtPlacketFor, sleeveEndPieces, tiePoint } from "./dressCut";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, drawnBodice, dressStripes, frontButtons, seamAt, skirtFor, placketButtons, skirtPlacketFor, sleeveEndPieces, tiePoint } from "./dressCut";
 import { tieArt as knottedTie } from "./tieArt";
 import type { Inlay } from "@/lib/garments/stripes";
 import type { Inlaid } from "../index";
@@ -906,8 +906,9 @@ const topFor = (choice: GarmentChoice): RegionArt => {
     : DEFAULT_CUT;
   const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
   const waist = choice.skirt?.waist ?? "natural";
-  /* buttoned to the waist or to the hem, the bodice wears the same placket */
-  const placket = bodiceFor(id, sleeve, waist, choice.buttons).placket !== undefined;
+  /* buttoned to the waist or to the hem, the bodice wears the same placket — in two rows, none */
+  const buttons = placketButtons(choice);
+  const placket = bodiceFor(id, sleeve, waist, buttons).placket !== undefined;
   /* a collar sewn on covers the neck edge's topstitch, and takes a keyhole's own closure off it — see `underCollar` in dressCut */
   const collared = Boolean(choice.opening);
   /* braid along the neck edge covers its topstitch too */
@@ -915,7 +916,7 @@ const topFor = (choice: GarmentChoice): RegionArt => {
   const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placket ? "|placket" : ""}${collared ? "|collared" : ""}${braided ? "|braided" : ""}`;
   let region = tops.get(key);
   if (!region) {
-    region = topRegion(id, sleeve, waist, placket ? choice.buttons : "none", collared, braided);
+    region = topRegion(id, sleeve, waist, placket ? buttons : "none", collared, braided);
     tops.set(key, region);
   }
   return region;
