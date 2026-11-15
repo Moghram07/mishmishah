@@ -25,7 +25,7 @@ import { necklinesForGarment } from "@/lib/data/necklines";
 import { skirtLengthsFor, skirtShapesFor, waistsFor } from "@/lib/data/skirts";
 import { legsFor } from "@/lib/data/legs";
 import { frontsFor } from "@/lib/data/fronts";
-import { beltsFor, buttonRowsFor, buttonsFor } from "@/lib/data/closures";
+import { beltsFor, bowPlacesFor, buttonRowsFor, buttonsFor } from "@/lib/data/closures";
 import {
   sleeveCuffById,
   sleeveCuffsFor,
@@ -66,6 +66,9 @@ import {
   buttonsOf,
   setBelt,
   beltOf,
+  bowAtOf,
+  bowPlacesOf,
+  setBowAt,
   setStripes,
   setTie,
   setTieAt,
@@ -114,6 +117,7 @@ import { cn } from "@/lib/utils/cn";
 import { FEATURES } from "@/lib/features";
 import type {
   BeltId,
+  BowAtId,
   BodyType,
   ButtonRowsId,
   ButtonsId,
@@ -556,6 +560,12 @@ export function FabricVisualizer() {
     setOutfit((o) => ({ ...o, worn: setBelt(o.worn, cuttingGarment.id, belt) }));
   };
 
+  /** Tie the sash of the dress being cut somewhere else — at the front, or at her side. */
+  const chooseBowAt = (at: BowAtId) => {
+    if (!cuttingGarment) return;
+    setOutfit((o) => ({ ...o, worn: setBowAt(o.worn, cuttingGarment.id, at) }));
+  };
+
   /** Wear the garment being cut open or closed at the front — resolved when read, see `frontOf`. */
   const chooseFront = (front: FrontId) => {
     if (!cuttingGarment) return;
@@ -809,6 +819,9 @@ export function FabricVisualizer() {
   const beltChoices = cuttingGarment ? beltsFor(cuttingGarment, cutNow) : [];
   const wornBelt = cuttingEntry ? beltOf(cuttingEntry.worn) : undefined;
   const showBelt = beltChoices.length > 1 && wornBelt !== undefined;
+  /* a sash's bow: where it is tied, on a cut that lets it be tied anywhere */
+  const bowPlaces = cuttingEntry ? bowPlacesFor(bowPlacesOf(cuttingEntry.worn)) : [];
+  const wornBowAt = cuttingEntry ? bowAtOf(cuttingEntry.worn) : undefined;
 
   if (!isOpen) return null;
 
@@ -1161,19 +1174,27 @@ export function FabricVisualizer() {
       ),
     });
   }
-  /* a belt on its waist seam, a dress's: none, its own cloth, or leather */
+  /* a belt on its waist seam, a dress's: none, its own cloth, leather, or a sash — and where a sash is tied */
   if (subject === "wardrobe" && showBelt && wornBelt) {
     extraRows.push({
       id: "belt",
       label: t("viz.belt"),
-      value: named(beltChoices, wornBelt),
+      value: [named(beltChoices, wornBelt), ...(bowPlaces.length > 1 && wornBowAt ? [named(bowPlaces, wornBowAt)] : [])].join(" · "),
       region: "bottom",
       body: (
-        <div role="group" aria-label={t("viz.belt")} className="flex flex-wrap gap-2">
-          {beltChoices.map((b) => (
-            <Chip key={b.id} label={pick(b.name)} active={wornBelt === b.id} onClick={() => chooseBelt(b.id)} />
-          ))}
-        </div>
+        <>
+          <div role="group" aria-label={t("viz.belt")} className="flex flex-wrap gap-2">
+            {beltChoices.map((b) => (
+              <Chip key={b.id} label={pick(b.name)} active={wornBelt === b.id} onClick={() => chooseBelt(b.id)} />
+            ))}
+          </div>
+          {bowPlaces.length > 1 && wornBowAt && (
+            <>
+              <RowHeading>{t("viz.bowAt")}</RowHeading>
+              <Segmented label={t("viz.bowAt")} choices={bowPlaces.map((c) => ({ id: c.id, label: pick(c.name) }))} active={wornBowAt} onPick={chooseBowAt} />
+            </>
+          )}
+        </>
       ),
     });
   }

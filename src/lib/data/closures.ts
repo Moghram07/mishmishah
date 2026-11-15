@@ -1,4 +1,4 @@
-import type { BeltId, ButtonRowsId, ButtonsId, Garment, SkirtShapeId } from "@/types";
+import type { BeltId, BowAtId, ButtonRowsId, ButtonsId, Garment, SkirtShapeId } from "@/types";
 import { beltsOn, buttonsOn } from "@/lib/garments/closures";
 
 /**
@@ -29,7 +29,19 @@ const BELT_NAMES: Record<BeltId, { en: string; ar: string }> = {
   self: { en: "Fabric", ar: "قماش" },
   brown: { en: "Brown leather", ar: "جلد بني" },
   black: { en: "Black leather", ar: "جلد أسود" },
+  /* soft bands tied in a belt bow, each in its own cloth — see `SASHES` */
+  sash: { en: "Sash", ar: "حزام فيونكة" },
+  ribbon: { en: "Ribbon", ar: "شريطة" },
 };
+
+/** Where a sash's bow is tied, by name — see `bowPlacesOf`. */
+const BOW_AT_NAMES: Record<BowAtId, { en: string; ar: string }> = {
+  front: { en: "Front", ar: "من الأمام" },
+  side: { en: "Side", ar: "من الجنب" },
+};
+
+/** The places a sash's bow can be tied, by name, in the order given. */
+export const bowPlacesFor = (places: readonly BowAtId[]): Choice<BowAtId>[] => places.map((id) => ({ id, name: BOW_AT_NAMES[id] }));
 
 /** The buttons a garment can be worn with, cut as it is: none where its cut cannot be buttoned, and only to the waist over a mermaid. */
 export const buttonsFor = (garment: Garment, cut: string | undefined, shape?: SkirtShapeId): Choice<ButtonsId>[] =>

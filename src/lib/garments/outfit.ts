@@ -1,5 +1,6 @@
 import type {
   BeltId,
+  BowAtId,
   BodyType,
   ButtonRowsId,
   ButtonsId,
@@ -40,7 +41,7 @@ import {
   collarsForGarment,
   defaultCollar,
 } from "@/lib/data/collars";
-import { DOUBLE_CUTS, beltsOn, buttonsOn } from "@/lib/garments/closures";
+import { DOUBLE_CUTS, SASHED_CUTS, beltsOn, buttonsOn, isSash } from "@/lib/garments/closures";
 import { NECKLINE_EDGED, NECKLINE_TIED } from "@/lib/garments/necklines";
 import {
   defaultSleeve,
@@ -292,7 +293,9 @@ export function setButtonRows(worn: WornGarment[], garmentId: string, rows: Butt
 
 /**
  * The belt a worn dress is worn with, resolved against what it offers and
- * the cut it is worn in — see `beltsOn`. `undefined` when it takes none.
+ * the cut it is worn in — see `beltsOn`: the one chosen while the cut takes
+ * it, else the one it arrives with, else the first the cut takes — a wrap's
+ * sash. `undefined` when it takes none.
  */
 export function beltOf(worn: WornGarment): BeltId | undefined {
   const garment = garmentById(worn.garmentId);
@@ -301,12 +304,38 @@ export function beltOf(worn: WornGarment): BeltId | undefined {
   const offered = cut ? beltsOn(cut, garment.belts.offered) : [];
   if (offered.length === 0) return undefined;
   const wanted = worn.belt ?? garment.belts.default;
-  return offered.includes(wanted) ? wanted : garment.belts.default;
+  return offered.includes(wanted) ? wanted : offered.includes(garment.belts.default) ? garment.belts.default : offered[0];
 }
 
 /** Belt a worn dress. The choice is resolved when it is read; a tie that has nowhere left to go comes off — see `tidy`. */
 export function setBelt(worn: WornGarment[], garmentId: string, belt: BeltId): WornGarment[] {
   return worn.map((w) => (w.garmentId === garmentId ? tidy({ ...w, belt }) : w));
+}
+
+/** Where a sash's bow can be tied, in the order one arrives at: the front first. */
+export const BOW_PLACES: readonly BowAtId[] = ["front", "side"];
+
+/**
+ * The places a worn dress's sash can be tied at: none without a sash; at her
+ * left side alone on a wrap, where its panels cross — see `SASHED_CUTS`; at
+ * the front or at her side on any other cut.
+ */
+export function bowPlacesOf(worn: WornGarment): BowAtId[] {
+  if (!isSash(beltOf(worn))) return [];
+  const cut = necklineOf(worn)?.cut;
+  return cut && (SASHED_CUTS as readonly string[]).includes(cut) ? ["side"] : [...BOW_PLACES];
+}
+
+/** Where a worn dress's sash is tied: where it was put, while that place is there; else the first place it has. `undefined` with no sash. */
+export function bowAtOf(worn: WornGarment): BowAtId | undefined {
+  const places = bowPlacesOf(worn);
+  if (!places.length) return undefined;
+  return worn.bowAt && places.includes(worn.bowAt) ? worn.bowAt : places[0];
+}
+
+/** Tie a worn dress's sash somewhere else. Resolved when it is read — see `bowAtOf`. */
+export function setBowAt(worn: WornGarment[], garmentId: string, at: BowAtId): WornGarment[] {
+  return worn.map((w) => (w.garmentId === garmentId ? { ...w, bowAt: at } : w));
 }
 
 /** Recut a worn pair of trousers' legs. The choice is resolved when it is read. */
@@ -427,7 +456,7 @@ export function stripeEdgesOf(worn: WornGarment): StripeEdgeId[] {
 /**
  * The parts of a worn garment cut from a cloth of their own, as it is worn:
  * its sleeves' ends, where its sleeves end in a piece — see `hasSleeveEnd`
- * — on a cut that keeps them; and a fabric belt.
+ * — on a cut that keeps them; and a fabric belt or a sash.
  */
 export function partsOf(worn: WornGarment): ("cuff" | "belt")[] {
   const garment = garmentById(worn.garmentId);
@@ -435,7 +464,8 @@ export function partsOf(worn: WornGarment): ("cuff" | "belt")[] {
   const out: ("cuff" | "belt")[] = [];
   const neckline = necklineOf(worn);
   if (parts.includes("cuff") && (!neckline || neckline.sleeves !== "none") && hasSleeveEnd(sleeveOf(worn))) out.push("cuff");
-  if (parts.includes("belt") && beltOf(worn) === "self") out.push("belt");
+  const belt = beltOf(worn);
+  if (parts.includes("belt") && (belt === "self" || isSash(belt))) out.push("belt");
   return out;
 }
 
@@ -559,7 +589,8 @@ export function setTieAt(worn: WornGarment[], garmentId: string, at: TieAtId): W
 
 /**
  * Everything a worn garment is cut to on its own — its neckline, collar
- * opening, sleeves, skirt, front, legs, buttons, belt, stripes and tie — as
+ * opening, sleeves, skirt, front, legs, buttons, belt and its bow, stripes
+ * and tie — as
  * its drawing takes it. What it is worn under is the stage's to add: a
  * jacket's hem it comes out from under, a top's it is tucked under.
  */
@@ -576,6 +607,8 @@ export function choiceOf(w: WornGarment): GarmentChoice {
   const tie = tieOf(w);
   const tieAt = tieAtOf(w);
   const rows = buttonRowsOf(w);
+  /* a sash, and where it is tied */
+  const bowAt = bowAtOf(w);
   return {
     neckline: necklineOf(w)?.cut,
     opening: collarOf(w)?.opening,
@@ -586,6 +619,7 @@ export function choiceOf(w: WornGarment): GarmentChoice {
     ...(buttons ? { buttons } : {}),
     ...(rows === "two" ? { buttonRows: "two" as const } : {}),
     ...(belt ? { belt } : {}),
+    ...(bowAt ? { bowAt } : {}),
     ...(stripes ? { stripes } : {}),
     ...(tie && tie !== "none" && tieAt ? { tie, tieAt } : {}),
   };

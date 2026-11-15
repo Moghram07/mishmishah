@@ -346,8 +346,15 @@ export type ButtonsId = "none" | "waist" | "hem";
 /** How many rows of buttons down a dress's front: one, on a placket down the centre, or two, either side of it — double-breasted, as photo 1's. */
 export type ButtonRowsId = "one" | "two";
 
-/** The belt a dress is worn with on its waist seam: none, one of its own cloth, or leather in brown or black. */
-export type BeltId = "none" | "self" | "brown" | "black";
+/**
+ * The belt a dress is worn with on its waist seam: none, one of its own
+ * cloth, leather in brown or black, or a sash «حزام فيونكة» — a soft band
+ * of cloth tied in a belt bow — or a narrower ribbon «شريطة». See `SASHES`.
+ */
+export type BeltId = "none" | "self" | "brown" | "black" | "sash" | "ribbon";
+
+/** Where a sash's bow is tied: at the front, or at her left side. */
+export type BowAtId = "front" | "side";
 
 /**
  * Stripes of braid in a second cloth: none, or one, two or three thin ones
@@ -824,6 +831,8 @@ export interface WornGarment {
   buttons?: ButtonsId;
   /** Its belt, if it takes one and one was chosen. */
   belt?: BeltId;
+  /** Where its sash is tied, as chosen — see `bowAtOf`, which resolves it against the places it has. */
+  bowAt?: BowAtId;
   /**
    * The collar sewn to it, if it accepts one and one was chosen. It belongs to
    * the garment rather than to the outfit, because that is where a collar is:

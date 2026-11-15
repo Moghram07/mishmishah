@@ -34,9 +34,9 @@ const SKIRTS: SkirtChoice[] = WAISTS.flatMap((waist) =>
 const placketOf = (cut: string, waist: WaistId) => frontButtons({ neckline: cut, skirt: { shape: "flared", length: "midi", waist }, buttons: "hem" });
 
 describe("buttons and belt: what is offered", () => {
-  it("offers buttons on the seven cuts with a straight centre front, the shirt-dress always buttoned, and a belt on every cut but the wrap", () => {
+  it("offers buttons on the seven cuts with a straight centre front, the shirt-dress always buttoned, and a belt on every cut — the wrap its sash alone", () => {
     expect(dress.buttons).toEqual({ offered: ["none", "waist", "hem"], default: "none", rows: ["one", "two"] });
-    expect(dress.belts).toEqual({ offered: ["none", "self", "brown", "black"], default: "none" });
+    expect(dress.belts).toEqual({ offered: ["none", "self", "brown", "black", "sash", "ribbon"], default: "none" });
     /* not the keyhole, which closes with its own button and loop; not the halter, wrap, cowl or one-shoulder */
     expect([...BUTTONED_CUTS].sort()).toEqual(["boat", "collared", "high", "off-shoulder", "round", "scoop", "square", "sweetheart", "v"]);
     for (const cut of ["keyhole", "halter", "wrap", "cowl", "asymmetrical"]) expect(buttonsFor(dress, cut), cut).toEqual([]);
@@ -50,10 +50,10 @@ describe("buttons and belt: what is offered", () => {
       const buttons = buttonsFor(dress, cut).map((b) => b.id);
       const want = cut === "collared" ? ["waist", "hem"] : BUTTONED_CUTS.includes(cut) ? ["none", "waist", "hem"] : [];
       expect(buttons, cut).toEqual(want);
-      expect(beltsFor(dress, cut).map((b) => b.id), cut).toEqual(cut === "wrap" ? [] : ["none", "self", "brown", "black"]);
+      expect(beltsFor(dress, cut).map((b) => b.id), cut).toEqual(cut === "wrap" ? ["sash"] : ["none", "self", "brown", "black", "sash", "ribbon"]);
     }
     expect(buttonsFor(dress, "round").map((b) => b.name.ar)).toEqual(["بدون", "حتى الخصر", "حتى الأسفل"]);
-    expect(beltsFor(dress, "round").map((b) => b.name.ar)).toEqual(["بدون", "قماش", "جلد بني", "جلد أسود"]);
+    expect(beltsFor(dress, "round").map((b) => b.name.ar)).toEqual(["بدون", "قماش", "جلد بني", "جلد أسود", "حزام فيونكة", "شريطة"]);
     /* nothing else takes either */
     for (const g of garments) if (g.id !== "female-dress") expect([g.buttons, g.belts], g.id).toEqual([undefined, undefined]);
   });
@@ -63,9 +63,10 @@ describe("buttons and belt: what is offered", () => {
     expect([buttonsOf(worn[0]), beltOf(worn[0])]).toEqual(["none", "none"]);
     worn = setBelt(setButtons(worn, dress.id, "hem"), dress.id, "brown");
     expect([buttonsOf(worn[0]), beltOf(worn[0])]).toEqual(["hem", "brown"]);
-    /* a wrap: no buttons, no belt — and both come back with a cut that takes them */
+    /* a wrap: no buttons, and its own sash for a belt whatever was chosen — and both come back with a cut that takes them */
     const wrap = setNeckline(worn, dress.id, "female-wrap-neckline");
-    expect([buttonsOf(wrap[0]), beltOf(wrap[0])]).toEqual([undefined, undefined]);
+    expect([buttonsOf(wrap[0]), beltOf(wrap[0])]).toEqual([undefined, "sash"]);
+    expect(beltOf(setNeckline(wrap, dress.id, "female-v-neckline")[0])).toBe("brown");
     const cowl = setNeckline(worn, dress.id, "female-cowl-neckline");
     expect([buttonsOf(cowl[0]), beltOf(cowl[0])]).toEqual([undefined, "brown"]);
     expect(buttonsOf(setNeckline(wrap, dress.id, "female-v-neckline")[0])).toBe("hem");
@@ -304,7 +305,7 @@ describe("the belt", () => {
   });
 
   it("is drawn over the dress behind its sleeves: in its own cloth, cut from elsewhere on the roll, or in brown or black leather; a buckle over it", () => {
-    const kinds: Exclude<BeltId, "none">[] = ["self", "brown", "black"];
+    const kinds: ("self" | "brown" | "black")[] = ["self", "brown", "black"];
     for (const belt of kinds) {
       const sleeve = { type: "bishop", length: "long" } as const;
       const regions = dressFront.cut!({ belt, sleeve, skirt: { shape: "flared", length: "midi", waist: "empire" } });
@@ -317,8 +318,9 @@ describe("the belt", () => {
       const trim = renderToStaticMarkup(<>{dressFront.cutTrim!({ belt })}</>);
       expect(trim, belt).toContain("#b8944c");
     }
-    /* no belt on a wrap, whatever is asked: its own tie is its belt */
-    expect(dressFront.cut!({ neckline: "wrap", belt: "brown" }).bottom).toBeUndefined();
+    /* no belt on a wrap, whatever is asked, but its own sash: no buckle */
+    expect(dressFront.cut!({ neckline: "wrap", belt: "brown" }).bottom!.over!.cloth).toBe("belt");
+    expect(dressFront.cut!({ neckline: "wrap", belt: "brown" }).bottom!.over!.solid).toBeUndefined();
     expect(renderToStaticMarkup(<>{dressFront.cutTrim!({ neckline: "wrap", belt: "brown" })}</>)).toBe("");
   });
 });

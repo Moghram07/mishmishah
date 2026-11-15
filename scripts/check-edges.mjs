@@ -284,9 +284,10 @@ function randomDress(pick, world) {
   if (buttons !== "none") choice.buttons = buttons;
   /* to the waist, on a cut that takes them, two rows or one */
   if (buttons === "waist" && world.doubleCuts.includes(cut) && pick([true, false])) choice.buttonRows = "two";
-  /* a belt the cut takes: none, in cloth, or leather */
+  /* a belt the cut takes: none, in cloth, leather, or a sash — tied at the front or her side; a wrap's at its side */
   const belt = pick(beltsOn(cut));
   if (belt && belt !== "none") choice.belt = belt;
+  if (world.isSash(belt)) choice.bowAt = pick(world.bowPlacesOn(cut));
   const opening = pick([null, ...openingsOn(cut)]);
   if (opening) choice.opening = opening;
   /* stripes along some of its edges: two edges that meet share the cloth between them when both are striped */
@@ -313,7 +314,7 @@ const axesOf = (c) => ({
   waist: c.skirt.waist,
   buttons: c.buttons ? `${c.buttons}${c.buttonRows === "two" ? "×2" : ""}` : "none",
   opening: c.opening ?? "none",
-  belt: c.belt ?? "none",
+  belt: c.belt ? `${c.belt}${c.bowAt ? `@${c.bowAt}` : ""}` : "none",
   stripes: c.stripes ? c.stripes.on.join("+") : "none",
   tie: c.tie ? `${c.tie}@${c.tieAt}` : "none",
 });
@@ -393,6 +394,10 @@ function undeclared(mod, choice, everyKey) {
     const declared = mod.dressPoints(spec.choiceFor(key)).filter(mine);
     if (!same(all.filter(mine), declared)) problems.push(`points of ${JSON.stringify(axesOf(choice))} differ from those of ${JSON.stringify(key)}`);
   }
+  /* and its sash, as tied: from which sash, where, and the skirt — a wrap's the same as any dress's at its side */
+  const sashKey = mod.SASH_SPEC.shapedBy(choice);
+  if (!same(mod.sashFor(choice), mod.sashFor(mod.SASH_SPEC.choiceFor(sashKey)))) problems.push(`the sash of ${JSON.stringify(axesOf(choice))} differs from that of ${JSON.stringify(sashKey)}`);
+  if (sashKey.sash && !everyKey.get("sash").has(JSON.stringify(sashKey))) problems.push(`the sash of ${JSON.stringify(axesOf(choice))} is ${JSON.stringify(sashKey)}, which \`every\` does not list`);
   return problems;
 }
 
@@ -418,6 +423,7 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
 
   /* layer 1 and 2: every edge each spec lists, and the collar's */
   const everyKey = new Map();
+  everyKey.set("sash", new Set(mod.SASH_SPEC.every(offer).map((k) => JSON.stringify(k))));
   const edges = [];
   for (const spec of mod.DRESS_EDGE_SPECS) {
     const keys = spec.every(offer);
@@ -528,21 +534,36 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
   const pointIssues = [];
   let points = 0;
   let tied = 0;
-  const checkTie = (where, style, at) => {
+  const checkTie = (where, style, at, kind = "neck", narrow = false) => {
     tied++;
-    const { parts, pieces } = tieAt(style, at);
+    const { parts, pieces } = tieAt(style, at, kind, narrow);
     const knot = ringsOf(parts.knot).flat();
     const [kx, ky] = [knot.map(([x]) => x), knot.map(([, y]) => y)];
     if (Math.abs((Math.min(...kx) + Math.max(...kx)) / 2 - at[0]) > ON_CENTRE) pointIssues.push(`${where}: the ${style}'s knot is off its point`);
     if (Math.min(...ky) > at[1] || Math.max(...ky) < at[1]) pointIssues.push(`${where}: the ${style}'s knot is not over its point`);
     const all = pieces.flatMap((d) => ringsOf(d).flat());
     const [ax, ay] = [all.map(([x]) => x), all.map(([, y]) => y)];
-    /* a knot and a necktie are mirrored about their point; a scarf's two tails are not alike, but fall one each side of it */
-    if (style === "scarf") {
-      if (Math.min(...ax) > at[0] - 15 || Math.max(...ax) < at[0] + 15) pointIssues.push(`${where}: the scarf's tails do not fall either side of its point`);
+    /*
+      A knot at the neck and a necktie are mirrored about their point. A
+      scarf's two tails are not alike, nor the belt bow's — see `bowAt` — but
+      fall one each side of it; the belt bow's loops are mirrored about it.
+    */
+    const bowed = style === "knot" && kind !== "neck";
+    if (style === "scarf" || bowed) {
+      if (Math.min(...ax) > at[0] - 15 || Math.max(...ax) < at[0] + 15) pointIssues.push(`${where}: the ${style}'s tails do not fall either side of its point`);
+      if (bowed) {
+        const lx = parts.loops.flatMap((d) => ringsOf(d).flat()).map(([x]) => x);
+        if (Math.abs((Math.min(...lx) + Math.max(...lx)) / 2 - at[0]) > ON_CENTRE) pointIssues.push(`${where}: the bow's loops are not mirrored about its point`);
+      }
     } else if (Math.abs((Math.min(...ax) + Math.max(...ax)) / 2 - at[0]) > ON_CENTRE) pointIssues.push(`${where}: the ${style} is not mirrored about its point`);
     if (Math.max(...ay) - at[1] < 20) pointIssues.push(`${where}: the ${style} does not hang down from its point`);
     if (Math.min(...ax) < 0 || Math.max(...ax) > 600 || Math.min(...ay) < 0 || Math.max(...ay) > 1000) pointIssues.push(`${where}: the ${style} runs off the canvas`);
+  };
+  /* whether a point lies on the dress at a waist: on the bodice, on the band round it, or on the skirt — each its own outline, since they overlap at the seam */
+  const dressRings = (skirt, band) => {
+    const body = ringsOf(mod.bodiceFor("round", undefined, skirt.waist).pieces[0]);
+    const sk = ringsOf(mod.skirtFor(undefined, skirt).path);
+    return (q) => insideRings(body, q) || insideRings(band, q) || insideRings(sk, q);
   };
   /* the opening's own middle at a row just above a point: halfway between the two edges either side of it */
   const middleAt = (outline, at, top) => {
@@ -583,20 +604,188 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
         /* the belt's end at her left, on that row: from its own outline */
         const ends = ring.flat().filter(([, y]) => Math.abs(y - belt.mid) < 1.5).map(([x]) => x);
         const end = Math.max(...ends);
-        if (end - pt.at[0] < 8 || pt.at[0] - belt.buckle.x < 25) pointIssues.push(`${where}: its side point is ${(end - pt.at[0]).toFixed(1)} units in from the belt's end, ${(pt.at[0] - belt.buckle.x).toFixed(1)} from its front`);
-        /* every tie knotted there lies on the dress — the belt, or the skirt below it — and off her arm, which is drawn again over the clothes */
-        const skirtRings = ringsOf(mod.skirtFor(undefined, choice.skirt).path);
-        for (const style of world.tieStyles.filter((s) => s !== "necktie")) {
-          const off = tieAt(style, pt.at).pieces.flatMap((d) => ringsOf(d).flat()).filter((q) => !(insideRings(ring, q) || insideRings(skirtRings, q)) || insideRings(world.armRings, q));
-          if (off.length) pointIssues.push(`${where}: the ${style} at its side runs off the dress or onto her arm at ${off[0].map((v) => v.toFixed(1)).join(",")} (${off.length} points)`);
-        }
+        if (end - pt.at[0] < 8 || pt.at[0] - belt.buckle.x < 20) pointIssues.push(`${where}: its side point is ${(end - pt.at[0]).toFixed(1)} units in from the belt's end, ${(pt.at[0] - belt.buckle.x).toFixed(1)} from its front`);
       }
-      for (const style of world.tieStyles.filter((s) => s !== "necktie")) checkTie(`${where} ${pt.kind}`, style, pt.at);
+      /*
+        Every tie knotted there, sized for the belt — the bow's tails spread
+        wider at the front of a full skirt than a narrow one — lies on the
+        dress, the bodice, the belt or the skirt below it, and off both her
+        arms, which are drawn again over the clothes: at the front its tails
+        spread toward her hands.
+      */
+      const narrow = mod.narrowSkirt(choice.skirt);
+      const onDress = dressRings(choice.skirt, ring);
+      for (const style of world.tieStyles.filter((s) => s !== "necktie")) {
+        const off = tieAt(style, pt.at, pt.kind, narrow).pieces.flatMap((d) => ringsOf(d).flat()).filter((q) => !onDress(q) || insideRings(world.armRings, q));
+        if (off.length) pointIssues.push(`${where}: the ${style} at its ${pt.kind === "belt-side" ? "side" : "front"} runs off the dress or onto her arm at ${off[0].map((v) => v.toFixed(1)).join(",")} (${off.length} points)`);
+      }
+      for (const style of world.tieStyles.filter((s) => s !== "necktie")) checkTie(`${where} ${pt.kind}`, style, pt.at, pt.kind, narrow);
     }
   }
+  /* a tie on a belt is sized for it: the knot is the belt bow, the scarf a sash's cloth; at the neck both are as they were */
+  const neckBow = tieAt("knot", [300, 300]).pieces.flatMap((d) => ringsOf(d).flat()).map(([x]) => x);
+  const beltBow = tieAt("knot", [300, 300], "belt-front").pieces.flatMap((d) => ringsOf(d).flat()).map(([x]) => x);
+  if (Math.max(...beltBow) - Math.min(...beltBow) < 2 * (Math.max(...neckBow) - Math.min(...neckBow))) pointIssues.push("the knot on a belt is not the belt bow: no wider than the knot at the neck");
+  report("points", `points: ${points} — necks and belts — each on its neckline's centre line or its belt; ${tied} ties, every style at every place, sized for it, centred, hanging down`, pointIssues);
+
+  /*
+    The sashes: a sash and a ribbon, tied at the front and at her side, over
+    every skirt — and the wrap's, which is the sash at its side. Each band
+    its cloth's width where nothing pulls it, centred where a belt is and
+    covering the seam, reaching a little past the dress at its ends; its knot
+    on its middle row, at the centre front or in from her left end; the
+    bow's loops reaching as far as declared, as tall as the cloth and a
+    little more, widening and drooping to a dimpled end; its two tails 30
+    to 40 cm along them, the longer in front crossing over the other under
+    the knot, spreading in an upside-down V as far as declared, twisting
+    halfway down, cut on a slant or, a ribbon's, notched in a V; and all of
+    it on the dress and off both her arms.
+  */
+  const sashIssues = [];
+  let sashCount = 0;
+  const cm = (u) => u * 0.19;
+  const box = (paths) => {
+    const pts = paths.flatMap((d) => ringsOf(d).flat());
+    const xs = pts.map(([x]) => x);
+    const ys = pts.map(([, y]) => y);
+    return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  };
+  /* where a row, or a column, crosses an outline */
+  const xsOn = (rings, y) => rings.flatMap((r) => r.flatMap((a, i) => { const b = r[(i + 1) % r.length]; return (a[1] - y) * (b[1] - y) < 0 ? [a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1])] : []; }));
+  const ysOn = (rings, x) => rings.flatMap((r) => r.flatMap((a, i) => { const b = r[(i + 1) % r.length]; return (a[0] - x) * (b[0] - x) < 0 ? [a[1] + ((x - a[0]) * (b[1] - a[1])) / (b[0] - a[0])] : []; }));
+  const lengthOf = (l) => l.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - l[i][0], p[1] - l[i][1]), 0);
+  /* how far from vertical a line runs, in degrees, to the right positive: from its start to `upTo` of the way along */
+  const angleOf = (l, upTo = 1) => { const b = l[Math.round(upTo * (l.length - 1))]; return (Math.atan2(b[0] - l[0][0], b[1] - l[0][1]) * 180) / Math.PI; };
+  for (const key of mod.SASH_SPEC.every(offer)) {
+    const choice = mod.SASH_SPEC.choiceFor(key);
+    const sash = mod.sashFor(choice);
+    const where = `${key.sash} · ${key.place} · ${key.skirt.shape} ${key.skirt.length} ${key.skirt.waist}`;
+    sashCount++;
+    if (!sash || sash.kind !== key.sash || sash.place !== key.place) {
+      sashIssues.push(`${where}: no such sash tied there`);
+      continue;
+    }
+    const belt = mod.beltFor(choice.skirt);
+    const band = ringsOf(sash.path);
+    const w = world.sashWidth(key.sash);
+    if (Math.abs(sash.bottom - sash.top - w) > 0.01) sashIssues.push(`${where}: the band is ${cm(sash.bottom - sash.top).toFixed(1)} cm deep, not its cloth's ${cm(w).toFixed(1)}`);
+    if (Math.abs(sash.mid - belt.mid) > 0.01) sashIssues.push(`${where}: the band is centred at y ${sash.mid}, not where a belt is`);
+    const sk = mod.skirtFor(undefined, choice.skirt);
+    if (!(sash.top < sk.waistY && sash.bottom > sk.waistY + 3)) sashIssues.push(`${where}: the band does not cover the seam`);
+    /* its ends where the belt's are, row for row where they share one — a little past the dress, as the belt's are */
+    for (const [x, y] of sash.left) {
+      const row = belt.left.find(([, by]) => Math.abs(by - y) < 0.01);
+      if (row && Math.abs(row[0] - x) > 0.01) sashIssues.push(`${where}: at y ${y} the band ends at x ${x.toFixed(1)}, the belt at ${row[0].toFixed(1)}`);
+    }
+    /* far from the knot the band is its full depth; at the knot it is pinched in to the knot's height */
+    const depthAt = (x) => {
+      const ys = band.flatMap((r) => r.flatMap((a, i) => { const b = r[(i + 1) % r.length]; return (a[0] - x) * (b[0] - x) < 0 ? [a[1] + ((x - a[0]) * (b[1] - a[1])) / (b[0] - a[0])] : []; }));
+      return ys.length >= 2 ? Math.max(...ys) - Math.min(...ys) : NaN;
+    };
+    const far = sash.knot[0] - 1.6 * w;
+    if (depthAt(far) < w - 1.2) sashIssues.push(`${where}: the band is ${cm(depthAt(far)).toFixed(2)} cm deep ${cm(1.6 * w).toFixed(0)} cm from the knot, not nearly its full ${cm(w).toFixed(1)}`);
+    const atKnot = depthAt(sash.knot[0]);
+    if (!(atKnot < w - 1 && atKnot > 0.6 * w)) sashIssues.push(`${where}: the band is ${cm(atKnot).toFixed(2)} cm deep under the knot — not gathered in`);
+    /* the knot */
+    const [kx, ky] = sash.knot;
+    if (Math.abs(ky - sash.mid) > 0.01) sashIssues.push(`${where}: the knot is off the band's middle row`);
+    if (!insideRings(band, sash.knot)) sashIssues.push(`${where}: the knot is off the band`);
+    const end = Math.max(...band.flat().filter(([, y]) => Math.abs(y - sash.mid) < 1.5).map(([x]) => x));
+    if (key.place === "front" && Math.abs(kx - belt.buckle.x) > ON_CENTRE) sashIssues.push(`${where}: tied at the front, its knot is ${(kx - belt.buckle.x).toFixed(1)} off the centre front`);
+    if (key.place === "side" && (end - kx < 8 || kx - belt.buckle.x < 20)) sashIssues.push(`${where}: tied at her side, its knot is ${(end - kx).toFixed(1)} units in from the band's end, ${(kx - belt.buckle.x).toFixed(1)} from the front`);
+    /* the bow: in the band's width; its loops' reach; its tails */
+    const { parts, reach, width } = sash.bow;
+    if (width !== w) sashIssues.push(`${where}: the bow is tied in cloth ${cm(width).toFixed(1)} cm wide, the band ${cm(w).toFixed(1)}`);
+    const loops = box(parts.loops);
+    const span = Math.max(loops.x1 - kx, kx - loops.x0);
+    if (Math.abs(span - reach) > 1 || Math.abs(reach - world.bowReach(key.place)) > 0.01) sashIssues.push(`${where}: its loops reach ${cm(span).toFixed(1)} cm from the knot, declared ${cm(reach).toFixed(1)}`);
+    if (Math.abs(loops.x1 - kx - (kx - loops.x0)) > ON_CENTRE) sashIssues.push(`${where}: its loops are not mirrored about the knot`);
+    const tall = loops.y1 - loops.y0;
+    if (tall < 1.1 * w || tall > 1.45 * w) sashIssues.push(`${where}: its loops are ${cm(tall).toFixed(1)} cm tall, the cloth ${cm(w).toFixed(1)} wide`);
+    /* each loop soft, not a box: widening to its outer end, drooping there, its end dimpled where the cloth folds back */
+    const loopRings = ringsOf(parts.loops[0]);
+    const column = (x) => {
+      const ys = ysOn(loopRings, x);
+      return ys.length >= 2 ? { span: Math.max(...ys) - Math.min(...ys), mid: (Math.max(...ys) + Math.min(...ys)) / 2 } : { span: NaN, mid: NaN };
+    };
+    const [nearKnot, nearEnd] = [column(kx - 0.4 * w), column(kx - reach + 0.25 * w)];
+    if (!(nearEnd.span > 1.4 * nearKnot.span)) sashIssues.push(`${where}: its loops do not widen toward their ends (${cm(nearKnot.span).toFixed(1)} to ${cm(nearEnd.span).toFixed(1)} cm)`);
+    if (!(nearEnd.mid > ky + 1)) sashIssues.push(`${where}: its loops do not droop at their ends`);
+    const tips = [];
+    for (let y = loops.y0 + 0.5; y < loops.y1 - 0.5; y += 0.5) {
+      const xs = xsOn(loopRings, y);
+      if (xs.length) tips.push(Math.min(...xs));
+    }
+    if (!tips.some((x, i) => x >= Math.min(...tips.slice(0, i + 1)) + 0.04 * w && x >= Math.min(...tips.slice(i)) + 0.04 * w)) sashIssues.push(`${where}: its loops' ends are not dimpled where the cloth folds back`);
+    /* its tails: 30 to 40 cm along them, the longer in front, crossing over the other under the knot and spreading apart in an upside-down V */
+    const { tailLines, ends } = sash.bow;
+    const [back, front] = tailLines;
+    for (const [name, l] of [["back", back], ["front", front]]) {
+      const len = cm(lengthOf(l));
+      if (len < 30 || len > 40) sashIssues.push(`${where}: its ${name} tail is ${len.toFixed(1)} cm long`);
+    }
+    const longer = cm(lengthOf(front) - lengthOf(back));
+    if (longer < 2 || longer > 6) sashIssues.push(`${where}: its front tail is ${longer.toFixed(1)} cm longer than the other`);
+    if (Math.sign(front[0][0] - back[0][0]) !== -Math.sign(front[front.length - 1][0] - back[back.length - 1][0])) sashIssues.push(`${where}: its tails do not cross under the knot`);
+    if (Math.sign(angleOf(back)) !== -Math.sign(angleOf(front))) sashIssues.push(`${where}: its tails do not spread apart, one each side`);
+    if (key.place === "front") {
+      /* about 25° from vertical over a full skirt, about 20° over a narrow one */
+      const least = mod.narrowSkirt(choice.skirt) ? 18 : 23;
+      for (const [name, l] of [["back", back], ["front", front]]) {
+        const a = Math.abs(angleOf(l));
+        if (a < least || a > 30) sashIssues.push(`${where}: its ${name} tail falls ${a.toFixed(1)}° from vertical`);
+      }
+    } else {
+      /* at her side: the one falling in over the skirt about 25°; the one falling out leaving it near 20° and easing toward vertical */
+      const [inward, outward] = angleOf(back) < 0 ? [back, front] : [front, back];
+      const a = Math.abs(angleOf(inward));
+      if (a < 22 || a > 30) sashIssues.push(`${where}: its tail falling in over the skirt falls ${a.toFixed(1)}° from vertical`);
+      if (Math.abs(angleOf(outward, 0.25)) < 17 || Math.abs(angleOf(outward)) < 10) sashIssues.push(`${where}: its tail falling out toward her side hangs straight down`);
+    }
+    /* each narrowing where it twists halfway down, and ending cut on a slant, the outer corner lower — or, a ribbon's, notched in a V */
+    if (ends !== (w < 20 ? "notch" : "slant")) sashIssues.push(`${where}: its tails' ends are ${ends === "notch" ? "notched" : "cut on a slant"}`);
+    tailLines.forEach((l, k) => {
+      const name = k ? "front" : "back";
+      const rings = ringsOf(parts.tails[k]);
+      const across = (t) => {
+        const xs = xsOn(rings, l[Math.round(t * (l.length - 1))][1]);
+        return Math.max(...xs) - Math.min(...xs);
+      };
+      if (!(across(0.5) < 0.88 * Math.min(across(0.3), across(0.72)))) sashIssues.push(`${where}: its ${name} tail does not twist halfway down`);
+      const e = l[l.length - 1];
+      const [ax, ay] = [e[0] - l[l.length - 2][0], e[1] - l[l.length - 2][1]];
+      const al = Math.hypot(ax, ay);
+      const along = [ax / al, ay / al];
+      const dir = Math.sign(e[0] - l[0][0]);
+      const out = -along[1] * dir >= 0 ? [-along[1], along[0]] : [along[1], -along[0]];
+      const pts = rings.flat().map(([x, y]) => ({ down: (x - e[0]) * along[0] + (y - e[1]) * along[1], across: (x - e[0]) * out[0] + (y - e[1]) * out[1] }));
+      const lowest = (keep) => Math.max(...pts.filter(keep).map((p) => p.down));
+      if (ends === "slant" && !(lowest((p) => p.across > 0.3 * w) - lowest((p) => p.across < -0.3 * w) > 0.2 * w)) sashIssues.push(`${where}: its ${name} tail's end is not cut on a slant, the outer corner lower`);
+      if (ends === "notch" && !(lowest((p) => Math.abs(p.across) < 0.08 * w) < -0.3 * w && lowest((p) => p.across > 0.35 * w) > -0.1 * w && lowest((p) => p.across < -0.35 * w) > -0.1 * w)) sashIssues.push(`${where}: its ${name} tail's end is not notched in a V`);
+    });
+    /* the band gathered where the bow pulls it: folds on the band, drawing in toward the knot */
+    if (sash.gathers.length < 3) sashIssues.push(`${where}: the band is not gathered where the bow pulls it`);
+    for (const [ridge] of sash.gathers) {
+      if (ridge.some((q) => !insideRings(band, q))) sashIssues.push(`${where}: a gather runs off the band`);
+      const [farQ, , nearQ] = ridge;
+      if (!(Math.abs(nearQ[0] - kx) < Math.abs(farQ[0] - kx)) || Math.abs(nearQ[1] - sash.mid) > Math.abs(farQ[1] - sash.mid) + 1e-9) sashIssues.push(`${where}: a gather does not draw in toward the knot`);
+    }
+    /* all of it on the dress — the bodice, the band, the skirt — and off both her arms */
+    const onDress = dressRings(choice.skirt, band);
+    const off = sash.bow.pieces.flatMap((d) => ringsOf(d).flat()).filter((q) => !onDress(q) || insideRings(world.armRings, q));
+    if (off.length) sashIssues.push(`${where}: the bow runs off the dress or onto her arm at ${off[0].map((v) => v.toFixed(1)).join(",")} (${off.length} points)`);
+  }
+  /* the wrap: its sash, at its side, whatever belt is asked for; the same sash any dress wears there */
+  for (const waist of offer.skirt.waists) {
+    const skirt = { ...mod.DEFAULT_SKIRT, waist };
+    const wrap = mod.sashFor({ neckline: "wrap", skirt, belt: "brown", bowAt: "front" });
+    if (!wrap || wrap.kind !== "sash" || wrap.place !== "side") sashIssues.push(`wrap · ${waist}: not tied with its sash at its side`);
+    else if (wrap !== mod.sashOn(skirt, "sash", "side")) sashIssues.push(`wrap · ${waist}: its sash is not the sash tied at the side`);
+    if (mod.beltWorn({ neckline: "wrap", skirt, belt: "self" }) !== "sash") sashIssues.push(`wrap · ${waist}: wears a belt other than its sash`);
+  }
+  report("sashes", `sashes: ${sashCount} — a sash and a ribbon, front and side, over every skirt — each its cloth's width, gathered under the knot, its bow's soft loops and crossing tails in an upside-down V as declared, on the dress and off her arms; the wrap's at its side`, sashIssues);
   const vPoint = mod.dressPoints({ neckline: "v" }).find((p) => p.kind === "neck");
   if (!vPoint || !same(collarMod.TIE_AT, vPoint.at)) pointIssues.push("the sailor collar's tie is not knotted at the V's neck point");
-  report("points", `points: ${points} — necks and belts — each on its neckline's centre line or its belt; ${tied} ties, every style at every place, centred, hanging down`, pointIssues);
 
   /* layer 3: whole outfits — random ones, then every pair */
   const pick = pickOf(rng(SEED));

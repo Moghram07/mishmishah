@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { BeltId, ButtonsId, FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice, StripeEdgeId, StripesId, TieAtId, TieId } from "@/types";
+import type { BeltId, BowAtId, ButtonsId, FabricRegionId, FrontId, LegId, OpeningShape, SkirtChoice, SleeveChoice, StripeEdgeId, StripesId, TieAtId, TieId } from "@/types";
 import type { Uid } from "@/lib/garments/shading";
 import type { Encloses } from "@/lib/garments/sleeves";
 import type { Tuck } from "@/lib/garments/fit";
@@ -183,8 +183,9 @@ export interface GarmentChoice {
   leg?: LegId;
   /** How far a dress is buttoned down its front — see `lib/garments/closures.ts`. */
   buttons?: ButtonsId;
-  /** The belt worn on a dress's waist seam. */
+  /** The belt worn on a dress's waist seam — and, for a sash, where its bow is tied: see `sashOn`. */
   belt?: BeltId;
+  bowAt?: BowAtId;
   /**
    * Its stripes, if it wears any: how many, and the edges they are sewn
    * along — see `StripeEdgeId`.

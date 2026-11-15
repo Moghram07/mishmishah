@@ -27,15 +27,19 @@ import {
   BUTTON_PITCH,
   BUTTON_R,
   BUTTON_SLIDE,
-  BELTLESS_CUTS,
   DOUBLE,
   DOUBLE_CUTS,
   OWN_PLACKET,
   PANEL_HALF,
   PLACKET_HALF,
   PLACKET_STITCH,
+  NARROW_SKIRTS,
+  SASHED_CUTS,
+  SASHES,
+  isSash,
+  type SashId,
 } from "../../closures.ts";
-import type { ButtonsId, CuffId, SkirtChoice, StripeEdgeId, WaistId } from "@/types";
+import type { BeltId, BowAtId, ButtonsId, CuffId, SkirtChoice, StripeEdgeId, WaistId } from "@/types";
 import type { GarmentChoice } from "../index.ts";
 import { mirror as mirrorPath } from "../../collar.ts";
 import { BAND_STRIPE_ROOM, STRIPES, cornersOf, densify, insideRings, ringsOf, stripesAlong, type Inlay } from "../../stripes.ts";
@@ -53,7 +57,7 @@ import {
   type OffShoulderBand,
 } from "../../necklines.ts";
 import { NECK_BASE_SEAM, NECK_LEFT, NECK_RIGHT, SHOULDER_EASE, TIP_LEFT } from "./yoke.ts";
-import { tieAt } from "./ties.ts";
+import { bowAt, tieAt, type BowPieces, type FoldSpec } from "./ties.ts";
 import { bodies } from "../../../mannequin/bodies.ts";
 
 /**
@@ -999,18 +1003,10 @@ const cutOf = (neckline?: string): NecklineId =>
  * under it. Its buckle is at her centre front.
  */
 export function beltFor(skirt: SkirtChoice = DEFAULT_SKIRT) {
-  const sk = skirtFor(undefined, skirt);
   const seam = seamAt(skirt.waist);
   const mid = seam - BELT_ABOVE_SEAM;
   const [top, bottom] = [mid - BELT_WIDTH / 2, mid + BELT_WIDTH / 2];
-  const d = draft("female");
-  const polys = flatten(sk.path);
-  /* the bodice as drawn, its body piece: it stands a little further out than her side plus its ease under the bust */
-  const body = flatten(bodiceFor("round", DEFAULT_SLEEVE, skirt.waist).pieces[0]);
-  const leftAt = (y: number) => {
-    const x = [y <= seam ? Math.min(d.sideAt(y, EASE), spanAt(body, y)?.[0] ?? Infinity) : Infinity, spanAt(polys, y)?.[0] ?? Infinity];
-    return Math.min(...x) - BELT_OUT;
-  };
+  const leftAt = dressSideAt(skirt);
   const rows: number[] = [];
   for (let y = top; y < bottom; y += 2) rows.push(y);
   rows.push(bottom);
@@ -1027,6 +1023,156 @@ export function beltFor(skirt: SkirtChoice = DEFAULT_SKIRT) {
     buckle: { x: FRONT_X, y: mid, ...BUCKLE },
   };
 }
+
+/**
+ * Where a band round her waist ends at her left, row by row: `BELT_OUT`
+ * past the dress — past the bodice above the seam, as drawn, and the skirt
+ * below it, whichever comes further out — so it lies over the dress rather
+ * than in it, and the skirt comes out from under it.
+ */
+function dressSideAt(skirt: SkirtChoice): (y: number) => number {
+  const sk = skirtFor(undefined, skirt);
+  const seam = seamAt(skirt.waist);
+  const d = draft("female");
+  const polys = flatten(sk.path);
+  /* the bodice as drawn, its body piece: it stands a little further out than her side plus its ease under the bust */
+  const body = flatten(bodiceFor("round", DEFAULT_SLEEVE, skirt.waist).pieces[0]);
+  return (y: number) => {
+    const x = [y <= seam ? Math.min(d.sideAt(y, EASE), spanAt(body, y)?.[0] ?? Infinity) : Infinity, spanAt(polys, y)?.[0] ?? Infinity];
+    return Math.min(...x) - BELT_OUT;
+  };
+}
+
+/* ---------------------------------------------------------------- sash */
+
+/**
+ * The sash a choice wears, if it wears one: a wrap's own, always — see
+ * `SASHED_CUTS` — else the sash or the ribbon chosen for its belt.
+ */
+export const sashOf = (choice: GarmentChoice): SashId | undefined =>
+  SASHED_CUTS.includes(cutOf(choice.neckline)) ? "sash" : isSash(choice.belt) ? choice.belt : undefined;
+
+/** Where a choice's sash is tied: a wrap's at her left side, where its panels cross; else as chosen, at the front to begin with. */
+export const bowPlaceOf = (choice: GarmentChoice): BowAtId => (SASHED_CUTS.includes(cutOf(choice.neckline)) ? "side" : (choice.bowAt ?? "front"));
+
+/** The belt a choice wears, if it wears one its cut takes: a wrap its sash, whatever is asked; any other cut what was chosen. */
+export const beltWorn = (choice: GarmentChoice): Exclude<BeltId, "none"> | undefined =>
+  sashOf(choice) ?? (choice.belt && choice.belt !== "none" ? choice.belt : undefined);
+
+/** A sash round the waist, tied in a belt bow — see `sashOn`. */
+export interface Sash {
+  kind: SashId;
+  /** The cloth's width, and so the band's where nothing pulls it. */
+  width: number;
+  /** The band, round her over the waist seam, pinched toward the knot. */
+  path: string;
+  top: number;
+  bottom: number;
+  mid: number;
+  /** Its left edge, row by row, top to bottom — mirrored for its right. */
+  left: Pt[];
+  /** The knot, on the band's middle row: at the centre front, or at her left side. */
+  knot: Pt;
+  place: BowAtId;
+  bow: BowPieces;
+  /** The folds the bow pulls into the band, either side of the knot — see `sashOn`. */
+  gathers: FoldSpec[];
+}
+
+/** How far past its loops' ends the bow pulls the band, as a share of its width: where its gathers start. */
+const SASH_PULL = 0.7;
+/** How far either side of the knot the band's edges draw in, at most, as a share of its width. */
+const SASH_PINCH = 2;
+
+/**
+ * A sash «حزام فيونكة» or a ribbon «شريطة» round the waist, as photo 2's and photo 4's:
+ * a soft band of cloth `SASHES[kind].width` deep, centred where a belt is,
+ * reaching `BELT_OUT` past the dress at its sides as a belt does, and tied
+ * in the belt bow — see `bowAt` — at the centre front or at her left side,
+ * where every tie on the belt is knotted — see `beltSideAt`. Where the bow
+ * pulls it the band is gathered: three soft folds a side run along it,
+ * drawing in toward the knot, from `SASH_PULL` widths past the loops' ends
+ * — so they show beyond the loops — to under the knot; and its edges draw in
+ * to the knot's height over the same stretch, but no further out than
+ * `SASH_PINCH` widths, so a narrow ribbon is drawn in only under its loops.
+ * The wrap's sash is the same sash at her side, in the width of a sash.
+ */
+export function sashOn(skirt: SkirtChoice, kind: SashId, place: BowAtId): Sash {
+  const key = `${skirtKey(skirt)}|${kind}|${place}`;
+  let cached = sashes.get(key);
+  if (cached) return cached;
+  const w = SASHES[kind].width;
+  const b = beltFor(skirt);
+  const { mid } = b;
+  const [top, bottom] = [mid - w / 2, mid + w / 2];
+  const kx = place === "front" ? FRONT_X : beltSideAt(skirt, b, beltEndAt(b));
+  const knot: Pt = [kx, mid];
+  const bow = bowAt(knot, place, w, narrowSkirt(skirt));
+  /* the band's edges drawn in to the knot's height, smoothly, from where the bow's pull starts — at most SASH_PINCH widths out */
+  const kh = 0.78 * w;
+  const pull = bow.reach + SASH_PULL * w;
+  const zone = Math.min(pull, SASH_PINCH * w);
+  const pinch = (x: number) => {
+    const t = Math.abs(x - kx) / zone;
+    return t >= 1 ? 0 : ((w - kh) / 2) * Math.cos((Math.PI * t) / 2) ** 2;
+  };
+  const sideAt = dressSideAt(skirt);
+  const rows: number[] = [];
+  for (let y = top; y < bottom; y += 2) rows.push(y);
+  rows.push(bottom);
+  const left: Pt[] = rows.map((y) => [sideAt(y), y]);
+  const right: Pt[] = left.map(([x, y]) => [600 - x, y] as Pt);
+  /*
+    Its gathers: either side of the knot, three folds along the band, from
+    where the pull starts — inside the band's end — in to under the knot,
+    drawing in toward its middle row as the band does; deepest at the knot.
+  */
+  const [lo, hi] = [sideAt(mid), 600 - sideAt(mid)];
+  const s = w / SASHES.sash.width;
+  const gathers: FoldSpec[] = ([-1, 1] as const).flatMap((side) => {
+    const far = side < 0 ? Math.max(lo + 3, kx - pull) : Math.min(hi - 3, kx + pull);
+    const near = kx + side * 0.3 * w;
+    if (Math.abs(far - near) < 6) return [];
+    return [-1, 0, 1].flatMap((j): FoldSpec[] => {
+      const ridge: Pt[] = [
+        [far, mid + j * 0.27 * w],
+        [(far + near) / 2, mid + j * 0.27 * ((w + kh) / 2)],
+        [near, mid + j * 0.27 * 0.8 * kh],
+      ];
+      /* a crisp crest over a broad soft turn, as every fold of the bow's — see `bowAt` */
+      return [
+        [ridge, [0.45, 0.7], 0.28, 0.16, 0.8],
+        [ridge, [0.5 * s, 0.12 * w], 0.12, 0.08, 2],
+      ];
+    });
+  });
+  /* along the top and the bottom, a point every four units, each on the pinched edge */
+  const along = (x0: number, x1: number, y: number, sign: 1 | -1): Pt[] => {
+    const n = Math.max(1, Math.ceil(Math.abs(x1 - x0) / 4));
+    return Array.from({ length: n + 1 }, (_, i) => {
+      const x = x0 + ((x1 - x0) * i) / n;
+      return [x, y + sign * pinch(x)] as Pt;
+    });
+  };
+  /* round it: down her right end, along the bottom, up her left end, back along the top */
+  const bottomEdge = along(left[left.length - 1][0], right[right.length - 1][0], bottom, -1).slice(1, -1);
+  const topEdge = along(right[0][0], left[0][0], top, 1).slice(1, -1);
+  const ring: Pt[] = [...left, ...bottomEdge, ...[...right].reverse(), ...topEdge];
+  const path = `M${ring.map(([x, y]) => `${x.toFixed(2)} ${y.toFixed(2)}`).join(" L")} Z`;
+  cached = { kind, width: w, path, top, bottom, mid, left, knot, place, bow, gathers };
+  sashes.set(key, cached);
+  return cached;
+}
+const sashes = new Map<string, Sash>();
+
+/** Whether a skirt is a narrow one — a pencil, a mermaid — which a bow's tails at the front spread less over: see `NARROW_SKIRTS`. */
+export const narrowSkirt = (skirt: SkirtChoice): boolean => NARROW_SKIRTS.includes(skirt.shape);
+
+/** The sash a choice wears, as it is tied — see `sashOf`, `bowPlaceOf` — or none. */
+export const sashFor = (choice: GarmentChoice): Sash | null => {
+  const kind = sashOf(choice);
+  return kind ? sashOn({ ...DEFAULT_SKIRT, ...choice.skirt }, kind, bowPlaceOf(choice)) : null;
+};
 
 /** Every cut in the sleeve the dress arrives in — what the checker walks first. */
 export const BODICES: Record<NecklineId, Bodice> = Object.fromEntries(
@@ -1178,8 +1324,8 @@ export function dressEdges(choice: GarmentChoice): Edge[] {
   return finished([...necklineEdges(b, choice), ...sleeveEdges(b, choice.sleeve ?? DEFAULT_SLEEVE), hemEdge(choice), ...beltEdges(choice)], choice.stripes?.on ?? []);
 }
 
-/** Whether a choice wears a fabric belt: a belt in cloth, on a cut that takes one — see `BELTLESS_CUTS`. */
-export const fabricBelt = (choice: GarmentChoice): boolean => choice.belt === "self" && !BELTLESS_CUTS.includes(cutOf(choice.neckline));
+/** Whether a choice wears a fabric belt: a belt in cloth, on a cut that takes one — see `beltWorn`. */
+export const fabricBelt = (choice: GarmentChoice): boolean => beltWorn(choice) === "self";
 
 /**
  * Along a fabric belt, at its foot: its whole width to lay in, braid centred
@@ -1503,22 +1649,48 @@ const ARM_LEFT: Pt[][] = (["forearm", "hand"] as const).flatMap((z) =>
 );
 const armInnerAt = (y: number): number => Math.min(...ARM_LEFT.map((ring) => spanAt([ring], y)?.[0] ?? Infinity));
 
-/** Every tie a belt is tied with, at the origin, as points: what has to fit where it is knotted — see `beltSideAt`. */
-const BELT_TIES: Pt[] = (["knot", "scarf"] as const).flatMap((s) => tieAt(s, [0, 0]).pieces.flatMap((d) => flatten(d).flat()));
+/**
+ * Every tie a belt is tied with at its side, at the origin, as points: what
+ * has to fit where it is knotted — see `beltSideAt`. The belt bow, which the
+ * knot is there and every sash is tied in, and the scarf as it is on a belt.
+ */
+const BELT_TIES: Pt[] = (["knot", "scarf"] as const).flatMap((s) => tieAt(s, [0, 0], "belt-side").pieces.flatMap((d) => flatten(d).flat()));
+
+/** A belt's end at her left, on its middle row: its left end, mirrored. */
+function beltEndAt(b: ReturnType<typeof beltFor>): number {
+  const i = Math.max(1, b.left.findIndex(([, y]) => y >= b.mid));
+  const [p, q] = [b.left[i - 1], b.left[i]];
+  return 600 - (p[0] + ((b.mid - p[1]) * (q[0] - p[0])) / (q[1] - p[1] || 1));
+}
 
 /**
- * Where a tie is knotted at a fabric belt's side: `BELT_SIDE_IN` in from
- * its end at her left — or further in, as far as every tie the belt takes
- * then fits: on the belt, inside the skirt's side below it, and clear of her
- * arm beside her hip, `TIE_CLEAR` from each, so no tail runs off the dress
- * or under her arm.
+ * Where a tie is knotted at a belt's side — a fabric belt's, a sash's:
+ * `BELT_SIDE_IN` in from its end at her left — or further in, as far as
+ * every tie the belt takes then fits: on the belt, inside the bodice's side
+ * above it and the skirt's below it, and clear of her arm beside her hip,
+ * `TIE_CLEAR` from each, so no loop or tail runs off the dress or under her
+ * arm. The belt bow's loop reaches `BOW_REACH.side` from the knot, so the
+ * knot sits that far in from the end, about 7 cm, as photo 2's does.
  */
 function beltSideAt(skirt: SkirtChoice, b: ReturnType<typeof beltFor>, end: number): number {
+  /* the skirt alone decides it — its belt and its end are its — so it is worked out once a skirt */
+  const key = skirtKey(skirt);
+  const known = sidePoints.get(key);
+  if (known !== undefined) return known;
+  const x = fitSide(skirt, b, end);
+  sidePoints.set(key, x);
+  return x;
+}
+const sidePoints = new Map<string, number>();
+
+/** The fitting `beltSideAt` does, for a skirt it has not seen. */
+function fitSide(skirt: SkirtChoice, b: ReturnType<typeof beltFor>, end: number): number {
   const sk = flattened(skirtFor(undefined, skirt).path);
+  const body = flattened(bodiceFor("round", DEFAULT_SLEEVE, skirt.waist).pieces[0]);
   let x = end - BELT_SIDE_IN;
   for (const [px, py] of BELT_TIES) {
     const y = b.mid + py;
-    const side = y <= b.bottom ? end : Math.min(spanAt(sk, y)?.[1] ?? end, armInnerAt(y));
+    const side = y < b.top ? (spanAt(body, y)?.[1] ?? end) : y <= b.bottom ? end : Math.min(spanAt(sk, y)?.[1] ?? end, armInnerAt(y));
     x = Math.min(x, side - TIE_CLEAR - px);
   }
   return x;
@@ -1560,14 +1732,10 @@ export function dressPoints(choice: GarmentChoice): EdgePoint[] {
   const neck: EdgePoint[] = at ? [{ kind: "neck", at, down: [0, 1] }] : [];
   if (!fabricBelt(choice)) return neck;
   const b = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
-  /* the belt's end at her left, on its middle row: its left end, mirrored */
-  const i = Math.max(1, b.left.findIndex(([, y]) => y >= b.mid));
-  const [p, q] = [b.left[i - 1], b.left[i]];
-  const end = 600 - (p[0] + ((b.mid - p[1]) * (q[0] - p[0])) / (q[1] - p[1] || 1));
   return [
     ...neck,
     { kind: "belt-front", at: [b.buckle.x, b.mid], down: [0, 1] },
-    { kind: "belt-side", at: [beltSideAt({ ...DEFAULT_SKIRT, ...choice.skirt }, b, end), b.mid], down: [0, 1] },
+    { kind: "belt-side", at: [beltSideAt({ ...DEFAULT_SKIRT, ...choice.skirt }, b, beltEndAt(b)), b.mid], down: [0, 1] },
   ];
 }
 
@@ -1798,6 +1966,33 @@ export const BELT_POINT_SPEC = {
     offer.skirt.shapes.flatMap((shape) =>
       shapeLengths(shape as SkirtChoice["shape"], offer.skirt.lengths as SkirtChoice["length"][]).flatMap((length) =>
         offer.skirt.waists.map((waist) => ({ belted: true, skirt: { shape, length, waist } as SkirtChoice }))
+      )
+    ),
+};
+
+/**
+ * What shapes the dress's sash — see `sashOn`: which sash, where it is
+ * tied, and the skirt it is worn on. The cut only says whether it wears one:
+ * a wrap always, at its side.
+ */
+export const SASH_SPEC = {
+  shapedBy: (c: GarmentChoice) => {
+    const sash = sashOf(c) ?? null;
+    return { sash, place: sash ? bowPlaceOf(c) : null, skirt: sash ? { ...DEFAULT_SKIRT, ...c.skirt } : null };
+  },
+  choiceFor: (k: { sash: SashId | null; place: BowAtId | null; skirt: SkirtChoice | null }): GarmentChoice => ({
+    neckline: DEFAULT_CUT,
+    ...(k.sash && k.place ? { belt: k.sash, bowAt: k.place } : {}),
+    ...(k.skirt ? { skirt: k.skirt } : {}),
+  }),
+  every: (offer: EdgeOffer) =>
+    (Object.keys(SASHES) as SashId[]).flatMap((sash) =>
+      (["front", "side"] as BowAtId[]).flatMap((place) =>
+        offer.skirt.shapes.flatMap((shape) =>
+          shapeLengths(shape as SkirtChoice["shape"], offer.skirt.lengths as SkirtChoice["length"][]).flatMap((length) =>
+            offer.skirt.waists.map((waist) => ({ sash, place, skirt: { shape, length, waist } as SkirtChoice }))
+          )
+        )
       )
     ),
 };

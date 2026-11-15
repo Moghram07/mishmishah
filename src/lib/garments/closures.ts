@@ -74,14 +74,46 @@ export const buttonsOn = (cut: string, offered: readonly ButtonsId[], shape?: Sk
       );
 
 /**
- * The cuts a belt does not go on: a wrap ties at the waist with its own tie,
- * so a belt over it would be a second one.
+ * The cuts tied with a sash of their own rather than belted: a wrap, whose
+ * top panel is held by a wide sash round the waist, tied in a belt bow at her
+ * left where its panels cross — see `sashOn`. It takes no other belt.
  */
-export const BELTLESS_CUTS: readonly NecklineId[] = ["wrap"];
+export const SASHED_CUTS: readonly NecklineId[] = ["wrap"];
 
-/** The belts a cut can be worn with, of those a dress offers. */
+/** The belts a cut can be worn with, of those a dress offers: a wrap its sash alone. */
 export const beltsOn = (cut: string, offered: readonly BeltId[]): BeltId[] =>
-  (BELTLESS_CUTS as readonly string[]).includes(cut) ? [] : [...offered];
+  (SASHED_CUTS as readonly string[]).includes(cut) ? offered.filter((b) => b === "sash") : [...offered];
+
+/** The sashes: a belt that is a soft band of cloth tied in a belt bow. */
+export type SashId = Extract<BeltId, "sash" | "ribbon">;
+
+/**
+ * Each sash's width, in canvas units: a sash «حزام فيونكة» about 6 cm, as
+ * photos 1 and 2's, and a ribbon «شريطة» about 3. The bow is tied in the
+ * same width of cloth — see `bowAt` in `art/female/ties.ts`.
+ */
+export const SASHES: Record<SashId, { width: number }> = {
+  sash: { width: 32 },
+  ribbon: { width: 16 },
+};
+
+/**
+ * The skirts too narrow below the hip for a bow's tails to spread as wide at
+ * the front: a pencil and a mermaid — see `BOW_TAIL_SPREAD`.
+ */
+export const NARROW_SKIRTS: readonly SkirtShapeId[] = ["pencil", "mermaid"];
+
+/** Whether a belt is a sash. */
+export const isSash = (belt: BeltId | undefined): belt is SashId => belt === "sash" || belt === "ribbon";
+
+/**
+ * How far each of the belt bow's loops reaches from its knot, by where it is
+ * tied, in canvas units: 10.6 cm at the front, as photo 1's — the bow spans
+ * nine tenths of her waist, which is 23 cm across at the front — and 7 cm at
+ * her left side, as photo 2's, where a longer loop would run off her waist
+ * or onto her arm, which is drawn again over the clothes.
+ */
+export const BOW_REACH: Record<"front" | "side", number> = { front: 56, side: 37 };
 
 /**
  * The placket and its buttons, in canvas units (a unit is 0.19 cm): the
@@ -122,8 +154,8 @@ export const BELT_OUT = 1.2;
 /** The buckle, at the centre front: about 4.2 × 4.6 cm, its frame 0.5 cm, its corners round. */
 export const BUCKLE = { w: 22, h: 24, frame: 2.6, round: 4 } as const;
 
-/** The leather belts' colours; a self-fabric belt takes the dress's own cloth. */
-export const LEATHER: Record<Exclude<BeltId, "none" | "self">, string> = {
+/** The leather belts' colours; a self-fabric belt and a sash take a cloth. */
+export const LEATHER: Record<Exclude<BeltId, "none" | "self" | SashId>, string> = {
   brown: "#6b4226",
   black: "#1f1c1b",
 };

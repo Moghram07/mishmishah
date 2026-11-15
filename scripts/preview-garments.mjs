@@ -68,7 +68,7 @@ const SLEEVE_KIT = await import(src("src/lib/garments/sleeves.ts"));
 const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
 const { HEM_AT, WAIST_DROP, besideArms, fallOf, fallRun, hangs, shapeLengths, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
 const { legWiden } = await import(src("src/lib/garments/legs.ts"));
-const { BELT_ABOVE_SEAM, BELT_WIDTH, BUTTONED_CUTS, BUTTON_LAST, DOUBLE_CUTS, beltsOn, buttonsOn } = await import(src("src/lib/garments/closures.ts"));
+const { BELT_ABOVE_SEAM, BELT_WIDTH, BOW_REACH, BUTTONED_CUTS, BUTTON_LAST, DOUBLE_CUTS, SASHED_CUTS, SASHES, beltsOn, buttonsOn, isSash } = await import(src("src/lib/garments/closures.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES, NECKLINE_TIED } = await import(
@@ -3026,6 +3026,10 @@ const DOUBLE_PITCH_CM = [7, 11.5];
 const DOUBLE_LAST_CM = [4, 6];
 /** How far inside a pleated skirt's flat panel its placket keeps: a pleat's fold is 1.8 units across at most — see `pleatFolds`. */
 const PANEL_FOLD = 1.8;
+/** How deep each sash is, in cm: a sash 5 to 7, a ribbon 2.5 to 3.5. */
+const SASH_DEPTH_CM = { sash: [5, 7], ribbon: [2.5, 3.5] };
+/** How far the belt bow's loops reach from the knot, in cm: 10 to 11.5 at the front, 6.5 to 7.5 at her side. */
+const BOW_REACH_CM = { front: [10, 11.5], side: [6.5, 7.5] };
 
 /**
  * A dress buttoned down its front and belted — see `garments/closures.ts`.
@@ -3045,6 +3049,12 @@ const PANEL_FOLD = 1.8;
  * - **Belt.** At every waist, shape and length, 3 to 4 cm deep, centred on
  *   the seam where it shows, reaching a little past the dress at its sides
  *   on every row and never far past them, its buckle at the centre front.
+ * - **Sash.** A sash 5 to 7 cm deep and a ribbon 2.5 to 3.5, each tied in
+ *   the belt bow at the front or at her side, over every skirt: the band
+ *   centred where the belt is and ending where it ends; the bow's loops
+ *   reaching 10 to 11.5 cm at the front and 6.5 to 7.5 at the side, its
+ *   tails 30 to 40 cm along them and not alike. `check-edges.mjs` holds the
+ *   bow's shape, and holds it to the dress. The wrap wears the sash at its side, whatever belt is asked for.
  */
 function checkClosures(bodyKey, wardrobe) {
   let failed = 0;
@@ -3067,6 +3077,14 @@ function checkClosures(bodyKey, wardrobe) {
     }
     const bounds = (path, y) => mod.across(path, y);
     let doubles = 0;
+    let sashes = 0;
+    /* a wrap wears its sash, at its side, whatever belt is asked for — and no other cut is sashed unasked */
+    for (const cut of cutsOf(garment.asset.front)) {
+      const sashed = SASHED_CUTS.includes(cut);
+      if (Boolean(mod.sashOf({ neckline: cut })) !== sashed) bad.push(`${cut}: ${sashed ? "does not wear its sash" : "wears a sash unasked"}`);
+      if (sashed && (mod.beltWorn({ neckline: cut, belt: "brown" }) !== "sash" || mod.bowPlaceOf({ neckline: cut, bowAt: "front" }) !== "side")) bad.push(`${cut}: wears a belt other than its sash at its side`);
+      if (!sashed && (mod.sashOf({ neckline: cut, belt: "ribbon" }) !== "ribbon" || mod.bowPlaceOf({ neckline: cut, belt: "ribbon", bowAt: "side" }) !== "side")) bad.push(`${cut}: does not take the sash it is given`);
+    }
     const doubleCuts = DOUBLE_CUTS.filter((c) => cutsOf(garment.asset.front).includes(c));
     /* two rows are offered only where one row is, to the waist, and never on a cut closed by its own placket */
     for (const c of doubleCuts) if (!cuts.includes(c)) bad.push(`${c}: offered two rows of buttons and not one`);
@@ -3201,6 +3219,36 @@ function checkClosures(bodyKey, wardrobe) {
             if (proud < 0.2 || proud > 3) bad.push(`${name}: at y ${y} the belt is ${proud.toFixed(1)} units outside the dress`);
           }
           if (Math.abs(belt.buckle.x - mod.FRONT_X) > 0.01 || Math.abs(belt.buckle.y - belt.mid) > 0.01) bad.push(`${name}: the buckle is off the centre front`);
+          /* the sashes: each tied in the belt bow, at the front and at her side */
+          for (const kind of (garment.belts?.offered ?? []).filter((b) => isSash(b))) {
+            for (const place of ["front", "side"]) {
+              const sash = mod.sashOn(skirt, kind, place);
+              const tag = `${kind} at the ${place}, ${name}`;
+              sashes++;
+              const w = SASHES[kind].width;
+              const [dlo, dhi] = SASH_DEPTH_CM[kind];
+              if (cm(w) < dlo || cm(w) > dhi || Math.abs(sash.bottom - sash.top - w) > 0.01) bad.push(`${tag}: the band is ${cm(sash.bottom - sash.top).toFixed(1)} cm deep`);
+              if (Math.abs(sash.mid - belt.mid) > 0.01) bad.push(`${tag}: the band is centred at y ${sash.mid}, the belt at ${belt.mid}`);
+              if (!(sash.top < sk.waistY && sash.bottom > sk.waistY + 3)) bad.push(`${tag}: the band does not cover the seam at y ${sk.waistY}`);
+              for (const [x, y] of sash.left) {
+                const dress = Math.min(y <= seam ? (bounds(body, y)?.[0] ?? Infinity) : Infinity, y >= sk.waistY ? (bounds(sk.path, y)?.[0] ?? Infinity) : Infinity);
+                const proud = dress - x;
+                if (proud < 0.2 || proud > 3) bad.push(`${tag}: at y ${y} the band is ${proud.toFixed(1)} units outside the dress`);
+              }
+              const [kx, ky] = sash.knot;
+              if (Math.abs(ky - sash.mid) > 0.01) bad.push(`${tag}: the knot is off the band's middle row`);
+              if (place === "front" && Math.abs(kx - mod.FRONT_X) > 0.01) bad.push(`${tag}: the knot is off the centre front`);
+              const end = 600 - sash.left.reduce((a, b) => (Math.abs(b[1] - sash.mid) < Math.abs(a[1] - sash.mid) ? b : a))[0];
+              if (place === "side" && (end - kx < 8 || kx - mod.FRONT_X < 20)) bad.push(`${tag}: the knot is ${(end - kx).toFixed(1)} units in from the band's end, ${(kx - mod.FRONT_X).toFixed(1)} from the front`);
+              const reach = cm(sash.bow.reach);
+              const [rlo, rhi] = BOW_REACH_CM[place];
+              if (reach < rlo || reach > rhi || sash.bow.reach !== BOW_REACH[place]) bad.push(`${tag}: its loops reach ${reach.toFixed(1)} cm`);
+              /* its tails: 30 to 40 cm along them, the one in front the longer by 2 to 6 */
+              const lengths = sash.bow.tailLines.map((l) => cm(l.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - l[i][0], p[1] - l[i][1]), 0)));
+              for (const len of lengths) if (len < 30 || len > 40) bad.push(`${tag}: a tail is ${len.toFixed(1)} cm long`);
+              if (lengths[1] - lengths[0] < 2 || lengths[1] - lengths[0] > 6) bad.push(`${tag}: its front tail is ${(lengths[1] - lengths[0]).toFixed(1)} cm longer than the other`);
+            }
+          }
         }
       }
     }
@@ -3208,7 +3256,7 @@ function checkClosures(bodyKey, wardrobe) {
     console.log(
       `${bad.length ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${garment.id} · front`.padEnd(28)} ` +
         `buttons and belt: ${plackets} plackets on the cloth, ${panels} pleated panels level, ${buttons} buttons ${lo.toFixed(1)}–${hi.toFixed(1)} cm apart, ${doubles} double-breasted fronts, ` +
-        `the belt ${cm(BELT_WIDTH).toFixed(1)} cm on the seam at every waist`
+        `the belt ${cm(BELT_WIDTH).toFixed(1)} cm on the seam at every waist, ${sashes} sashes tied in the belt bow`
     );
     for (const line of bad.slice(0, 12)) console.log(`     ${bodyKey.padEnd(6)} ${line}`);
     if (bad.length > 12) console.log(`     ${bodyKey.padEnd(6)} … and ${bad.length - 12} more`);
@@ -4185,8 +4233,13 @@ failures += timed("edges", () => {
       /* the ties it offers, and where each can be knotted — the panel's own rules, see `tiePlacesOf` */
       tieStyles: (garment.ties?.offered ?? []).filter((t) => t !== "none"),
       doubleCuts: garment.buttons?.rows?.includes("two") ? DOUBLE_CUTS : [],
-      /* her left arm where the photograph is drawn again over the clothes — the forearm's and the hand's zones */
-      armRings: ["forearm", "hand"].flatMap((z) => flatten(bodies.female.zones[z]).filter((r) => r.every(([x]) => x > 300))),
+      /* the sashes: which belts are one, how wide each is, where each is tied on a cut, and how far the bow's loops reach */
+      isSash,
+      sashWidth: (kind) => SASHES[kind].width,
+      bowReach: (place) => BOW_REACH[place],
+      bowPlacesOn: (cut) => (SASHED_CUTS.includes(cut) ? ["side"] : ["front", "side"]),
+      /* her arms where the photograph is drawn again over the clothes — the forearms' and the hands' zones */
+      armRings: ["forearm", "hand"].flatMap((z) => flatten(bodies.female.zones[z])),
       tiePlacesOn: (cut, opening, belt, style) => {
         const collared = opening
           ? collarsForGarment(garment).filter((c) => c.opening === opening && (c.necklines ? c.necklines.includes(cut) : sews(c, NECKLINE_OPENING[cut])))

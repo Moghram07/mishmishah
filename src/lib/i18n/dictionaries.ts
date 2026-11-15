@@ -100,6 +100,7 @@ export const dictionaries = {
     "viz.buttons": "Buttons",
     "viz.buttonRows": "Rows",
     "viz.belt": "Belt",
+    "viz.bowAt": "Bow at",
     "viz.collar": "Collar",
     "viz.noCollar": "Plain",
     "viz.collarHint":
@@ -268,6 +269,7 @@ export const dictionaries = {
     "viz.buttons": "الأزرار",
     "viz.buttonRows": "عدد الصفوف",
     "viz.belt": "الحزام",
+    "viz.bowAt": "مكان العقدة",
     "viz.collar": "الياقة",
     "viz.noCollar": "بدون ياقة",
     "viz.collarHint": "يمكن تفصيل الياقة من قماش مختلف.",

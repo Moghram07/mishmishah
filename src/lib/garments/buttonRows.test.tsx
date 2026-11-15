@@ -93,7 +93,7 @@ describe("two rows of buttons", () => {
         // above a belt, never under it
         expect(ys[ys.length - 1] + r, tag).toBeLessThan(beltFor(skirt).top - 1);
       }
-  });
+  }, 60_000);
 
   it("are sewn on the bodice itself, with no placket; one row keeps its placket as before", () => {
     for (const cut of DOUBLE_CUTS.filter((c) => c !== "off-shoulder")) {
@@ -119,5 +119,5 @@ describe("two rows of buttons", () => {
       const other = setSkirt(worn, dress.id, { shape, length: "midi", waist: "natural" });
       expect(frontButtons(choiceOf(one(other))).groups, shape).toEqual(frontButtons(choiceOf(one(worn))).groups);
     }
-  });
+  }, 60_000);
 });

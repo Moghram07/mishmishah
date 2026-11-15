@@ -22,14 +22,15 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, bodiceFor, buttonedToHem, cloth, drawnBodice, dressStripes, frontButtons, seamAt, skirtFor, placketButtons, skirtPlacketFor, sleeveEndPieces, tiePoint } from "./dressCut";
-import { tieArt as knottedTie } from "./tieArt";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, beltWorn, bodiceFor, bowPlaceOf, buttonedToHem, cloth, drawnBodice, dressStripes, frontButtons, narrowSkirt, seamAt, skirtFor, placketButtons, sashOn, skirtPlacketFor, sleeveEndPieces, tiePoint } from "./dressCut";
+import { BOW_SHADOW, bowLayers, crispEdgeLight, tieArt as knottedTie } from "./tieArt";
+import type { FoldSpec } from "./ties";
 import type { Inlay } from "@/lib/garments/stripes";
 import type { Inlaid } from "../index";
-import { BELTLESS_CUTS, LEATHER } from "@/lib/garments/closures";
+import { LEATHER, isSash, type SashId } from "@/lib/garments/closures";
 import { Buckle } from "../buckle";
 import { besideArms, fallOf, hangs, sameSkirt, skirtKey, type CutSkirt } from "@/lib/garments/skirts";
-import type { BeltId, ButtonsId, FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
+import type { BeltId, BowAtId, ButtonsId, FabricRegionId, SkirtChoice, SleeveChoice, WaistId } from "@/types";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../index";
 import { litButtons } from "../buttons";
 import { edgeLight, edgeLightDefs } from "../collarLight";
@@ -398,135 +399,6 @@ function cowlRidges(drape: CowlDrape): string {
 
 /* --------------------------------------------------------------- the wrap */
 
-/** The tie's two tails: how long each hangs below the knot, and how wide it is at the knot and at its end. */
-const TIE_TAILS = [
-  { length: 160, from: 3, lean: 8, width: [9.5, 8] as const, cut: -5 },
-  { length: 185, from: -3, lean: -10, width: [10.5, 8.5] as const, cut: 5 },
-];
-/** The knot, across and down. */
-const KNOT: readonly [number, number] = [15, 11];
-
-/** Points along a cubic from `a` to `d`. */
-const cubic = (a: Pt, b: Pt, c: Pt, d: Pt, n: number): Pt[] =>
-  Array.from({ length: n + 1 }, (_, i) => {
-    const t = i / n;
-    const m = 1 - t;
-    return [
-      m * m * m * a[0] + 3 * m * m * t * b[0] + 3 * m * t * t * c[0] + t * t * t * d[0],
-      m * m * m * a[1] + 3 * m * m * t * b[1] + 3 * m * t * t * c[1] + t * t * t * d[1],
-    ] as Pt;
-  });
-
-/** A strip of cloth along a centreline, `width` across from its start to its end. */
-function strip(centre: Pt[], width: readonly [number, number]): { left: Pt[]; right: Pt[] } {
-  const n = centre.length - 1;
-  const left: Pt[] = [];
-  const right: Pt[] = [];
-  centre.forEach(([x, y], i) => {
-    const [px, py] = centre[Math.max(0, i - 1)];
-    const [qx, qy] = centre[Math.min(n, i + 1)];
-    const len = Math.hypot(qx - px, qy - py) || 1;
-    const [nx, ny] = [-(qy - py) / len, (qx - px) / len];
-    const w = (width[0] + (width[1] - width[0]) * (i / n)) / 2;
-    left.push([x - nx * w, y - ny * w]);
-    right.push([x + nx * w, y + ny * w]);
-  });
-  return { left, right };
-}
-
-/**
- * The tie at the waist: a small knot, and two tails hanging from it over the
- * skirt, about thirty and thirty-five centimetres — in the bodice's cloth,
- * drawn after the skirt so that it hangs in front of it. Each tail a narrow
- * strip hanging in a slight S, cut on the slant at its end; lit as cloth, with
- * a shadow on the skirt.
- */
-function tieArt(at: Pt): RegionArt {
-  const knot: Pt = [at[0], at[1] + 3];
-  const tails = TIE_TAILS.map(({ length, from, lean, width, cut }) => {
-    const top: Pt = [knot[0] + from, knot[1] + 2];
-    const end: Pt = [knot[0] + from + lean, knot[1] + length];
-    const centre = cubic(top, [top[0] + lean * 0.1, top[1] + length * 0.35], [end[0] - lean * 0.4, end[1] - length * 0.35], end, 24);
-    const { left, right } = strip(centre, width);
-    /* the end cut on the slant */
-    left[left.length - 1] = [left[left.length - 1][0], left[left.length - 1][1] + cut / 2];
-    right[right.length - 1] = [right[right.length - 1][0], right[right.length - 1][1] - cut / 2];
-    return { centre, left, right, path: outline(left, [...right].reverse()) };
-  });
-  const knotPts: Pt[] = Array.from({ length: 14 }, (_, i) => {
-    const a = (i / 14) * Math.PI * 2;
-    const [rx, ry] = [KNOT[0] / 2, KNOT[1] / 2];
-    /* a little squarer than an ellipse, and tipped, as a knot pulled tight is */
-    const r = 1 + 0.08 * Math.cos(4 * a);
-    const [x, y] = [Math.cos(a) * rx * r, Math.sin(a) * ry * r];
-    const tip = -0.25;
-    return [knot[0] + x * Math.cos(tip) - y * Math.sin(tip), knot[1] + x * Math.sin(tip) + y * Math.cos(tip)] as Pt;
-  });
-  const knotPath = outline(knotPts);
-  const pieces = [...tails.map((t) => t.path), knotPath];
-  /* each tail lit from the upper left: a soft light down its left side, a shade down its right, a twist under the knot */
-  const tailFolds: Fold[] = tails.flatMap((t) => [
-    { ridge: t.centre.map(([x, y], i) => [x - 1.2, y] as Pt).filter((_, i) => i > 1), width: [1.6, 1.6], shadow: 0, light: 0.3, soft: 1.5 },
-    {
-      ridge: t.right.map(([x, y]) => [x - 1.4, y] as Pt).filter((_, i) => i > 0),
-      width: [1.8, 1.8],
-      shadow: 0.3,
-      light: 0,
-      soft: 1.5,
-      shadowToward: [1, 0] as Pt,
-    },
-    { ridge: t.centre.slice(0, 4), width: [2.5, 0.5], shadow: 0.35, light: 0.1, soft: 1.5 },
-  ]);
-  /* the knot lit as a small round: light across its top, shade under it — in proportion to its size */
-  const [kx, ky] = [KNOT[0] / 2, KNOT[1] / 2];
-  const knotFolds: Fold[] = [
-    {
-      ridge: [[knot[0] - kx * 0.65, knot[1] - ky * 0.35], [knot[0], knot[1] - ky * 0.6], [knot[0] + kx * 0.65, knot[1] - ky * 0.45]],
-      width: [2, 2],
-      shadow: 0.15,
-      light: 0.45,
-      soft: 1,
-    },
-    {
-      ridge: [[knot[0] - kx * 0.6, knot[1] + ky * 0.55], [knot[0] + kx * 0.65, knot[1] + ky * 0.5]],
-      width: [2, 2],
-      shadow: 0.35,
-      light: 0,
-      soft: 1,
-      shadowToward: [0, 1],
-    },
-  ];
-  const nudge = (pts: Pt[], dx: number, dy: number) => pts.map(([x, y]) => [x + dx, y + dy] as Pt);
-  return {
-    focus: [at[0], at[1] + 80],
-    surface: { blur: 3, relief: 3, warp: 1 },
-    shape: (fill) => (
-      <>
-        {pieces.map((d, i) => (
-          <path key={i} d={d} fill={fill} />
-        ))}
-      </>
-    ),
-    defs: (uid) => (
-      <>
-        {softShadow(uid("tie-soft"), 2.5)}
-        {foldDefs(uid)}
-      </>
-    ),
-    /* its shadow on the skirt */
-    cast: (uid) => (
-      <g filter={`url(#${uid("tie-soft")})`} fill="#7a7a7a" opacity="0.4">
-        {tails.map((t, i) => (
-          <path key={i} d={outline(nudge(t.left, 2, 3), [...nudge(t.right, 2, 3)].reverse())} />
-        ))}
-        <path d={outline(nudge(knotPts, 1.5, 2))} />
-      </g>
-    ),
-    shading: (uid) => foldShadows(uid, [...tailFolds, ...knotFolds]),
-    light: (uid) => foldLights(uid, [...tailFolds, ...knotFolds]),
-  };
-}
-
 /**
  * The folds the tie pulls into the top panel: tension folds running up from
  * the knot across the bodice toward the far side, strongest at the knot and
@@ -889,8 +761,6 @@ const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons
     ),
     stitch,
     ...(softPieces.length ? { softPieces } : {}),
-    /* a wrap's tie, hanging over the skirt */
-    ...(wrap ? { over: tieArt(wrap.tie) } : {}),
   };
 };
 
@@ -960,7 +830,8 @@ const BELT_SHADE: Stop[] = [
  * skirt's, and topstitched along both edges; or in leather, its own colour,
  * a soft sheen along its top edge and a stitch along each.
  */
-const beltArt = (skirt: SkirtChoice, kind: Exclude<BeltId, "none">, under: string[]): RegionArt => {
+const beltArt = (skirt: SkirtChoice, kind: Exclude<BeltId, "none">, under: string[], bowAt: BowAtId): RegionArt => {
+  if (isSash(kind)) return sashArt(skirt, kind, bowAt, under);
   const b = beltFor(skirt);
   const leather = kind === "self" ? undefined : LEATHER[kind];
   const [top, foot] = [b.left[0][0], b.left[b.left.length - 1][0]];
@@ -991,10 +862,64 @@ const beltArt = (skirt: SkirtChoice, kind: Exclude<BeltId, "none">, under: strin
   };
 };
 
-/** The belt a choice wears, if it wears one its cut takes — see `BELTLESS_CUTS`. */
-const beltOn = (choice: GarmentChoice): Exclude<BeltId, "none"> | undefined => {
-  const id = cutOf(choice.neckline);
-  return choice.belt && choice.belt !== "none" && !BELTLESS_CUTS.includes(id) ? choice.belt : undefined;
+/**
+ * A sash or a ribbon round the waist, tied in the belt bow — see `sashOn`
+ * — lying over the bodice and the skirt as a belt does, behind any sleeve
+ * hanging beside it, its tails hanging in front of the skirt. In its own
+ * cloth, the skirt's until another is chosen: soft, no line round it. The
+ * band lit as a band round her is and gathered where the bow pulls it; the
+ * bow drawn and lit as the belt bow a tie makes is — see `bowLayers` — crisp
+ * in any cloth: under every edge the narrow shadow `BOW_SHADOW`, and the
+ * band's light and gathers only on what shows of it.
+ */
+const sashArt = (skirt: SkirtChoice, kind: SashId, place: BowAtId, under: string[]): RegionArt => {
+  const sash = sashOn(skirt, kind, place);
+  const bow = bowLayers(sash.bow);
+  const band = sash.gathers.map(([ridge, width, shadow, light, soft]: FoldSpec): Fold => ({ ridge, width, shadow, light, soft }));
+  return {
+    ...(under.length ? { under } : {}),
+    cloth: "belt" as const,
+    focus: [Math.round(sash.knot[0]), sash.knot[1] + 24],
+    outline: "soft",
+    shadow: BOW_SHADOW,
+    grain: { shift: [6, 13] },
+    shape: (fill) => (
+      <>
+        {[sash.path, ...sash.bow.pieces].map((d, i) => (
+          <path key={i} d={d} fill={fill} />
+        ))}
+      </>
+    ),
+    defs: (uid) => (
+      <>
+        {vertical(uid("sash"), BELT_SHADE)}
+        {bow.defs(uid)}
+        {/* what shows of the band: all of it but what the bow lies over */}
+        <mask id={uid("band")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
+          <path d={sash.path} fill="#fff" />
+          {sash.bow.pieces.map((d, i) => (
+            <path key={i} d={d} fill="#000" />
+          ))}
+        </mask>
+      </>
+    ),
+    shading: (uid) => (
+      <>
+        <path d={sash.path} fill={`url(#${uid("sash")})`} />
+        <g mask={`url(#${uid("band")})`}>{foldShadows(uid, band)}</g>
+        {bow.shading(uid)}
+      </>
+    ),
+    light: (uid) => (
+      <>
+        <g mask={`url(#${uid("band")})`}>
+          {crispEdgeLight(uid, [sash.path])}
+          {foldLights(uid, band)}
+        </g>
+        {bow.light(uid)}
+      </>
+    ),
+  };
 };
 
 /** The cut a choice names, or the one the dress arrives in. */
@@ -1091,21 +1016,22 @@ const BOTTOM = bottomRegion();
 function cutRegions(choice: GarmentChoice): { top: RegionArt; bottom?: RegionArt } {
   const { inside, skirt = DEFAULT_SKIRT } = choice;
   const id = cutOf(choice.neckline);
-  /* buttoned to the hem, the placket runs on down the skirt; a belt lies over both */
+  /* buttoned to the hem, the placket runs on down the skirt; a belt lies over both — a wrap's sash always */
   const placket = buttonedToHem(choice);
-  const belt = beltOn(choice);
+  const belt = beltWorn(choice);
   if (!inside && sameSkirt(skirt, DEFAULT_SKIRT) && !placket && !belt) return { top: topFor(choice) };
   const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
   const arms = bodiceFor(id, sleeve, skirt.waist).armCover;
   const under = besideArms(skirt) ? arms : [];
   const sleeveKey = `|${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}`;
+  const bowAt = bowPlaceOf(choice);
   const key =
     `${skirtKey(skirt)}|${inside ? `${inside.y}|${inside.x}` : ""}` +
     (under.length ? sleeveKey : "") +
     (placket ? "|placket" : "") +
-    /* the belt lies behind the sleeves at every waist */
-    (belt ? `|belt-${belt}${sleeveKey}` : "");
-  if (!bottoms.has(key)) bottoms.set(key, bottomRegion(inside, skirt, under, placket, belt ? beltArt(skirt, belt, arms) : undefined));
+    /* the belt lies behind the sleeves at every waist; a sash is tied where it is tied */
+    (belt ? `|belt-${belt}${isSash(belt) ? `-${bowAt}` : ""}${sleeveKey}` : "");
+  if (!bottoms.has(key)) bottoms.set(key, bottomRegion(inside, skirt, under, placket, belt ? beltArt(skirt, belt, arms, bowAt) : undefined));
   return { top: topFor(choice), bottom: bottoms.get(key)! };
 }
 
@@ -1167,7 +1093,7 @@ export const dressFront: GarmentArt = {
     return {
       top: withStripes(cut.top, [...cuffs, ...stripes.top], `${stripesKey}|${cuffs.length}`),
       ...(bottom ? { bottom: withBeltStripes(bottom, stripes.belt, stripesKey) } : {}),
-      ...(choice.tie && at ? { tie: knottedTie(choice.tie, at) } : {}),
+      ...(choice.tie && at ? { tie: knottedTie(choice.tie, at, choice.tieAt, narrowSkirt({ ...DEFAULT_SKIRT, ...choice.skirt })) } : {}),
     };
   },
 
@@ -1184,7 +1110,7 @@ export const dressFront: GarmentArt = {
   /**
    * Its buttons — a shirt-dress's placket, a keyhole's closure, a placket
    * down the front — drawn under any collar; and a belt's buckle, over the
-   * belt at the centre front.
+   * belt at the centre front, on a belt that is buckled.
    */
   cutTrim: (choice) => {
     const { groups } = frontButtons(choice);
@@ -1198,9 +1124,9 @@ export const dressFront: GarmentArt = {
           ))}
         </>
       );
-    const belt = beltOn(choice);
-    /* a belt with a tie on it, at its front or its side, is tied, not buckled: the tie is its fastening */
-    if (!belt || (choice.tie && choice.tieAt && choice.tieAt !== "neck")) return buttons;
+    const belt = beltWorn(choice);
+    /* a belt with a tie on it, at its front or its side, is tied, not buckled: the tie is its fastening — and a sash is tied in its own bow */
+    if (!belt || isSash(belt) || (choice.tie && choice.tieAt && choice.tieAt !== "neck")) return buttons;
     const { buckle } = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
     return (
       <>

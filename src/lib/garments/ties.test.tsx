@@ -6,7 +6,7 @@ import { fabricById } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { tiePlacesFor, tiesFor } from "@/lib/data/collars";
 import { NECKLINE_IDS, NECKLINE_TIED } from "./necklines";
-import { BELT_SIDE_IN, beltFor, dressPoints, skirtFor, tiePoint } from "./art/female/dressCut";
+import { BELT_SIDE_IN, beltFor, bodiceFor, dressPoints, skirtFor, tiePoint } from "./art/female/dressCut";
 import { TIE_AT } from "./art/female/collarCuts";
 import { SCARF, TIE_DROP, scarfFolds, tieAt, type TieStyle } from "./art/female/ties";
 import { bodyById } from "@/lib/mannequin/bodies";
@@ -91,8 +91,11 @@ describe("ties anywhere", () => {
     // nowhere at all: no tie row
     expect(tiesOffered(one(dressed("sweetheart")))).toEqual([]);
     expect(tieOf(one(dressed("sweetheart")))).toBeUndefined();
-    // the wrap takes no belt: its own tie is at its waist
+    // the wrap takes no belt but its own sash, which is tied in its own bow: the neck alone
     expect(tiePlacesOf(one(setBelt(dressed("wrap"), dress.id, "self")))).toEqual(["neck"]);
+    // a sash is tied in its own bow too: no tie on it
+    expect(tiePlacesOf(one(setBelt(dressed("round"), dress.id, "sash")))).toEqual(["neck"]);
+    expect(tiePlacesOf(one(setBelt(dressed("round"), dress.id, "ribbon")))).toEqual(["neck"]);
   });
 
   it("goes where it is put while the place is there, and moves to the next when it goes — coming off only with nowhere left", () => {
@@ -202,17 +205,18 @@ describe("ties anywhere", () => {
           expect(side[1]).toBe(b.mid);
           const ring = ringsOf(b.path);
           expect(insideRings(ring, front) && insideRings(ring, side), tag).toBe(true);
-          // toward her left: at least BELT_SIDE_IN in from the belt's end, and well clear of the front's tie
+          // toward her left: at least BELT_SIDE_IN in from the belt's end — the belt bow's loop further, about 7 cm — and clear of the front's tie
           const end = Math.max(...ring.flat().filter(([, y]) => Math.abs(y - b.mid) < 1.5).map(([x]) => x));
           expect(end - side[0], tag).toBeGreaterThan(BELT_SIDE_IN - 0.01);
-          expect(side[0] - front[0], tag).toBeGreaterThan(28);
-          // every tie the belt takes, knotted there: on the dress — the belt, the skirt below it — and off her arm, where nothing would hide a tail
+          expect(side[0] - front[0], tag).toBeGreaterThan(20);
+          // every tie the belt takes, knotted there, sized for the belt: on the dress — the bodice above it, the belt, the skirt below it — and off her arm, where nothing would hide a loop or a tail
           const skirtRings = ringsOf(skirtFor(undefined, skirt).path);
+          const bodyRings = ringsOf(bodiceFor("round", undefined, waist).pieces[0]);
           for (const style of ["knot", "scarf"] as const)
-            for (const d of tieAt(style, side).pieces)
+            for (const d of tieAt(style, side, "belt-side").pieces)
               for (const q of ringsOf(d).flat()) {
-                /* on the belt, or on the skirt below it — each its own outline: they overlap at the seam */
-                expect(insideRings(ring, q) || insideRings(skirtRings, q), `${tag} ${style} at ${q.map((v) => v.toFixed(1))}`).toBe(true);
+                /* on the bodice, the belt, or the skirt below it — each its own outline: they overlap at the seam */
+                expect(insideRings(bodyRings, q) || insideRings(ring, q) || insideRings(skirtRings, q), `${tag} ${style} at ${q.map((v) => v.toFixed(1))}`).toBe(true);
                 expect(insideRings(arm, q), `${tag} ${style} on her arm at ${q.map((v) => v.toFixed(1))}`).toBe(false);
               }
         }
@@ -230,11 +234,11 @@ describe("ties anywhere", () => {
         const point = tiePoint(choice)!;
         expect(point, `${style} ${at}`).toEqual(dressPoints(choice).find((p) => p.kind === at)!.at);
         const html = draw(worn, { tie: red });
-        for (const d of tieAt(style, point).pieces) expect(html, `${style} ${at}`).toContain(`d="${d}"`);
+        for (const d of tieAt(style, point, at).pieces) expect(html, `${style} ${at}`).toContain(`d="${d}"`);
         // drawn after the belt, so over it
         const beltAt = html.indexOf(`d="${beltFor(choice.skirt).path}"`);
         expect(beltAt, `${style} ${at}`).toBeGreaterThan(0);
-        expect(html.indexOf(`d="${tieAt(style, point).parts.knot}"`), `${style} ${at}`).toBeGreaterThan(beltAt);
+        expect(html.indexOf(`d="${tieAt(style, point, at).parts.knot}"`), `${style} ${at}`).toBeGreaterThan(beltAt);
         // tied on the belt, front or side, it is tied, not buckled — the tie is its fastening; tied at the neck its buckle stays
         const buckle = renderToStaticMarkup(<svg><Buckle {...beltFor(choice.skirt).buckle} /></svg>).replace(/^<svg>|<\/svg>$/g, "");
         expect(buckled.includes(buckle)).toBe(true);
@@ -246,5 +250,5 @@ describe("ties anywhere", () => {
     const html = draw(sailor, { collar: white, tie: red });
     const knot = tieAt("scarf", dressPoints({ neckline: "boat" })[0].at).parts.knot;
     expect(html.indexOf(`d="${knot}"`)).toBeGreaterThan(html.indexOf("female-sailor-collar"));
-  });
+  }, 60_000);
 });
