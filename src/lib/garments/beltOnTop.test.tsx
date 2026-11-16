@@ -6,7 +6,7 @@ import { collarById } from "@/lib/data/collars";
 import { fabricById } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { GARMENT_LAYERS } from "./drawOrder";
-import { DEFAULT_SKIRT, beltFor, frontButtons, sashFor, sashOn, tiePoint } from "./art/female/dressCut";
+import { BUTTON_HIDDEN_OVER, DEFAULT_SKIRT, beltCover, beltFor, coveredShare, frontButtons, sashFor, sashOn, shownButtons, tiePoint } from "./art/female/dressCut";
 import { sailorOn } from "./art/female/collarCuts";
 import { tieAt } from "./art/female/ties";
 import { collarArt } from "./art";
@@ -73,7 +73,7 @@ describe("the belt, worn over the dress", () => {
     }
   }, 60_000);
 
-  it("draws the buttons under every belt at every waist, and the buckle over a buckled one", () => {
+  it("draws the buttons under every belt at every waist — none it covers by more than half — and the buckle over a buckled one", () => {
     for (const waist of WAISTS) {
       for (const kind of BELTS) {
         const tag = `${kind} · ${waist}`;
@@ -81,25 +81,42 @@ describe("the belt, worn over the dress", () => {
         const choice = choiceOf(one(worn));
         const html = draw(worn);
         const belt = start(html, BELT);
-        // the last button at the waist, which the belt lies over
+        // the last button at the waist, which the belt lies over by more than half: not drawn, a sliver at the belt's edge being all that would show
         const group = frontButtons(choice).groups.at(-1)!;
         const [x, y] = group.at.at(-1)!;
         const b = kind === "sash" || kind === "ribbon" ? sashFor(choice)! : beltFor(choice.skirt);
         expect(y + group.r, tag).toBeGreaterThan(b.top);
-        const button = html.indexOf(`cx="${x}" cy="${y}" r="${group.r}"`);
-        expect(button, tag).toBeGreaterThan(0);
-        expect(button, tag).toBeLessThan(belt);
+        expect(coveredShare(beltCover(choice), [x, y], group.r), tag).toBeGreaterThan(BUTTON_HIDDEN_OVER);
+        expect(html.indexOf(`cx="${x}" cy="${y}" r="${group.r}"`), tag).toBe(-1);
+        // every other button where it always was, drawn, and under the belt
+        const shown = shownButtons(choice).groups.flatMap((g) => g.at.map((p) => ({ p, r: g.r })));
+        expect(shown.length, tag).toBe(frontButtons(choice).groups.reduce((n, g) => n + g.at.length, 0) - 1);
+        for (const { p, r } of shown) {
+          expect(frontButtons(choice).groups.some((g) => g.r === r && g.at.some((q) => q[0] === p[0] && q[1] === p[1])), tag).toBe(true);
+          const button = html.indexOf(`cx="${p[0]}" cy="${p[1]}" r="${r}"`);
+          expect(button, tag).toBeGreaterThan(0);
+          expect(button, tag).toBeLessThan(belt);
+        }
         // a leather or fabric belt's buckle on it; a sash or a ribbon is tied in its bow
         const buckle = html.indexOf(buckleOf(worn));
         if (kind === "sash" || kind === "ribbon") expect(buckle, tag).toBe(-1);
         else expect(buckle, tag).toBeGreaterThan(belt);
       }
     }
-    // the shirt-dress's own buttons, to its waist, and two rows: under the belt too
+    // the shirt-dress's own buttons, to its waist, and down to the hem: under the belt too, or — more than half under it — not drawn
     for (const worn of [setBelt(setButtons(dressed("collared"), dress.id, "waist"), dress.id, "self"), setBelt(setButtons(dressed("v"), dress.id, "hem"), dress.id, "ribbon")]) {
       const html = draw(worn);
       const belt = start(html, BELT);
-      for (const g of frontButtons(choiceOf(one(worn))).groups) for (const [x, y] of g.at) expect(html.indexOf(`cx="${x}" cy="${y}" r="${g.r}"`)).toBeLessThan(belt);
+      const choice = choiceOf(one(worn));
+      for (const g of frontButtons(choice).groups)
+        for (const [x, y] of g.at) {
+          const at = html.indexOf(`cx="${x}" cy="${y}" r="${g.r}"`);
+          if (coveredShare(beltCover(choice), [x, y], g.r) > BUTTON_HIDDEN_OVER) expect(at).toBe(-1);
+          else {
+            expect(at).toBeGreaterThan(0);
+            expect(at).toBeLessThan(belt);
+          }
+        }
     }
   }, 60_000);
 

@@ -138,6 +138,10 @@ export interface RegionArt {
    * bow, over the skirt and the bodice. Drawn after every region of the
    * garment, its buttons and its collar — see `GARMENT_LAYERS` — in the same
    * fabric, or the one `cloth` names.
+   *
+   * On a collar, what of it lies over a tie knotted round its band — a shirt
+   * collar's leaves, over a necktie's knot: drawn after the tie, and only
+   * over it — see `GARMENT_LAYERS`' `fall`.
    */
   over?: RegionArt;
   /** Each piece's free edges, when the outline is not all edge — see `RegionDrawing`. */
@@ -197,6 +201,12 @@ export interface GarmentChoice {
   /** The tie it wears, if any, and where it is knotted — see `tiePoint`. */
   tie?: Exclude<TieId, "none">;
   tieAt?: TieAtId;
+  /**
+   * Its tie is knotted round its collar's band, under the leaves — a shirt
+   * collar's necktie or bow tie — and so the collar draws it, from where its
+   * leaves meet: see `Collar.ties`.
+   */
+  tieBand?: true;
   /**
    * The hem of a jacket it is worn under, if it is: it comes out from under it
    * no wider than the jacket — see `tucked` in `garments/fit.ts`.

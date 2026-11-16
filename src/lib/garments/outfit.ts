@@ -42,7 +42,8 @@ import {
   defaultCollar,
 } from "@/lib/data/collars";
 import { DOUBLE_CUTS, SASHED_CUTS, beltsOn, buttonsOn, isSash } from "@/lib/garments/closures";
-import { NECKLINE_EDGED, NECKLINE_TIED } from "@/lib/garments/necklines";
+import { NECKLINE_EDGED } from "@/lib/garments/necklines";
+import { tiePlaces } from "@/lib/garments/tieRules";
 import {
   defaultSleeve,
   sleeveCuffsFor,
@@ -522,28 +523,27 @@ export function stripesOnOf(worn: WornGarment): StripeEdgeId[] {
   return kept;
 }
 
-/** Every place a tie is knotted, in the order one arrives at: the neck first. */
-export const TIE_PLACES: readonly TieAtId[] = ["neck", "belt-front", "belt-side"];
+export { TIE_PLACES } from "@/lib/garments/tieRules";
 
 /**
  * The places a worn garment can be tied at, as it is cut — for one style,
- * or for any:
+ * or for any — by the one rule, `tiePlaces`:
  *
  * - **At the neck**, on a cut with a centre front to knot it at — see
- *   `NECKLINE_TIED` — with no collar over it, or one a tie is knotted over:
- *   a sailor's, a Peter Pan's. A bow collar is its own tie; a standing
- *   collar covers the neck.
+ *   `NECKLINE_TIED` — or a garment with no choice of cut; by its collar: a
+ *   shirt collar takes a necktie or a bow tie round its band, a sailor's a
+ *   knot, its necktie or a scarf over it, a Peter Pan's a knot or a scarf;
+ *   with no collar, a knot or a scarf. A necktie or a bow tie needs a shirt
+ *   collar to sit under; a bow collar is its own tie; a standing collar
+ *   covers the neck.
  * - **On the belt**, at its front or its side — a fabric belt's: a leather
- *   one is buckled. Not a necktie, which hangs from a neck.
+ *   one is buckled. A knot or a scarf; not a necktie or a bow tie, which hang
+ *   from a neck.
  */
 export function tiePlacesOf(worn: WornGarment, style?: TieId): TieAtId[] {
   const garment = garmentById(worn.garmentId);
   if (!garment?.ties) return [];
-  const cut = necklineOf(worn)?.cut;
-  const collar = collarOf(worn);
-  const neck = Boolean(cut && (NECKLINE_TIED as readonly string[]).includes(cut) && (!collar || collar.takesTie));
-  const belt = beltOf(worn) === "self" && style !== "necktie";
-  return TIE_PLACES.filter((p) => (p === "neck" ? neck : belt));
+  return tiePlaces(garment.ties.offered, necklineOf(worn)?.cut, collarOf(worn), beltOf(worn) === "self", style);
 }
 
 /**
@@ -606,6 +606,8 @@ export function choiceOf(w: WornGarment): GarmentChoice {
   const stripes = count && count !== "none" && on.length ? { count, on } : undefined;
   const tie = tieOf(w);
   const tieAt = tieAtOf(w);
+  /* a necktie or a bow tie at the neck of a shirt collar is knotted round its band, and the collar draws it */
+  const tieBand = Boolean(tie && tie !== "none" && tieAt === "neck" && collarOf(w)?.ties?.band);
   const rows = buttonRowsOf(w);
   /* a sash, and where it is tied */
   const bowAt = bowAtOf(w);
@@ -622,6 +624,7 @@ export function choiceOf(w: WornGarment): GarmentChoice {
     ...(bowAt ? { bowAt } : {}),
     ...(stripes ? { stripes } : {}),
     ...(tie && tie !== "none" && tieAt ? { tie, tieAt } : {}),
+    ...(tieBand ? { tieBand: true as const } : {}),
   };
 }
 

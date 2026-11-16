@@ -22,7 +22,7 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, beltWorn, bodiceFor, bowPlaceOf, buttonedToHem, cloth, drawnBodice, dressStripes, frontButtons, narrowSkirt, seamAt, skirtFor, placketButtons, sashOn, skirtPlacketFor, sleeveEndPieces, tiePoint } from "./dressCut";
+import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, beltWorn, bodiceFor, bowPlaceOf, buttonedToHem, cloth, drawnBodice, dressStripes, narrowSkirt, seamAt, shownButtons, skirtFor, placketButtons, sashOn, skirtPlacketFor, sleeveEndPieces, tiePoint } from "./dressCut";
 import { BOW_SHADOW, bowLayers, crispEdgeLight, tieArt as knottedTie } from "./tieArt";
 import type { FoldSpec } from "./ties";
 import type { Inlay } from "@/lib/garments/stripes";
@@ -1093,7 +1093,8 @@ export const dressFront: GarmentArt = {
     return {
       top: withStripes(cut.top, [...cuffs, ...stripes.top], `${stripesKey}|${cuffs.length}`),
       ...(bottom ? { bottom: withBeltStripes(bottom, stripes.belt, stripesKey) } : {}),
-      ...(choice.tie && at ? { tie: knottedTie(choice.tie, at, choice.tieAt, narrowSkirt({ ...DEFAULT_SKIRT, ...choice.skirt })) } : {}),
+      /* a bow tie is only ever a shirt collar's, which draws it — see `tiePoint` */
+      ...(choice.tie && choice.tie !== "bowtie" && at ? { tie: knottedTie(choice.tie, at, choice.tieAt, narrowSkirt({ ...DEFAULT_SKIRT, ...choice.skirt })) } : {}),
     };
   },
 
@@ -1113,7 +1114,8 @@ export const dressFront: GarmentArt = {
    * covers the last one at the waist: see `GARMENT_LAYERS`.
    */
   cutTrim: (choice) => {
-    const { groups } = frontButtons(choice);
+    /* where they are — none moves — less any the belt covers by more than half: see `shownButtons` */
+    const { groups } = shownButtons(choice);
     return groups.length === 0 ? null : groups.length === 1 ? (
       litButtons(groups[0].at, groups[0].r)
     ) : (

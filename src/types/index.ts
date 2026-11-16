@@ -370,8 +370,13 @@ export type StripesId = "none" | "one" | "two" | "three";
  */
 export type StripeEdgeId = "collar" | "neckline" | "sleeves" | "hem" | "belt";
 
-/** A tie: none, a small tied bow, a necktie hanging down the centre, or a scarf «وشاح» with two broad tails. */
-export type TieId = "none" | "knot" | "necktie" | "scarf";
+/**
+ * A tie: none, a small tied bow, a necktie hanging down the centre, a bow
+ * tie «بابيون» — her ribbon bow with two tails, his butterfly with none — or
+ * a scarf «وشاح» with two broad tails. A necktie and a bow tie need a shirt
+ * collar to sit under: see `Collar.ties`.
+ */
+export type TieId = "none" | "knot" | "necktie" | "bowtie" | "scarf";
 
 /** Where a tie is knotted: at the centre front of the neck, or on a fabric belt — at its front, or at its side. */
 export type TieAtId = "neck" | "belt-front" | "belt-side";
@@ -612,7 +617,8 @@ export interface Garment {
   partCloths?: ("cuff" | "belt")[];
   /**
    * The ties it can be worn with, and the one it arrives with — each knotted
-   * wherever it has a place for one: see `tiePlacesOf`. Absent, it takes none.
+   * wherever it has a place for one: see `tiePlacesOf`. Absent, it takes none:
+   * a thobe or a polo is not worn with a tie, whatever collar it wears.
    */
   ties?: { offered: TieId[]; default: TieId };
   /** Which drawing to use, per view. Ids resolved by `lib/garments/art`. */
@@ -745,11 +751,18 @@ export interface Collar {
   /** Whether stripes can be sewn along its free edge — a sailor collar's. The count is the garment's: see `Garment.stripes`. */
   takesStripes?: true;
   /**
-   * Whether a tie can be knotted at its front, over it — a sailor collar's,
-   * a Peter Pan's. Absent, a garment wearing it is tied anywhere but the neck:
-   * a bow collar is its own tie, and a standing collar covers the neck.
+   * The ties knotted at its front, of those its garment offers — see
+   * `tiePlacesOf`. Over it, where its ends meet at the neckline's centre
+   * front: a sailor collar's knot, necktie and scarf, a Peter Pan's knot and
+   * scarf. Or, `band`, round its band and under its leaves, knotted where
+   * they meet, its band never showing: a shirt collar's necktie and bow tie,
+   * which it draws — see `shirtTie`. A necktie and a bow tie need a shirt
+   * collar to sit under, and nothing else here is one.
+   *
+   * Absent, a garment wearing it is tied anywhere but the neck: a bow collar
+   * is its own tie, and a standing collar covers the neck.
    */
-  takesTie?: true;
+  ties?: { offered: Exclude<TieId, "none">[]; band?: true };
 }
 
 /**

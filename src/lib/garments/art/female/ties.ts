@@ -274,7 +274,7 @@ function tailPath(line: Pt[], dir: -1 | 1, w: number, ends: "slant" | "notch"): 
 }
 
 /** A crease as soft cloth takes it: a fine crisp crest — a line of shade and one of light — over a broad soft turn either side of it. */
-const crease = (ridge: Pt[], broad: number, depth = 1): FoldSpec[] => [
+export const crease = (ridge: Pt[], broad: number, depth = 1): FoldSpec[] => [
   [ridge, [0.55, 0.8], 0.34 * depth, 0.3 * depth, 0.8],
   [ridge, [0.6, broad], 0.13 * depth, 0.12 * depth, 2],
 ];
@@ -300,9 +300,21 @@ const crease = (ridge: Pt[], broad: number, depth = 1): FoldSpec[] => [
  *   corner lower, or for a ribbon notched in a V.
  *
  * Back to front: the tails, then the loops, then the knot over all.
+ *
+ * `size`, where given, is a smaller bow's — the ribbon bow worn at a shirt
+ * collar, see `shirtTie`: how far its loops reach, how long its tails are
+ * and how they fall, and how their ends are cut. Every number not named
+ * there is the belt bow's, in the cloth's width.
  */
-export function bowAt(at: Pt, place: BowAtId, w: number = SASHES.sash.width, narrow = false): BowPieces {
-  const reach = BOW_REACH[place];
+export interface BowSize {
+  reach: number;
+  tails: readonly [long: number, short: number];
+  spread: { longDir: -1 | 1; long: TailFall; short: TailFall };
+  ends: "slant" | "notch";
+}
+
+export function bowAt(at: Pt, place: BowAtId, w: number = SASHES.sash.width, narrow = false, size?: BowSize): BowPieces {
+  const reach = size?.reach ?? BOW_REACH[place];
   const [kw, kh] = [0.72 * w, 0.78 * w];
   const knotPiece: Piece = {
     corners: [[-kw / 2, -kh / 2], [-kw / 2 + 0.04 * w, kh / 2], [kw / 2 - 0.04 * w, kh / 2], [kw / 2, -kh / 2]],
@@ -337,12 +349,13 @@ export function bowAt(at: Pt, place: BowAtId, w: number = SASHES.sash.width, nar
   const knot = placed(knotPiece, at);
 
   /* the tails: the shorter at the back, the longer crossing over it in front, each leaving from the knot's far side */
-  const spread = BOW_TAIL_SPREAD[place === "side" ? "side" : narrow ? "narrow" : "front"];
-  const ends = w < NOTCHED_UNDER ? "notch" : "slant";
+  const spread = size?.spread ?? BOW_TAIL_SPREAD[place === "side" ? "side" : narrow ? "narrow" : "front"];
+  const ends = size?.ends ?? (w < NOTCHED_UNDER ? "notch" : "slant");
   const top = kh / 2 - 0.14 * w;
+  const lengths = size?.tails ?? BOW_TAILS;
   const tailSpecs = [
-    { dir: (-spread.longDir) as -1 | 1, fall: spread.short, length: BOW_TAILS[1] },
-    { dir: spread.longDir, fall: spread.long, length: BOW_TAILS[0] },
+    { dir: (-spread.longDir) as -1 | 1, fall: spread.short, length: lengths[1] },
+    { dir: spread.longDir, fall: spread.long, length: lengths[0] },
   ];
   const tailLines = tailSpecs.map(({ dir, fall, length }) => tailLine([at[0] - dir * 0.12 * w, at[1] + top], dir, fall, length));
   const tails = tailSpecs.map(({ dir }, k) => tailPath(tailLines[k], dir, w, ends));

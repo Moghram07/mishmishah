@@ -74,6 +74,8 @@ export const collars: Collar[] = [
     build: { stand: 13, fall: "points" },
     opening: "high",
     asset: { front: "female-shirt-collar-front", behindBody: "female-shirt-collar-behind" },
+    /** A necktie or a bow tie, knotted round its band under its leaves, where they meet — see `shirtTie`. */
+    ties: { offered: ["necktie", "bowtie"], band: true },
   },
   {
     id: "female-peter-pan-collar",
@@ -93,8 +95,8 @@ export const collars: Collar[] = [
     build: { stand: 0, fall: "flat" },
     opening: "round",
     asset: { front: "female-peter-pan-collar-front" },
-    /** A tie knotted where its two rounded ends meet, over them. */
-    takesTie: true,
+    /** A knot or a scarf tied where its two rounded ends meet, over them — a necktie needs a shirt collar. */
+    ties: { offered: ["knot", "scarf"] },
   },
   {
     id: "female-mandarin-collar",
@@ -212,8 +214,8 @@ export const collars: Collar[] = [
     asset: { front: "female-sailor-collar-front" },
     /** Stripes along its outer edge, as the dress's other edges take them — see `Garment.stripes`. */
     takesStripes: true,
-    /** And a tie knotted at its front, over it, on every cut it follows — see `Garment.ties`. */
-    takesTie: true,
+    /** And a tie knotted at its front, over it, on every cut it follows — its knot, its short necktie or a scarf: see `Garment.ties`. */
+    ties: { offered: ["knot", "necktie", "scarf"] },
   },
   {
     id: "female-ruffled-collar",
@@ -291,6 +293,12 @@ export const collars: Collar[] = [
       front: "male-shirt-collar-front",
       behindBody: "male-shirt-collar-behind",
     },
+    /**
+     * A necktie or a bow tie, knotted round its band under its leaves — on his
+     * shirt: a polo and a thobe are not worn with one, whatever their collar,
+     * and offer no tie — see `Garment.ties`.
+     */
+    ties: { offered: ["necktie", "bowtie"], band: true },
   },
   {
     id: "male-polo-collar",
@@ -460,6 +468,7 @@ const TIE_NAMES: Record<TieId, Localized> = {
   none: { en: "None", ar: "بدون" },
   knot: { en: "Knot", ar: "عقدة" },
   necktie: { en: "Necktie", ar: "ربطة عنق" },
+  bowtie: { en: "Bow tie", ar: "بابيون" },
   scarf: { en: "Scarf", ar: "وشاح" },
 };
 

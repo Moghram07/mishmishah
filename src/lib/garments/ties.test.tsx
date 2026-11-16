@@ -59,7 +59,7 @@ const CM = 0.19;
 
 describe("ties anywhere", () => {
   it("names the scarf «وشاح» and the places «عند الرقبة · الحزام من الأمام · الحزام من الجنب»", () => {
-    expect(tiesFor(dress.ties!.offered).map((t) => t.name.ar)).toEqual(["بدون", "عقدة", "ربطة عنق", "وشاح"]);
+    expect(tiesFor(dress.ties!.offered).map((t) => t.name.ar)).toEqual(["بدون", "عقدة", "ربطة عنق", "بابيون", "وشاح"]);
     expect(tiePlacesFor(["neck", "belt-front", "belt-side"]).map((p) => p.name.ar)).toEqual(["عند الرقبة", "الحزام من الأمام", "الحزام من الجنب"]);
   });
 
@@ -75,14 +75,19 @@ describe("ties anywhere", () => {
     for (const cut of ["v", "boat", "wrap", "round", "square", "scoop"]) expect(tiePlacesOf(one(dressed(cut, "female-sailor-collar"))), cut).toContain("neck");
     expect(tiePlacesOf(one(dressed("round", "female-peter-pan-collar")))).toContain("neck");
     // not under a bow collar, its own tie, nor a standing collar, which covers the neck
-    for (const collar of ["female-bow-collar", "female-mandarin-collar", "female-shirt-collar"]) expect(tiePlacesOf(one(dressed("high", collar))), collar).not.toContain("neck");
-    // the shirt-dress's cut as it arrives, in its shirt collar
-    expect(tiePlacesOf(one(dressed("collared")))).not.toContain("neck");
+    for (const collar of ["female-bow-collar", "female-mandarin-collar"]) expect(tiePlacesOf(one(dressed("high", collar))), collar).not.toContain("neck");
+    // a shirt collar takes a necktie or a bow tie round its band — the shirt-dress's as it arrives, and on a high neck — and nothing else
+    for (const cut of ["collared", "high"]) {
+      const shirt = one(dressed(cut, cut === "high" ? "female-shirt-collar" : undefined));
+      expect(tiePlacesOf(shirt), cut).toEqual(["neck"]);
+      expect(tiesOffered(shirt), cut).toEqual(["none", "necktie", "bowtie"]);
+    }
   });
 
   it("is knotted on a fabric belt at its front or its side — not a leather one, not a necktie, and never on a wrap", () => {
     expect(tiePlacesOf(one(setBelt(dressed("round"), dress.id, "self")))).toEqual(["neck", "belt-front", "belt-side"]);
-    expect(tiePlacesOf(one(setBelt(dressed("round"), dress.id, "self")), "necktie")).toEqual(["neck"]);
+    // a necktie hangs from a shirt collar — none on a round neck, and never on a belt
+    expect(tiePlacesOf(one(setBelt(dressed("round"), dress.id, "self")), "necktie")).toEqual([]);
     expect(tiePlacesOf(one(setBelt(dressed("round"), dress.id, "brown")))).toEqual(["neck"]);
     // a sweetheart has no neck to tie at: only the belt, and so no necktie
     const sweet = one(setBelt(dressed("sweetheart"), dress.id, "self"));
@@ -115,8 +120,8 @@ describe("ties anywhere", () => {
     const unbelt = one(setBelt(sweet, dress.id, "none"));
     expect([unbelt.tie, unbelt.tieAt, unbelt.fabrics.tie]).toEqual([undefined, undefined, undefined]);
     expect(tieOf(one(setBelt([unbelt], dress.id, "self")))).toBe("none");
-    // a necktie with only a belt left to hang from comes off too
-    const necktie = one(setNeckline(setTie(setBelt(dressed("round"), dress.id, "self"), dress.id, "necktie"), dress.id, "female-sweetheart-neckline"));
+    // a necktie with only a belt left to hang from comes off too — the shirt-dress recut to a sweetheart, its shirt collar off
+    const necktie = one(setNeckline(setTie(setBelt(dressed("collared"), dress.id, "self"), dress.id, "necktie"), dress.id, "female-sweetheart-neckline"));
     expect([necktie.tie, tieOf(necktie)]).toEqual([undefined, "none"]);
   });
 

@@ -108,7 +108,13 @@ export function planQuick({ root, args, garments, artOf, cutModule, collarArt })
     /* the belt over the dress's own parts: its cut, its collars as drawn, its ties, and the order the stage draws them in */
     belts: new Set([
       ...of(dress),
-      ...closureOf(root, ["src/lib/garments/closures.ts", "src/lib/data/collars.ts", "src/lib/garments/art/female/collarCuts.ts", "src/lib/garments/art/female/ties.ts", "src/lib/garments/drawOrder.ts"]),
+      ...closureOf(root, ["src/lib/garments/closures.ts", "src/lib/data/collars.ts", "src/lib/garments/art/female/collarCuts.ts", "src/lib/garments/art/female/ties.ts", "src/lib/garments/tieRules.ts", "src/lib/garments/art/shirtTies.ts", "src/lib/garments/drawOrder.ts"]),
+      ...collarArt,
+    ]),
+    /* a necktie and a bow tie on a shirt collar: the rule that offers them, the collars as drawn, the ties' pieces, the jackets they show under, and the order */
+    ties: new Set([
+      ...of(garments.filter((g) => g.acceptsCollar || g.layer === "outer")),
+      ...closureOf(root, ["src/lib/data/collars.ts", "src/lib/garments/tieRules.ts", "src/lib/garments/art/shirtTies.ts", "src/lib/garments/drawOrder.ts"]),
       ...collarArt,
     ]),
     layering: new Set([...of(garments), ...closureOf(root, ["src/lib/garments/baseLayer.ts"])]),

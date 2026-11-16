@@ -97,6 +97,8 @@ export const garments: Garment[] = [
     acceptsCollar: true,
     defaultCollar: "female-shirt-collar",
     sleeves: { types: FEMALE_SLEEVES, default: { type: "set-in", length: "long", cuff: "formal" }, cuffs: WOVEN_CUFFS },
+    /* a necktie or a bow tie, with its shirt collar on — see `Collar.ties` */
+    ties: { offered: ["none", "necktie", "bowtie"], default: "none" },
     asset: { front: "female-blouse-front" },
   },
   {
@@ -158,8 +160,12 @@ export const garments: Garment[] = [
     stripes: { offered: ["none", "one", "two", "three"], default: "none" },
     /* its cuffs and bands, and a fabric belt, each in a cloth of its own if wanted */
     partCloths: ["cuff", "belt"],
-    /* a tie at the centre front of its neck, or on a fabric belt — see `tiePlacesOf` */
-    ties: { offered: ["none", "knot", "necktie", "scarf"], default: "none" },
+    /*
+      a tie at the centre front of its neck, or on a fabric belt — see
+      `tiePlacesOf`; a necktie or a bow tie only with a shirt collar on, the
+      shirt-dress's, and the sailor's own short necktie
+    */
+    ties: { offered: ["none", "knot", "necktie", "bowtie", "scarf"], default: "none" },
     asset: { front: "female-dress-front" },
   },
   {
@@ -257,6 +263,8 @@ export const garments: Garment[] = [
     acceptsCollar: true,
     defaultCollar: "male-shirt-collar",
     sleeves: { types: MALE_SLEEVES, default: { type: "set-in", length: "long", cuff: "formal" }, cuffs: WOVEN_CUFFS },
+    /* a necktie or a bow tie, with its shirt collar on — see `Collar.ties` */
+    ties: { offered: ["none", "necktie", "bowtie"], default: "none" },
     asset: { front: "male-shirt-front" },
   },
   {

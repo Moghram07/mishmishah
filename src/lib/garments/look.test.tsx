@@ -5060,3 +5060,116 @@ describe("the belt over the dress's own parts, light and dark", () => {
     }, 120_000);
   }
 });
+
+describe("a necktie and a bow tie on a shirt collar, light and dark", () => {
+  /*
+    The necktie and the bow tie belong on a shirt collar (round 25's second
+    fix, the user's photos ShirtCollarTie and ShirtCollarBowtie): her blouse
+    and the shirt-dress, each with the necktie and the bow tie, black on
+    white; his shirt with both; and a necktie under his jacket, in its
+    opening — each at 1× and 2.5×. And the ribbon's last button, more than
+    half under the ribbon: no longer drawn.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Look = {
+    caption: string;
+    body: BodyType;
+    wear: { id: string; cloth: string }[];
+    neckline?: string;
+    tie?: TieId;
+    tieCloth?: string;
+    buttons?: ButtonsId;
+    belt?: BeltId;
+    beltCloth?: string;
+    bowAt?: BowAtId;
+    zoom: number;
+    focus: [number, number];
+  };
+  const stage = (look: Look) => {
+    let worn: WornGarment[] = [];
+    for (const { id, cloth } of look.wear) worn = wear(worn, cutFrom(garmentById(id)!, cloth));
+    const main = look.wear[0].id;
+    if (look.neckline) worn = setNeckline(worn, main, look.neckline);
+    if (look.buttons) worn = setButtons(worn, main, look.buttons);
+    if (look.belt) worn = setBelt(worn, main, look.belt);
+    if (look.bowAt) worn = setBowAt(worn, main, look.bowAt);
+    if (look.tie) worn = setTie(worn, main, look.tie);
+    const cloths: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const w of worn) {
+      const g = garmentById(w.garmentId)!;
+      const cloth = look.wear.find((x) => x.id === w.garmentId)!.cloth;
+      const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+      for (const r of regionsOf(g, w)) regions[r] = f(r === "tie" ? (look.tieCloth ?? "fb-black-crepe") : r === "belt" ? (look.beltCloth ?? cloth) : cloth);
+      cloths[g.id] = regions;
+    }
+    const outfit: Outfit = { bodyType: look.body, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={cloths} zoom={look.zoom} focus={look.focus} />;
+  };
+  const WHITE = "fb-white";
+  const BLACK = "fb-black-crepe";
+  const NAVY = "fb-navy";
+  const BLOUSE = [{ id: "female-blouse", cloth: WHITE }, { id: "female-skirt", cloth: BLACK }];
+  const SHIRT_DRESS = [{ id: "female-dress", cloth: WHITE }];
+  const SHIRT = [{ id: "male-shirt", cloth: WHITE }, { id: "male-trousers", cloth: BLACK }];
+  const SUIT = [...SHIRT, { id: "male-jacket", cloth: BLACK }];
+  const COLLARED = "female-collared-neckline";
+  /* each look at 1×, and at 2.5× round the collar: a necktie's knot and blade, a bow tie's bow */
+  const pair = (caption: string, look: Omit<Look, "caption" | "zoom" | "focus">, near: [number, number]): Look[] => [
+    { caption: `${caption}, 1×`, ...look, zoom: 1, focus: [300, 500] },
+    { caption: `${caption}, 2.5×`, ...look, zoom: 2.5, focus: near },
+  ];
+  const SHEETS: Record<string, Look[][]> = {
+    her: [
+      [
+        ...pair("blouse, black necktie", { body: "female", wear: BLOUSE, tie: "necktie" }, [298, 240]),
+        ...pair("blouse, black bow tie", { body: "female", wear: BLOUSE, tie: "bowtie" }, [298, 214]),
+      ],
+      [
+        ...pair("shirt-dress, black necktie", { body: "female", wear: SHIRT_DRESS, neckline: COLLARED, tie: "necktie" }, [298, 240]),
+        ...pair("shirt-dress, black bow tie", { body: "female", wear: SHIRT_DRESS, neckline: COLLARED, tie: "bowtie" }, [298, 214]),
+      ],
+    ],
+    him: [
+      [
+        ...pair("shirt, black necktie", { body: "male", wear: SHIRT, tie: "necktie" }, [301, 245]),
+        ...pair("shirt, black bow tie", { body: "male", wear: SHIRT, tie: "bowtie" }, [301, 205]),
+      ],
+      [...pair("necktie under his jacket", { body: "male", wear: SUIT, tie: "necktie" }, [301, 260])],
+    ],
+    /* the ribbon's last button, more than half under it, no longer drawn — the round neck buttoned to the waist, as round 24's sheet had it */
+    ribbon: [
+      [
+        { caption: "white ribbon, bow at the front, 2.5×", body: "female", wear: [{ id: "female-dress", cloth: NAVY }], neckline: "female-round-neckline", buttons: "waist", belt: "ribbon", beltCloth: WHITE, zoom: 2.5, focus: [300, 348] },
+        { caption: "white ribbon, bow at the side, 2.5×", body: "female", wear: [{ id: "female-dress", cloth: NAVY }], neckline: "female-round-neckline", buttons: "waist", belt: "ribbon", beltCloth: WHITE, bowAt: "side", zoom: 2.5, focus: [300, 348] },
+      ],
+    ],
+  };
+  for (const [name, rows] of Object.entries(SHEETS)) {
+    it.each(["light", "dark"] as const)(`writes .preview/wardrobe/shirtties-${name}-%s.html`, (theme) => {
+      const t = THEMES[theme];
+      const html = renderToStaticMarkup(
+        <>
+          {rows.map((row, r) => (
+            <div key={r} className="row">
+              {row.map((look) => (
+                <figure key={look.caption}>
+                  {stage(look)}
+                  <figcaption>{look.caption}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ))}
+        </>
+      );
+      const css =
+        `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+        `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+        `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+        `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+      writeFileSync(`.preview/wardrobe/shirtties-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    }, 120_000);
+  }
+});

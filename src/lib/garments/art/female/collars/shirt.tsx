@@ -1,5 +1,5 @@
 import { arc, type Point } from "@/lib/garments/collar";
-import { line, run, type Pt } from "@/lib/garments/fit";
+import { draft, line, run, type Pt } from "@/lib/garments/fit";
 import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
 import { collarFold, collarTone } from "../../collarLight";
 import {
@@ -13,7 +13,9 @@ import {
 import { behindBandArt } from "../../behindBand";
 import { litButtons } from "../../buttons";
 import { seamFolds, sleeveFoldDefs } from "../../sleeveFolds";
-import type { GarmentArt } from "../../index";
+import { shirtTieArt } from "../../shirtTieArt";
+import { shirtTie } from "../../shirtTies";
+import type { GarmentArt, RegionArt } from "../../index";
 
 /**
  * Shirt collar, female: a band round the neck, and two leaves folded down over
@@ -97,62 +99,107 @@ const BAND_SEAM = seamFolds([BAND_FOOT]);
 /** The button on the band, in the V: one, below the meeting point. */
 const BUTTON_DROP = 15;
 
+/** The collar: its band, and its two leaves over it. */
+const COLLAR: RegionArt = {
+  focus: [300, 192],
+  outline: "soft",
+  /**
+   * Cut from further along the roll than the shirt it is sewn to, so a
+   * stripe stays upright but does not line up across the seam.
+   */
+  grain: { shift: [0, 14] },
+  shape: (fill) => (
+    <>
+      <path d={BAND_PATH} fill={fill} />
+      <path d={LEAF_LEFT_PATH} fill={fill} />
+      <path d={LEAF_RIGHT_PATH} fill={fill} />
+    </>
+  ),
+  /* the leaves outlined all round; the band nowhere — under the leaves but for its seam */
+  edge: () => (
+    <>
+      <path d="" />
+      <path d={LEAF_LEFT_PATH} />
+      <path d={LEAF_RIGHT_PATH} />
+    </>
+  ),
+  defs: (uid) => (
+    <>
+      {foldDefs(uid)}
+      {sleeveFoldDefs(uid)}
+      {/* the band's seam is lit only where the band shows: its light is drawn after the leaves */}
+      <mask id={uid("band-seam")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
+        <path d={BAND_PATH} fill="#fff" />
+        <path d={LEAF_LEFT_PATH} fill="#000" />
+        <path d={LEAF_RIGHT_PATH} fill="#000" />
+      </mask>
+    </>
+  ),
+  shading: (uid) => (
+    <>
+      {/* the garment's light; the band's seam and the roll, soft folds; the leaves' soft shadow on the band is their outline's */}
+      {collarTone()}
+      {foldShadows(uid, BAND_SEAM)}
+      {foldShadows(uid, [ROLL_FOLD])}
+    </>
+  ),
+  light: (uid) => (
+    <>
+      {foldLights(uid, [ROLL_FOLD])}
+      <g mask={`url(#${uid("band-seam")})`}>{foldLights(uid, BAND_SEAM)}</g>
+    </>
+  ),
+};
+
+/**
+ * Its leaves alone, drawn as `COLLAR` draws them: laid again over a
+ * necktie's knot, which is knotted round the band under them, so the
+ * collar's points lie over the sides of the knot — the stage draws them
+ * after the tie, and only over it: see `GARMENT_LAYERS`' `fall`.
+ */
+const LEAVES: RegionArt = {
+  ...COLLAR,
+  shape: (fill) => (
+    <>
+      <path d={LEAF_LEFT_PATH} fill={fill} />
+      <path d={LEAF_RIGHT_PATH} fill={fill} />
+    </>
+  ),
+  edge: () => (
+    <>
+      <path d={LEAF_LEFT_PATH} />
+      <path d={LEAF_RIGHT_PATH} />
+    </>
+  ),
+};
+
+/** The collar with a necktie knotted round its band: drawn as ever, its leaves laid again over the knot — see `LEAVES`. */
+const UNDER_TIE: RegionArt = { ...COLLAR, over: LEAVES };
+
+/** The row a necktie worn with it ends at: her waist — see `shirtTie`. */
+const WAIST_Y = draft("female").waistY;
+
 export const shirtCollarFront: GarmentArt = {
-  regions: {
-    collar: {
-      focus: [300, 192],
-      outline: "soft",
-      /**
-       * Cut from further along the roll than the shirt it is sewn to, so a
-       * stripe stays upright but does not line up across the seam.
-       */
-      grain: { shift: [0, 14] },
-      shape: (fill) => (
-        <>
-          <path d={BAND_PATH} fill={fill} />
-          <path d={LEAF_LEFT_PATH} fill={fill} />
-          <path d={LEAF_RIGHT_PATH} fill={fill} />
-        </>
-      ),
-      /* the leaves outlined all round; the band nowhere — under the leaves but for its seam */
-      edge: () => (
-        <>
-          <path d="" />
-          <path d={LEAF_LEFT_PATH} />
-          <path d={LEAF_RIGHT_PATH} />
-        </>
-      ),
-      defs: (uid) => (
-        <>
-          {foldDefs(uid)}
-          {sleeveFoldDefs(uid)}
-          {/* the band's seam is lit only where the band shows: its light is drawn after the leaves */}
-          <mask id={uid("band-seam")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
-            <path d={BAND_PATH} fill="#fff" />
-            <path d={LEAF_LEFT_PATH} fill="#000" />
-            <path d={LEAF_RIGHT_PATH} fill="#000" />
-          </mask>
-        </>
-      ),
-      shading: (uid) => (
-        <>
-          {/* the garment's light; the band's seam and the roll, soft folds; the leaves' soft shadow on the band is their outline's */}
-          {collarTone()}
-          {foldShadows(uid, BAND_SEAM)}
-          {foldShadows(uid, [ROLL_FOLD])}
-        </>
-      ),
-      light: (uid) => (
-        <>
-          {foldLights(uid, [ROLL_FOLD])}
-          <g mask={`url(#${uid("band-seam")})`}>{foldLights(uid, BAND_SEAM)}</g>
-        </>
-      ),
-    },
+  regions: { collar: COLLAR },
+  /*
+    Worn with a necktie or a bow tie, knotted round its band and under its
+    leaves where they meet, it draws the tie — and lays its leaves again over
+    a necktie's knot. Its leaves still meet: the collar is closed at the top.
+  */
+  cut: (choice) => {
+    const style = choice.tieBand ? choice.tie : undefined;
+    if (style !== "necktie" && style !== "bowtie") return {};
+    const meet: Pt = [MEET[0], MEET[1]];
+    const tie = shirtTieArt(style, "female", meet, WAIST_Y);
+    /* a necktie's knot lies under the leaves, a bow tie on them — as its pieces say: see `ShirtTie.under` */
+    return shirtTie(style, "female", meet, WAIST_Y).under ? { collar: UNDER_TIE, tie } : { tie };
   },
   /** One button on the band, whatever the garment asks: there is room for one in the V. */
   bandButtons: () => litButtons([[COLLAR_AXIS(MEET[1] + BUTTON_DROP), MEET[1] + BUTTON_DROP]], 2),
 };
+
+/** For the record and the checker: the collar's own measurements — see `MALE_SHIRT_COLLAR`. */
+export const SHIRT_COLLAR = { stand: BAND_RISE, meet: MEET, side: SIDE, outer: OUTER, tip: TIP };
 
 export const shirtCollarBehind = behindBandArt(STAND_BEHIND_PATH);
 

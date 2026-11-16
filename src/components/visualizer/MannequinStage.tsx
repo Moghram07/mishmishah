@@ -75,6 +75,12 @@ const PIVOT = [BODY_CANVAS.width / 2, BODY_CANVAS.height / 2] as const;
  */
 const EDGE_REACH = 3;
 
+/**
+ * How far past a tie the leaves laid again over it reach: enough to take in
+ * the tie's own soft edge, so no rim of the knot shows over a leaf.
+ */
+const FALL_MARGIN = 2;
+
 export const MannequinStage = forwardRef<SVGSVGElement, Props>(
   function MannequinStage(
     {
@@ -193,8 +199,12 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
       const collarCut = (drawing: GarmentArt | undefined) => drawing?.cut?.(choiceOf(w))?.collar ?? drawing?.regions.collar;
       const front = collar ? collarCut(collarArt(collar.asset.front)) : undefined;
       const behind = collar?.asset.behindBody ? collarCut(collarArt(collar.asset.behindBody)) : undefined;
-      /* its tie, where it is knotted — at the neck, over any collar, or on its belt */
-      const tie = art?.cut?.(choiceOf(w))?.tie;
+      /*
+        its tie, where it is knotted: round a shirt collar's band, under its
+        leaves — the collar's to draw, see `Collar.ties` — or at the neck,
+        over any other collar, or on its belt
+      */
+      const tie = (collar && collarArt(collar.asset.front)?.cut?.(choiceOf(w))?.tie) ?? art?.cut?.(choiceOf(w))?.tie;
       return { garment, index, cutFor, front, behind, tie };
     });
 
@@ -496,6 +506,8 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
           */
           const { cutFor, front: collarFront, tie: collarTie } = layers[index];
           const choice = choiceOf(worn);
+          /* its tie — drawn only with a cloth of its own, which it has only when it is on */
+          const tie = collarTie ? cut("tie", collarTie, collar ? `${garment.id}-${collar.id}-tie` : `${garment.id}-tie`) : null;
           /* each of its parts, by the layer it is drawn in — see `GARMENT_LAYERS` for the order, and why */
           const parts: Record<GarmentLayer, ReactNode> = {
             cloth: garment.fabricRegions.map((region) => cut(region, cutFor(region), `${garment.id}-${region}`)),
@@ -515,13 +527,30 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
             }),
             /* the belt's buckle, on it */
             buckle: art.beltTrim?.(choice),
-            /* its tie, over the collar and the belt — drawn only with a cloth of its own, which it has only when it is on */
-            tie: collarTie && cut("tie", collarTie, collar ? `${garment.id}-${collar.id}-tie` : `${garment.id}-tie`),
-            /* a band collar's placket buttons from just under the band; otherwise the opening's, or the garment's own */
+            /* a band collar's placket buttons from just under the band; otherwise the opening's, or the garment's own — under a necktie's blade */
             trim: (collar?.build.fall === "none" ? art.bandTrim : undefined) ?? (collar && art.openingTrim?.[collar.opening]) ?? art.trim,
+            /* its tie, over the collar and the belt, and the placket */
+            tie,
+            /*
+              a shirt collar's leaves, laid again over a necktie's knot — which
+              is knotted round the band under them — and only over the tie, so
+              its points lie over the sides of the knot: see the collar's `over`
+            */
+            fall:
+              tie && collarFront?.over ? (
+                <g>
+                  <mask id={uid(`fall-${garment.id}`)} maskUnits="userSpaceOnUse" x="0" y="0" width={CANVAS[0]} height={CANVAS[1]}>
+                    <g stroke="#fff" strokeWidth={FALL_MARGIN * 2} strokeLinejoin="round">
+                      {collarTie!.shape("#fff")}
+                    </g>
+                  </mask>
+                  <g mask={`url(#${uid(`fall-${garment.id}`)})`}>{cut("collar", collarFront.over, `${garment.id}-${collar!.id}-fall`)}</g>
+                </g>
+              ) : null,
             cuffs: art.cuffTrim?.(choice),
             collarTrim: collarDrawing?.trim,
-            bandButtons: collarDrawing?.bandButtons?.(art.collarButtons ?? 1),
+            /* the button closing a collar's band — under the knot of a tie round the band, so not drawn */
+            bandButtons: choice.tieBand ? null : collarDrawing?.bandButtons?.(art.collarButtons ?? 1),
           };
           return (
             <g key={garment.id}>

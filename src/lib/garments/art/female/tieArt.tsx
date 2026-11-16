@@ -82,15 +82,37 @@ export const crispEdgeLight = (uid: Uid, edges: string[]): ReactNode => (
  * on dark cloth as a pale line across the bow. The narrow shadow under its
  * edges is the region's: `BOW_SHADOW`.
  */
-export function bowLayers(bow: BowPieces): { defs: (uid: Uid) => ReactNode; shading: (uid: Uid) => ReactNode; light: (uid: Uid) => ReactNode } {
-  const asFold = ([ridge, width, shadow, light, soft]: FoldSpec): Fold => ({ ridge, width, shadow, light, soft });
+export function bowLayers(bow: BowPieces): CrispLayers {
   const { tails, loops, knot } = bow.parts;
   /* what shows of each part: it, less every part drawn over it */
-  const parts = [
+  const parts: CrispPart[] = [
     ...tails.map((d, i) => ({ id: `bow-tail-${i}`, pieces: [d], over: [...tails.slice(i + 1), ...loops, knot], folds: bow.folds.tails[i].map(asFold) })),
     { id: "bow-loops", pieces: loops, over: [knot], folds: bow.folds.loops.map(asFold) },
     { id: "bow-knot", pieces: [knot], over: [] as string[], folds: bow.folds.knot.map(asFold) },
   ];
+  return crispLayers(bow.pieces, parts);
+}
+
+/** A fold as the drawing takes it, from its spec — see `FoldSpec`. */
+export const asFold = ([ridge, width, shadow, light, soft]: FoldSpec): Fold => ({ ridge, width, shadow, light, soft });
+
+/** A part of a crisply lit tie: its pieces, the pieces drawn over it — what shows of it is it less those — and its folds. */
+export interface CrispPart {
+  id: string;
+  pieces: string[];
+  over: string[];
+  folds: Fold[];
+}
+
+/** A crisply lit tie's defs, shading and light — see `crispLayers`. */
+export type CrispLayers = { defs: (uid: Uid) => ReactNode; shading: (uid: Uid) => ReactNode; light: (uid: Uid) => ReactNode };
+
+/**
+ * How a bow, a tie, anything knotted is lit crisply — the belt bow's light,
+ * see `bowLayers`, for any set of parts: every piece in the flat tone; each
+ * part's folds, and the fine light along its edges, on what shows of it.
+ */
+export function crispLayers(pieces: string[], parts: CrispPart[]): CrispLayers {
   return {
     defs: (uid) => (
       <>
@@ -110,7 +132,7 @@ export function bowLayers(bow: BowPieces): { defs: (uid: Uid) => ReactNode; shad
     ),
     shading: (uid) => (
       <>
-        {bow.pieces.map((d, i) => (
+        {pieces.map((d, i) => (
           <path key={i} d={d} fill={FLAT_LIT} />
         ))}
         {parts.map((p) => (

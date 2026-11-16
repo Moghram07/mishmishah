@@ -927,6 +927,20 @@ export function skirtPlacketFor(inside?: Tuck, skirt: SkirtChoice = DEFAULT_SKIR
  * seam, the last at least `BUTTON_HEM_CLEAR` of a spacing above the hem.
  */
 export function frontButtons(choice: GarmentChoice = {}): { groups: { at: Pt[]; r: number }[]; pitch?: number } {
+  /* kept by all it reads: the cut, how it is buttoned, the waist, a collar's opening, the sleeve its bodice is drafted with — and, buttoned to the hem, the skirt its placket runs down */
+  const s = choice.sleeve;
+  const hem = choice.buttons === "hem" ? `${choice.skirt?.shape ?? ""}|${choice.skirt?.length ?? ""}` : "";
+  const key = [cutOf(choice.neckline), choice.buttons ?? "none", choice.buttonRows ?? "one", choice.skirt?.waist ?? "natural", choice.opening ? 1 : 0, s ? `${s.type}|${s.length}|${s.cuff ?? ""}` : "", hem].join("/");
+  let hit = frontsKept.get(key);
+  if (!hit) {
+    hit = frontButtonsOf(choice);
+    frontsKept.set(key, hit);
+  }
+  return hit;
+}
+const frontsKept = new Map<string, { groups: { at: Pt[]; r: number }[]; pitch?: number }>();
+
+function frontButtonsOf(choice: GarmentChoice): { groups: { at: Pt[]; r: number }[]; pitch?: number } {
   const id = cutOf(choice.neckline);
   const asked = choice.buttons ?? "none";
   /* over a mermaid, to the hem is to the waist */
@@ -985,6 +999,135 @@ function doubleRows(b: Bodice, waist: WaistId): { groups: { at: Pt[]; r: number 
   }
   const run = buttonRun(first, seamAt(waist) - DOUBLE.last, DOUBLE.pitch);
   return { groups: [{ at: xs.flatMap((x) => run.at.map((y) => [x, y] as Pt)), r: BUTTON_R }], pitch: run.pitch };
+}
+
+/**
+ * How much of a button may lie under the belt with the button still drawn:
+ * half. Covered by more, it would show only as a sliver at the belt's edge —
+ * a ribbon's last button peeked a pixel above it — so it is not drawn at all;
+ * and no button moves for it. The user's rule, round 25.
+ */
+export const BUTTON_HIDDEN_OVER = 0.5;
+
+/**
+ * What a choice's belt lays over the dress's front, piece by piece — its
+ * band; a sash's bow; on a fabric belt a tie knotted on it, or else its
+ * buckle — each flattened on its own, since pieces overlap. None with no
+ * belt on. Kept by belt, skirt and tie.
+ */
+export function beltCover(choice: GarmentChoice): CoverPiece[] {
+  const belt = beltWorn(choice);
+  if (!belt) return [];
+  const skirt = { ...DEFAULT_SKIRT, ...choice.skirt };
+  const sash = sashOf(choice);
+  const place = bowPlaceOf(choice);
+  const tied = !sash && choice.tieAt && choice.tieAt !== "neck" && (choice.tie === "knot" || choice.tie === "scarf") ? choice.tie : undefined;
+  const key = `${skirtKey(skirt)}|${belt}|${sash ?? ""}|${place}|${tied ?? ""}|${tied ? choice.tieAt : ""}`;
+  let cover = beltCovers.get(key);
+  if (cover) return cover;
+  const pieces: string[] = [];
+  if (sash) {
+    const s = sashOn(skirt, sash, place);
+    pieces.push(s.path, ...s.bow.pieces);
+  } else {
+    const b = beltFor(skirt);
+    pieces.push(b.path);
+    const at = tied ? tiePoint(choice) : null;
+    if (tied && at) pieces.push(...tieAt(tied, at, choice.tieAt, narrowSkirt(skirt)).pieces);
+    else {
+      const { x, y, w, h } = b.buckle;
+      pieces.push(`M${x - w / 2} ${y - h / 2} L${x + w / 2} ${y - h / 2} L${x + w / 2} ${y + h / 2} L${x - w / 2} ${y + h / 2} Z`);
+    }
+  }
+  cover = pieces.map((d) => {
+    const polys = flattened(d);
+    return { polys, box: boundsOf(polys) };
+  });
+  beltCovers.set(key, cover);
+  return cover;
+}
+const beltCovers = new Map<string, CoverPiece[]>();
+
+/** A piece of what a belt lays over the dress: flattened, and its bounds — see `beltCover`. */
+export interface CoverPiece {
+  polys: Pt[][];
+  box: [x0: number, y0: number, x1: number, y1: number];
+}
+
+/** The bounds of a flattened piece: its least and greatest x and y. */
+const boundsOf = (polys: Pt[][]): [number, number, number, number] => {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const p of polys)
+    for (const [x, y] of p) {
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x);
+      y1 = Math.max(y1, y);
+    }
+  return [x0, y0, x1, y1];
+};
+
+/**
+ * The share of a button — a disc `r` across, at `at` — lying under any piece
+ * of a belt's: sampled on a 12 × 12 grid across the button, the samples that
+ * fall on the disc counted.
+ */
+export function coveredShare(cover: CoverPiece[], [cx, cy]: Pt, r: number): number {
+  /* kept by belt and button: the same belt over the same button, cut after cut */
+  let kept = sharesKept.get(cover);
+  if (!kept) sharesKept.set(cover, (kept = new Map()));
+  const key = `${cx},${cy},${r}`;
+  const hit = kept.get(key);
+  if (hit !== undefined) return hit;
+  const share = shareUnder(cover, cx, cy, r);
+  kept.set(key, share);
+  return share;
+}
+const sharesKept = new WeakMap<CoverPiece[], Map<string, number>>();
+
+function shareUnder(cover: CoverPiece[], cx: number, cy: number, r: number): number {
+  const near = cover.filter(({ box: [x0, y0, x1, y1] }) => x0 <= cx + r && x1 >= cx - r && y0 <= cy + r && y1 >= cy - r);
+  if (near.length === 0) return 0;
+  const step = r / 6;
+  let n = 0;
+  let hit = 0;
+  for (let i = 0; i < 12; i++) {
+    const y = cy - r + (i + 0.5) * step;
+    /* each piece's edges crossing this row, once for the row's samples: a sample is inside where an odd number lie to its right — `inside`'s own test */
+    const rows = near.map((p) => crossingsAt(p.polys, y));
+    for (let j = 0; j < 12; j++) {
+      const x = cx - r + (j + 0.5) * step;
+      if ((x - cx) ** 2 + (y - cy) ** 2 > r * r) continue;
+      n++;
+      if (rows.some((xs) => xs.filter((v) => x < v).length % 2 === 1)) hit++;
+    }
+  }
+  return n ? hit / n : 0;
+}
+
+/** Where a piece's edges cross a row, as `inside` finds them. */
+function crossingsAt(polys: Pt[][], y: number): number[] {
+  const xs: number[] = [];
+  for (const p of polys)
+    for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+      const [xi, yi] = p[i];
+      const [xj, yj] = p[j];
+      if (yi > y !== yj > y) xs.push(((xj - xi) * (y - yi)) / (yj - yi) + xi);
+    }
+  return xs;
+}
+
+/**
+ * The buttons down a dress's front that are drawn, as worn: every one of
+ * `frontButtons`, where it is — none moves — less any the belt covers by more
+ * than `BUTTON_HIDDEN_OVER`: see `beltCover`.
+ */
+export function shownButtons(choice: GarmentChoice = {}): { groups: { at: Pt[]; r: number }[]; pitch?: number } {
+  const all = frontButtons(choice);
+  const cover = beltCover(choice);
+  if (cover.length === 0) return all;
+  const groups = all.groups.map((g) => ({ ...g, at: g.at.filter((p) => coveredShare(cover, p, g.r) <= BUTTON_HIDDEN_OVER) })).filter((g) => g.at.length > 0);
+  return { ...all, groups };
 }
 
 /** The cut a choice names, or the one the dress arrives in. */
@@ -1739,9 +1882,13 @@ export function dressPoints(choice: GarmentChoice): EdgePoint[] {
   ];
 }
 
-/** Where a choice's tie is knotted, if it wears one: at its neck, or on its belt — see `dressPoints`. */
+/**
+ * Where a choice's tie is knotted, if it wears one the dress draws: at its
+ * neck, or on its belt — see `dressPoints`. None for a tie round a shirt
+ * collar's band, which the collar draws: see `GarmentChoice.tieBand`.
+ */
 export function tiePoint(choice: GarmentChoice): Pt | null {
-  if (!choice.tie) return null;
+  if (!choice.tie || choice.tieBand) return null;
   const kind = choice.tieAt ?? "neck";
   return dressPoints(choice).find((p) => p.kind === kind)?.at ?? null;
 }

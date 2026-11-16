@@ -15,15 +15,22 @@
  *     button. Her sleeves still hang in front of it at her sides — the belt
  *     is cut away under them: see `RegionArt.under`.
  *   • `buckle` — a belt's buckle, on the belt.
+ *   • `trim` — hardware on its opening: a shirt's or a blouse's placket
+ *     buttons, under a necktie's blade.
  *   • `tie` — over the collar it is knotted at, or the belt it is tied on: a
- *     tie on the belt is its knot or bow; one at the neck hangs over all.
- *   • `trim`, `cuffs`, `collarTrim`, `bandButtons` — hardware on its opening,
- *     its cuffs and its collar's band, last, as they always were.
+ *     tie on the belt is its knot or bow; one at the neck hangs over all —
+ *     the belt, the placket and its buttons.
+ *   • `fall` — a shirt collar's leaves, laid again over a necktie knotted
+ *     round its band, and only over the tie: its points lie over the sides
+ *     of the knot (the collar's `over`). A bow tie lies over the leaves.
+ *   • `cuffs`, `collarTrim`, `bandButtons` — hardware on its cuffs and its
+ *     collar's band, last, as they always were. The band's button is under
+ *     the knot of a tie round the band, and is not drawn.
  *
  * Whatever is worn over the garment — a jacket — is another garment, drawn
  * after this one and holding it inside: it covers the belt as it covers the
- * rest.
+ * rest, and a tie shows only in its opening.
  */
-export const GARMENT_LAYERS = ["cloth", "buttons", "collar", "belt", "buckle", "tie", "trim", "cuffs", "collarTrim", "bandButtons"] as const;
+export const GARMENT_LAYERS = ["cloth", "buttons", "collar", "belt", "buckle", "trim", "tie", "fall", "cuffs", "collarTrim", "bandButtons"] as const;
 
 export type GarmentLayer = (typeof GARMENT_LAYERS)[number];
