@@ -69,6 +69,9 @@ const { SLEEVE_KINDS, sleeveCoverage } = SLEEVE_KIT;
 const { HEM_AT, WAIST_DROP, besideArms, fallOf, fallRun, hangs, shapeLengths, skirtCoverage } = await import(src("src/lib/garments/skirts.ts"));
 const { legWiden } = await import(src("src/lib/garments/legs.ts"));
 const { BELT_ABOVE_SEAM, BELT_WIDTH, BOW_REACH, BUTTONED_CUTS, BUTTON_LAST, DOUBLE_CUTS, SASHED_CUTS, SASHES, beltsOn, buttonsOn, isSash } = await import(src("src/lib/garments/closures.ts"));
+/* the order the stage draws a garment's own parts in, and the ties it knots — see `checkBeltOnTop` */
+const { GARMENT_LAYERS } = await import(src("src/lib/garments/drawOrder.ts"));
+const { tieAt } = await import(src("src/lib/garments/art/female/ties.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES, NECKLINE_TIED } = await import(
@@ -3264,6 +3267,293 @@ function checkClosures(bodyKey, wardrobe) {
   return failed;
 }
 
+/* ------------------------------------------------------------ belt on top */
+
+/** The rows a belt is checked in, from its seam: above the widest band's top, below the longest tail's end. */
+const BELT_ROWS = { above: 60, below: 260 };
+/** Of the four samples a pixel takes, how many make it a part's: half. */
+const OWNS = 2;
+/** The sailor collar's drawing, which is cut to the bodice at its waist — see `sailorCollarFront`. */
+const SAILOR_ART = "female-sailor-collar-front";
+
+/** Fill paths into rows `y0` to `y0 + h` of the canvas, across its whole width. */
+function rasterizeRows(paths, y0, h) {
+  const buf = new Float32Array(W * h);
+  for (const d of paths) fillPolys(flatten(d).map((poly) => poly.map(([x, y]) => [x, y - y0])), buf, W, h, SS);
+  return buf;
+}
+
+/** The indices of a buffer's pixels a part owns. */
+const ownedOf = (buf) => {
+  const out = [];
+  for (let i = 0; i < buf.length; i++) if (buf[i] >= OWNS) out.push(i);
+  return out;
+};
+
+/**
+ * The belt is worn over the dress — over whatever of it reaches the waist —
+ * and only what is worn on top lies over the belt. Every cut, at every
+ * waist, over every skirt, in every belt it takes — fabric, leather, sash
+ * and ribbon, a sash's bow at the front and at her side — with no bow and,
+ * on a fabric belt, with each bow tied on it:
+ *
+ * - **Collars.** Every collar the cut takes, with every sleeve it is checked
+ *   with: wherever it meets the belt or its bow the belt is drawn above it —
+ *   no pixel of it, nor of the stripes sewn on it, shows there — and it ends
+ *   under the belt, nothing of it coming out below.
+ * - **The bodice's other parts.** Its buttons, to the waist and to the hem,
+ *   in one row or two; its placket; a wrap's edge: all under the belt.
+ * - **On top.** The buckle and every bow tied on a belt are drawn over it;
+ *   a tie knotted at the neck that reaches the belt hangs over it.
+ *
+ * "Above" is the stage's own order, `GARMENT_LAYERS`, read from the module
+ * the stage draws by: each part is filled in where the stage draws it, and
+ * what shows of a part is whatever no part drawn after it covers. With no
+ * belt there is nothing to check: the collar is drawn as it always was.
+ */
+function checkBeltOnTop(bodyKey, body, wardrobe) {
+  let failed = 0;
+  const ORDER = Object.fromEntries(GARMENT_LAYERS.map((layer, i) => [layer, i]));
+  for (const garment of wardrobe) {
+    const mod = CUT_MODULES[garment.asset.front];
+    if (!mod?.sashOn || !garment.belts || !garment.skirt?.waists) continue;
+    /* what fails, by the part it is about — the order first, then the collars — so a report is read in that order */
+    const bad = { order: [], collar: [], buttons: [], placket: [], edge: [], rows: [] };
+    /* the order itself: the belt after the dress's own parts, its buckle and its ties after it */
+    for (const under of ["cloth", "buttons", "collar"]) if (!(ORDER.belt > ORDER[under])) bad.order.push(`the belt is drawn before the ${under}, so under it`);
+    for (const over of ["buckle", "tie"]) if (!(ORDER[over] > ORDER.belt)) bad.order.push(`the ${over} is drawn before the belt, so under it`);
+
+    const cuts = cutsOf(garment.asset.front);
+    const sews = (collar, opening) => opening !== null && opening !== undefined && (collar.cuts ?? [collar.opening]).includes(opening);
+    const collarsOn = (cut) => collarsForGarment(garment).filter((c) => (c.necklines ? c.necklines.includes(cut) : sews(c, NECKLINE_OPENING[cut])));
+    /* a collar cut to the bodice — the sailor's — with every sleeve the cut takes, and none, as `checkCollars` checks it; any other with the dress's own */
+    const sleevesFor = (collar, cut) => {
+      if (!collar.necklines || NECKLINE_SLEEVES[cut] !== "both") return [null];
+      const types = garment.sleeves.types.filter((t) => SLEEVE_KINDS[t].bodies.includes(bodyKey) && SLEEVE_KINDS[t].construction !== "band");
+      return [null, { type: "set-in", length: "sleeveless" }, ...types.map((type) => ({ type, length: SLEEVE_KINDS[type].lengths[0] }))];
+    };
+    /* each collar as the stage draws it: the sailor cut to the bodice at its waist off the V, any other as `artPaths` reads it */
+    const collarPaths = (collar, cut, waist, sleeve) =>
+      collar.asset.front === SAILOR_ART && cut !== "v" ? COLLAR_CUTS.sailorOn(cut, waist, sleeve ?? undefined).map((p) => p.path) : artPaths(collar.asset.front, body, { cut, sleeve });
+    const ysOf = (paths) => paths.flatMap((d) => flatten(d).flat().map(([, y]) => y));
+    const tieStyles = (garment.ties?.offered ?? []).filter((t) => t !== "none");
+
+    let checked = 0;
+    let collarsDrawn = 0;
+    const meets = { collar: 0, buttons: 0, placket: 0, edge: 0, bow: 0, buckle: 0, neckTie: 0 };
+    const reaching = new Set();
+    const tiesReaching = new Set();
+    for (const waist of garment.skirt.waists) {
+      const seam = mod.seamAt(waist);
+      const y0 = Math.floor(seam - BELT_ROWS.above);
+      const h = BELT_ROWS.above + BELT_ROWS.below;
+      const inRows = (paths) => rasterizeRows(paths, y0, h);
+      /* a pixel's index in the rows checked, from the canvas's */
+      const at = (x, y) => (y >= y0 && y < y0 + h && x >= 0 && x < W ? (y - y0) * W + x : -1);
+      /* every collar on every cut, as drawn at this waist: only what reaches these rows is filled in */
+      const collarsAt = new Map(
+        cuts.map((cut) => [
+          cut,
+          collarsOn(cut).flatMap((collar) =>
+            sleevesFor(collar, cut).map((sleeve) => {
+              const paths = collarPaths(collar, cut, waist, sleeve);
+              collarsDrawn++;
+              return { collar, sleeve, pixels: Math.max(...ysOf(paths)) < y0 ? [] : ownedOf(inRows(paths)) };
+            })
+          ),
+        ])
+      );
+      /* every tie knotted at a cut's neck, in each style, at this waist */
+      const neckTies = new Map(
+        cuts.map((cut) => {
+          const point = mod.dressPoints({ neckline: cut, skirt: { ...mod.DEFAULT_SKIRT, waist } }).find((p) => p.kind === "neck");
+          return [cut, point ? tieStyles.map((style) => ({ style, pixels: ownedOf(inRows(tieAt(style, point.at, "neck").pieces)) })) : []];
+        })
+      );
+      /* each cut's placket on its bodice, buttoned so — the same over every skirt — and a skirt's down to its hem */
+      const plackets = new Map();
+      const placketOf = (key, d) => {
+        if (!plackets.has(key)) plackets.set(key, d ? ownedOf(inRows([d])) : []);
+        return plackets.get(key);
+      };
+      /* a wrap's edge, where it lies on the panel under it, a point a unit */
+      const edges = new Map(
+        cuts.map((cut) => {
+          const wrap = mod.bodiceFor(cut, undefined, waist).cut.wrap;
+          const edge = [];
+          for (let k = 1; wrap && k < wrap.over.length; k++) {
+            const [a, b] = [wrap.over[k - 1], wrap.over[k]];
+            const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1])));
+            for (let s = 0; s < n; s++) edge.push(at(Math.floor(a[0] + ((b[0] - a[0]) * s) / n), Math.floor(a[1] + ((b[1] - a[1]) * s) / n)));
+          }
+          return [cut, edge];
+        })
+      );
+      /* a cut's buttons, buttoned so over a skirt, as the pixels they cover, and the placket they are sewn on */
+      const buttonsAt = new Map();
+      const frontOf = (cut, b, skirt) => {
+        const choice = { neckline: cut, skirt, ...b };
+        const pixels = [];
+        for (const g of mod.frontButtons(choice).groups) {
+          for (const [cx, cy] of g.at) {
+            for (let y = Math.floor(cy - g.r); y <= Math.ceil(cy + g.r); y++) {
+              for (let x = Math.floor(cx - g.r); x <= Math.ceil(cx + g.r); x++) {
+                let n = 0;
+                for (const sy of [0.25, 0.75]) for (const sx of [0.25, 0.75]) if ((x + sx - cx) ** 2 + (y + sy - cy) ** 2 <= g.r ** 2) n++;
+                const i = at(x, y);
+                if (n >= OWNS && i >= 0) pixels.push(i);
+              }
+            }
+          }
+        }
+        const sewn = b.buttonRows === "two" ? "none" : b.buttons;
+        const bodice = placketOf(`${cut}|${sewn}`, mod.bodiceFor(cut, undefined, waist, sewn).placket?.path);
+        const hem = b.buttons === "hem" && mod.buttonedToHem(choice) ? placketOf(`skirt|${skirt.shape}|${skirt.length}`, mod.skirtPlacketFor(undefined, skirt).path) : [];
+        return { name: b.buttonRows === "two" ? "two rows to the waist" : `to the ${b.buttons}`, pixels, placket: [...bodice, ...hem] };
+      };
+      for (const shape of garment.skirt.shapes) {
+        for (const length of shapeLengths(shape, garment.skirt.lengths)) {
+          const skirt = { shape, length, waist };
+          const name = `${shape} ${length} · ${waist}`;
+          const fabric = mod.beltFor(skirt);
+          /*
+            Each belt as the dress draws it, by what it resolves a choice to —
+            the fabric or leather belt, or each sash and ribbon tied at each
+            place — and, for its band alone, the rows it covers in each column.
+          */
+          const belts = new Map();
+          const beltOf = (choice) => {
+            if (!mod.beltWorn(choice)) return null;
+            const sash = mod.sashFor(choice);
+            const key = sash ? `${sash.kind} at the ${sash.place}` : "belt";
+            if (!belts.has(key)) {
+              const paths = sash ? [sash.path, ...sash.bow.pieces] : [fabric.path];
+              const ys = ysOf(paths);
+              if (Math.min(...ys) < y0 || Math.max(...ys) >= y0 + h) bad.rows.push(`${name}, ${key}: runs out of the rows checked`);
+              const band = ownedOf(inRows([sash ? sash.path : fabric.path]));
+              const foot = new Int32Array(W).fill(-1);
+              for (const i of band) foot[i % W] = Math.max(foot[i % W], Math.floor(i / W));
+              belts.set(key, { name: key, buf: inRows(paths), foot, sash });
+            }
+            return belts.get(key);
+          };
+          /* the bows tied on a fabric belt, at its front and its side: drawn as ties, after it */
+          const narrow = mod.narrowSkirt(skirt);
+          const bows = mod
+            .dressPoints({ neckline: mod.DEFAULT_CUT, belt: "self", skirt })
+            .filter((p) => p.kind !== "neck")
+            .flatMap((p) => tieStyles.filter((s) => s !== "necktie").map((style) => ({ style, where: p.kind, buf: inRows(tieAt(style, p.at, p.kind, narrow).pieces) })));
+          /* the buckle on a buckled belt: its frame, round the hole the belt shows through */
+          const { x: bx, y: by, w: bw, h: bh, frame } = fabric.buckle;
+          const inBuckle = (i) => {
+            const [x, y] = [(i % W) + 0.5, Math.floor(i / W) + y0 + 0.5];
+            const outer = Math.abs(x - bx) <= bw / 2 && Math.abs(y - by) <= bh / 2;
+            return outer && !(Math.abs(x - bx) < bw / 2 - frame && Math.abs(y - by) < bh / 2 - frame);
+          };
+          for (const cut of cuts) {
+            /* its buttons, as offered over this skirt, and the placket each is sewn on */
+            const buttoned = buttonsOn(cut, garment.buttons?.offered ?? ["none"], shape).flatMap((buttons) => [
+              { buttons },
+              ...(buttons === "waist" && DOUBLE_CUTS.includes(cut) && garment.buttons?.rows?.includes("two") ? [{ buttons, buttonRows: "two" }] : []),
+            ]);
+            const fronts = buttoned.map((b) => {
+              /* buttoned to the waist, the same buttons over every skirt at this waist — see `checkClosures` — so worked out once */
+              const key = `${cut}|${b.buttons}|${b.buttonRows ?? "one"}${b.buttons === "hem" ? `|${shape}|${length}` : ""}`;
+              if (!buttonsAt.has(key)) buttonsAt.set(key, frontOf(cut, b, skirt));
+              return buttonsAt.get(key);
+            });
+            const edge = edges.get(cut);
+            const offered = beltsOn(cut, garment.belts.offered).filter((b) => b !== "none");
+            for (const belt of offered) {
+              for (const place of isSash(belt) ? (SASHED_CUTS.includes(cut) ? ["side"] : ["front", "side"]) : [undefined]) {
+                const B = beltOf({ neckline: cut, belt, bowAt: place, skirt });
+                if (!B) continue;
+                /* with no bow on it, and on a fabric belt each bow tied on it */
+                for (const bow of belt === "self" ? [null, ...bows] : [null]) {
+                  checked++;
+                  const buckled = !B.sash && !bow;
+                  const covers = [
+                    { layer: "belt", at: (i) => B.buf[i] >= OWNS },
+                    ...(bow ? [{ layer: "tie", at: (i) => bow.buf[i] >= OWNS }] : []),
+                    ...(buckled ? [{ layer: "buckle", at: inBuckle }] : []),
+                  ];
+                  /* whether a part's pixel shows: no part drawn after it covers it */
+                  const shows = (i, layer) => !covers.some((c) => ORDER[c.layer] > ORDER[layer] && c.at(i));
+                  const tag = `${cut}, ${name}, ${belt === "self" ? "fabric belt" : belt === "brown" || belt === "black" ? `${belt} leather belt` : B.name}${bow ? ` with a ${bow.style} at its ${bow.where.slice(5)}` : ""}`;
+                  const onBelt = (pixels) => pixels.filter((i) => i >= 0 && B.buf[i] >= OWNS);
+                  /* the collars: under the belt where they meet it, and ending under it */
+                  for (const entry of collarsAt.get(cut)) {
+                    const meet = onBelt(entry.pixels);
+                    if (!meet.length) continue;
+                    meets.collar++;
+                    reaching.add(`${entry.collar.id.replace(/^female-|-collar$/g, "")} on the ${cut}`);
+                    const over = meet.filter((i) => shows(i, "collar")).length;
+                    const below = entry.pixels.filter((i) => B.foot[i % W] >= 0 && Math.floor(i / W) > B.foot[i % W] && B.buf[i] < OWNS && shows(i, "collar")).length;
+                    const sleeve = entry.sleeve ? ` in ${entry.sleeve.type} ${entry.sleeve.length} sleeves` : "";
+                    if (over) bad.collar.push(`${tag}${sleeve}: ${over} px of the ${entry.collar.id} show over the belt`);
+                    if (below) bad.collar.push(`${tag}${sleeve}: the ${entry.collar.id} comes out ${below} px below the belt`);
+                  }
+                  /* the buttons and their placket */
+                  for (const front of fronts) {
+                    const meet = onBelt(front.pixels);
+                    if (meet.length) {
+                      meets.buttons++;
+                      const over = meet.filter((i) => shows(i, "buttons")).length;
+                      if (over) bad.buttons.push(`${tag}, buttoned ${front.name}: ${over} px of its buttons show over the belt`);
+                    }
+                    const placket = onBelt(front.placket);
+                    if (placket.length) {
+                      meets.placket++;
+                      const over = placket.filter((i) => shows(i, "cloth")).length;
+                      if (over) bad.placket.push(`${tag}, buttoned ${front.name}: ${over} px of its placket show over the belt`);
+                    }
+                  }
+                  /* the wrap's edge */
+                  const lying = onBelt(edge);
+                  if (lying.length) {
+                    meets.edge++;
+                    const over = lying.filter((i) => shows(i, "cloth")).length;
+                    if (over) bad.edge.push(`${tag}: the wrap's edge shows over the belt at ${over} points`);
+                  }
+                  /* on top of it: the bow tied on it, the buckle */
+                  if (bow) meets.bow++;
+                  if (buckled) meets.buckle++;
+                  /* a tie at the neck that reaches it, which is worn over it */
+                  for (const tie of neckTies.get(cut)) {
+                    if (!onBelt(tie.pixels).length) continue;
+                    meets.neckTie++;
+                    tiesReaching.add(`${tie.style} on the ${cut} · ${waist}`);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    /* a check that met nothing would pass whatever the order: the wrap's collar has to be found under its sash */
+    if (!reaching.size) bad.collar.push("no collar meets a belt anywhere: the wrap's sailor collar runs down to its sash");
+    const all = Object.values(bad).flat();
+    failed += all.length;
+    console.log(
+      `${all.length ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${garment.id} · front`.padEnd(28)} ` +
+        `belt on top: ${checked} belts and bows, ${collarsDrawn} collars as drawn; ` +
+        `a collar meets the belt ${meets.collar} times (${[...reaching].join(", ")}), the buttons ${meets.buttons}, the placket ${meets.placket}, a wrap's edge ${meets.edge}` +
+        `${all.length ? "" : " — each drawn under it, the collar ending under it"}; ` +
+        `on it ${meets.buckle} buckles and ${meets.bow} bows${all.length ? "" : ", drawn over it"}; a tie at the neck reaches it ${meets.neckTie} times (${tiesReaching.size} ties) and hangs over it`
+    );
+    /* the order's own lines, then each part: how many failed, and the first few */
+    const LABEL = { collar: "a collar over or below the belt", buttons: "buttons over the belt", placket: "a placket over the belt", edge: "a wrap's edge over the belt", rows: "a belt beyond the rows checked" };
+    for (const line of bad.order) console.log(`     ${bodyKey.padEnd(6)} ${line}`);
+    for (const [kind, lines] of Object.entries(bad)) {
+      if (kind === "order" || !lines.length) continue;
+      console.log(`     ${bodyKey.padEnd(6)} ${lines.length} × ${LABEL[kind]}, the first:`);
+      for (const line of lines.slice(0, 3)) console.log(`     ${bodyKey.padEnd(6)}   ${line}`);
+    }
+  }
+  return failed;
+}
+
 /** How far a skirt's hem may sit from its length's row, in units. */
 const HEM_SLACK = 1;
 
@@ -4288,6 +4578,7 @@ for (const bodyKey of Object.keys(bodies)) {
   failures += timed("trousers", () => checkTrouserDetails(bodyKey, body, profile, garmentsFor(bodyKey)));
   failures += timed("bodice", () => checkBodiceDetails(bodyKey, garmentsFor(bodyKey)));
   failures += timed("closures", () => checkClosures(bodyKey, garmentsFor(bodyKey)));
+  failures += timed("belts", () => checkBeltOnTop(bodyKey, body, garmentsFor(bodyKey)));
   failures += timed("layering", () =>
     checkLayering(bodyKey, body, cover, garmentsFor(bodyKey)) + checkUnderTops(bodyKey, body, garmentsFor(bodyKey)) + checkBaseLayer(bodyKey, body, cover, garmentsFor(bodyKey))
   );

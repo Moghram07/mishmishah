@@ -134,9 +134,10 @@ export interface RegionArt {
    */
   surface?: { blur?: number; relief?: number; warp?: number; joined?: boolean; ridges?: string; gathers?: string };
   /**
-   * Cloth of this region that lies over the garment's other regions — a wrap
-   * bodice's tie, hanging over the skirt. Drawn in the same fabric, after
-   * every region of the garment.
+   * Cloth worn over the garment's other parts — a belt, or a sash and its
+   * bow, over the skirt and the bodice. Drawn after every region of the
+   * garment, its buttons and its collar — see `GARMENT_LAYERS` — in the same
+   * fabric, or the one `cloth` names.
    */
   over?: RegionArt;
   /** Each piece's free edges, when the outline is not all edge — see `RegionDrawing`. */
@@ -265,9 +266,12 @@ export interface GarmentArt {
   /**
    * Hardware for the garment as cut: a shirt-dress's placket buttons, on the
    * one cut with a placket. Drawn before the collar, so a collar lying over
-   * the top of the placket covers whatever is under it.
+   * the top of the placket covers whatever is under it — and before a belt,
+   * which covers the last button at the waist: see `GARMENT_LAYERS`.
    */
   cutTrim?: (choice: GarmentChoice) => ReactNode;
+  /** Hardware on the belt the garment wears: its buckle, drawn over the belt — see `GARMENT_LAYERS`. */
+  beltTrim?: (choice: GarmentChoice) => ReactNode;
   /**
    * The same hardware for a garment cut with a different opening, as `variants`
    * is for its cloth: a placket that starts higher under a standing band has its

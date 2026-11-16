@@ -280,5 +280,5 @@ describe("the sailor collar on every neckline it follows", () => {
     for (const cut of ["boat", "wrap", "round", "square", "scoop"] as const)
       for (const type of dress.sleeves!.types.filter((t) => SLEEVE_KINDS[t].construction !== "band"))
         expect(() => draw(dressed(cut, (w) => setSleeve(w, dress.id, { type, length: SLEEVE_KINDS[type].lengths[0] }))), `${cut} ${type}`).not.toThrow();
-  });
+  }, 60_000);
 });

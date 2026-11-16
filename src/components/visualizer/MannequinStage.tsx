@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useId, useRef, type ReactNode } from "react";
+import { forwardRef, Fragment, useId, useRef, type ReactNode } from "react";
 import type React from "react";
 import type { BodyZone, Fabric, FabricRegionId, Outfit } from "@/types";
 import { BODY_CANVAS, bodyById } from "@/lib/mannequin/bodies";
@@ -22,6 +22,7 @@ import {
 import { FabricRegion, beneathDefs, beneathMasks, useRenderedWidth, type BeneathMasks } from "./FabricRegion";
 import { BaseLayer } from "./BaseLayer";
 import { baseLayer } from "@/lib/garments/baseLayer";
+import { GARMENT_LAYERS, type GarmentLayer } from "@/lib/garments/drawOrder";
 
 /**
  * The dressed mannequin.
@@ -494,39 +495,42 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
             what you are looking at.
           */
           const { cutFor, front: collarFront, tie: collarTie } = layers[index];
+          const choice = choiceOf(worn);
+          /* each of its parts, by the layer it is drawn in — see `GARMENT_LAYERS` for the order, and why */
+          const parts: Record<GarmentLayer, ReactNode> = {
+            cloth: garment.fabricRegions.map((region) => cut(region, cutFor(region), `${garment.id}-${region}`)),
+            /* the garment's own hardware as cut — a placket's buttons — under the collar */
+            buttons: art.cutTrim?.(choice),
+            /* the collar is sewn on top of the neckline it closes */
+            collar: collarDrawing && cut("collar", collarFront, `${garment.id}-${collar!.id}`),
+            /*
+              cloth worn over all of those — a belt, a sash and its bow — so it
+              covers a collar's end, the placket and the last button at the
+              waist; cut from its own cloth where it has one, else the region's
+            */
+            belt: garment.fabricRegions.map((region) => {
+              const over = cutFor(region)?.over;
+              const cloth = over?.cloth && fabrics[garment.id]?.[over.cloth] ? over.cloth : region;
+              return over ? cut(cloth, over, `${garment.id}-${region}-over`) : null;
+            }),
+            /* the belt's buckle, on it */
+            buckle: art.beltTrim?.(choice),
+            /* its tie, over the collar and the belt — drawn only with a cloth of its own, which it has only when it is on */
+            tie: collarTie && cut("tie", collarTie, collar ? `${garment.id}-${collar.id}-tie` : `${garment.id}-tie`),
+            /* a band collar's placket buttons from just under the band; otherwise the opening's, or the garment's own */
+            trim: (collar?.build.fall === "none" ? art.bandTrim : undefined) ?? (collar && art.openingTrim?.[collar.opening]) ?? art.trim,
+            cuffs: art.cuffTrim?.(choice),
+            collarTrim: collarDrawing?.trim,
+            bandButtons: collarDrawing?.bandButtons?.(art.collarButtons ?? 1),
+          };
           return (
             <g key={garment.id}>
               {inside(
-              <>
-              {garment.fabricRegions.map((region) =>
-                cut(region, cutFor(region), `${garment.id}-${region}`)
-              )}
-              {/* cloth of a region that lies over the garment's later ones — a wrap's tie over its skirt */}
-              {garment.fabricRegions.map((region) => {
-                const over = cutFor(region)?.over;
-                /* cut from its own cloth where it has one — a fabric belt's — else from the region's */
-                const cloth = over?.cloth && fabrics[garment.id]?.[over.cloth] ? over.cloth : region;
-                return over ? cut(cloth, over, `${garment.id}-${region}-over`) : null;
-              })}
-              {/* the garment's own hardware as cut — a placket's buttons — under the collar */}
-              {art.cutTrim?.(choiceOf(worn))}
-              {/* the collar is sewn on top of the neckline it closes */}
-              {collarDrawing &&
-                cut(
-                  "collar",
-                  collarFront,
-                  `${garment.id}-${collar!.id}`
-                )}
-              {/* its tie, over the collar and the belt — drawn only with a cloth of its own, which it has only when it is on */}
-              {collarTie && cut("tie", collarTie, collar ? `${garment.id}-${collar.id}-tie` : `${garment.id}-tie`)}
-              {/* a band collar's placket buttons from just under the band; otherwise the opening's, or the garment's own */}
-              {(collar?.build.fall === "none" ? art.bandTrim : undefined) ??
-                (collar && art.openingTrim?.[collar.opening]) ??
-                art.trim}
-              {art.cuffTrim?.(choiceOf(worn))}
-              {collarDrawing?.trim}
-              {collarDrawing?.bandButtons?.(art.collarButtons ?? 1)}
-              </>
+                <>
+                  {GARMENT_LAYERS.map((layer) => (
+                    <Fragment key={layer}>{parts[layer]}</Fragment>
+                  ))}
+                </>
               )}
             </g>
           );

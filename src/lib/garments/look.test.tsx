@@ -4932,3 +4932,131 @@ describe("round 24, the belt bow, the sash and the wrap's sash, light and dark",
     }, 120_000);
   }
 });
+
+describe("the belt over the dress's own parts, light and dark", () => {
+  /*
+    The belt is worn over the dress, so it covers whatever of the dress
+    reaches the waist: the wrap's sailor collar and its stripes run down the
+    wrap's edge to under the sash and end there, at every waist, plain and on
+    a print; the last button, under every belt — fabric, leather, sash and
+    ribbon, with a bow and without; a shirt-dress's placket; and a tie at the
+    neck, which is worn on top, hanging over the belt where it reaches it.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Look = {
+    caption: string;
+    cloth: string;
+    cut: string;
+    collar?: string;
+    collarCloth?: string;
+    sleeve?: SleeveChoice;
+    skirt?: Partial<SkirtChoice>;
+    buttons?: ButtonsId;
+    belt?: BeltId;
+    beltCloth?: string;
+    bowAt?: BowAtId;
+    stripes?: StripesId;
+    stripeCloth?: string;
+    tie?: TieId;
+    tieAt?: TieAtId;
+    tieCloth?: string;
+    zoom: number;
+    focus: [number, number];
+  };
+  const stage = (look: Look) => {
+    const cloth = f(look.cloth);
+    const g = garmentById("female-dress")!;
+    let worn = setNeckline(wear([], cutFrom(g, cloth.id)), g.id, `female-${look.cut}-neckline`);
+    if (look.collar) worn = setCollar(worn, g.id, look.collar);
+    if (look.sleeve) worn = setSleeve(worn, g.id, look.sleeve);
+    if (look.skirt) worn = setSkirt(worn, g.id, { ...skirtOf(worn.find((x) => x.garmentId === g.id)!)!, ...look.skirt });
+    if (look.buttons) worn = setButtons(worn, g.id, look.buttons);
+    if (look.belt) worn = setBelt(worn, g.id, look.belt);
+    if (look.bowAt) worn = setBowAt(worn, g.id, look.bowAt);
+    if (look.stripes) worn = setStripeEdges(setStripes(worn, g.id, look.stripes, look.stripeCloth ?? "fb-navy"), g.id, ["collar"]);
+    if (look.tie) worn = setTie(worn, g.id, look.tie);
+    if (look.tieAt) worn = setTieAt(worn, g.id, look.tieAt);
+    const w = worn.find((x) => x.garmentId === g.id)!;
+    const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+    for (const r of regionsOf(g, w))
+      regions[r] =
+        r === "collar" && look.collarCloth
+          ? f(look.collarCloth)
+          : r === "belt" && look.beltCloth
+            ? f(look.beltCloth)
+            : r === "trim"
+              ? f(look.stripeCloth ?? "fb-navy")
+              : r === "tie"
+                ? f(look.tieCloth ?? "fb-red")
+                : cloth;
+    const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={{ [g.id]: regions }} zoom={look.zoom} focus={look.focus} />;
+  };
+  const NAVY = "fb-navy";
+  const PRINT = "fb-midnight-floral";
+  const WHITE = "fb-white";
+  const BLACK = "fb-black-crepe";
+  const RED = "fb-red";
+  const MID: Record<WaistId, number> = { empire: 308, natural: 344, dropped: 414 };
+  const WAISTS: WaistId[] = ["empire", "natural", "dropped"];
+  /* where the wrap's collar meets its sash, at her left where the panels cross */
+  const MEET: Record<WaistId, [number, number]> = { empire: [320, 316], natural: [322, 352], dropped: [345, 422] };
+  const SLEEVE: SleeveChoice = { type: "set-in", length: "three-quarter" };
+  const SAILOR = { collar: "female-sailor-collar", collarCloth: WHITE, stripes: "two" as const, stripeCloth: NAVY, beltCloth: RED, sleeve: SLEEVE };
+  const SHEETS: Record<string, Look[][]> = {
+    /* the wrap in the white sailor collar and the red sash, at each waist: navy, then the print, each at 1× and 2.5× */
+    wrap: WAISTS.map((waist): Look[] => [
+      { caption: `${waist}, navy, 1×`, cloth: NAVY, cut: "wrap", skirt: { waist }, ...SAILOR, zoom: 1, focus: [300, 500] },
+      { caption: `${waist}, navy, 2.5×`, cloth: NAVY, cut: "wrap", skirt: { waist }, ...SAILOR, zoom: 2.5, focus: MEET[waist] },
+      { caption: `${waist}, print, 1×`, cloth: PRINT, cut: "wrap", skirt: { waist }, ...SAILOR, zoom: 1, focus: [300, 500] },
+      { caption: `${waist}, print, 2.5×`, cloth: PRINT, cut: "wrap", skirt: { waist }, ...SAILOR, zoom: 2.5, focus: MEET[waist] },
+    ]),
+    /* the last button under every belt, with a bow and without; a shirt-dress's placket; a necktie over the belt */
+    parts: [
+      [
+        { caption: "white fabric belt, 2.5×", cloth: NAVY, cut: "round", buttons: "waist", belt: "self", beltCloth: WHITE, zoom: 2.5, focus: [300, MID.natural + 4] },
+        { caption: "brown leather belt, 2.5×", cloth: NAVY, cut: "round", buttons: "waist", belt: "brown", zoom: 2.5, focus: [300, MID.natural + 4] },
+        { caption: "white sash, bow at the front, 2.5×", cloth: NAVY, cut: "round", buttons: "waist", belt: "sash", beltCloth: WHITE, zoom: 2.5, focus: [300, MID.natural + 4] },
+        { caption: "white ribbon, bow at the front, 2.5×", cloth: NAVY, cut: "round", buttons: "waist", belt: "ribbon", beltCloth: WHITE, zoom: 2.5, focus: [300, MID.natural + 4] },
+        { caption: "white ribbon, bow at the side, 2.5×", cloth: NAVY, cut: "round", buttons: "waist", belt: "ribbon", beltCloth: WHITE, bowAt: "side", zoom: 2.5, focus: [300, MID.natural + 4] },
+        { caption: "white fabric belt, white bow at the front, 2.5×", cloth: NAVY, cut: "round", buttons: "waist", belt: "self", beltCloth: WHITE, tie: "knot", tieAt: "belt-front", tieCloth: WHITE, zoom: 2.5, focus: [300, MID.natural + 4] },
+      ],
+      [
+        { caption: "empire, to the hem, white sash at the front, 1×", cloth: NAVY, cut: "round", buttons: "hem", belt: "sash", beltCloth: WHITE, skirt: { waist: "empire" }, zoom: 1, focus: [300, 500] },
+        { caption: "shirt-dress, brown leather belt, 1×", cloth: NAVY, cut: "collared", buttons: "waist", belt: "brown", zoom: 1, focus: [300, 500] },
+        { caption: "shirt-dress, brown leather belt, 2.5×", cloth: NAVY, cut: "collared", buttons: "waist", belt: "brown", zoom: 2.5, focus: [300, MID.natural - 20] },
+        { caption: "dropped, V, black ribbon at the side, 1×", cloth: PRINT, cut: "v", buttons: "waist", belt: "ribbon", beltCloth: BLACK, bowAt: "side", skirt: { waist: "dropped" }, zoom: 1, focus: [300, 500] },
+        { caption: "dropped, V, black ribbon at the side, 2.5×", cloth: PRINT, cut: "v", buttons: "waist", belt: "ribbon", beltCloth: BLACK, bowAt: "side", skirt: { waist: "dropped" }, zoom: 2.5, focus: [310, MID.dropped - 10] },
+        { caption: "empire, V, sailor, red necktie over a white belt, 2.5×", cloth: NAVY, cut: "v", collar: "female-sailor-collar", collarCloth: WHITE, belt: "self", beltCloth: WHITE, tie: "necktie", tieCloth: RED, skirt: { waist: "empire" }, zoom: 2.5, focus: [300, 290] },
+      ],
+    ],
+  };
+  for (const [name, rows] of Object.entries(SHEETS)) {
+    it.each(["light", "dark"] as const)(`writes .preview/wardrobe/beltover-${name}-%s.html`, (theme) => {
+      const t = THEMES[theme];
+      const html = renderToStaticMarkup(
+        <>
+          {rows.map((row, r) => (
+            <div key={r} className="row">
+              {row.map((look) => (
+                <figure key={look.caption}>
+                  {stage(look)}
+                  <figcaption>{look.caption}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ))}
+        </>
+      );
+      const css =
+        `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+        `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+        `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+        `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+      writeFileSync(`.preview/wardrobe/beltover-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    }, 120_000);
+  }
+});

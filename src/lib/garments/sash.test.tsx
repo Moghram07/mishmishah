@@ -389,8 +389,8 @@ describe("the sash and the belt bow", () => {
     const over = regions.bottom!.over!;
     expect([over.cloth, over.solid, over.outline]).toEqual(["belt", undefined, "soft"]);
     const buckle = renderToStaticMarkup(<svg><Buckle {...beltFor(DEFAULT_SKIRT).buckle} /></svg>).replace(/^<svg>|<\/svg>$/g, "");
-    expect(renderToStaticMarkup(<>{dressFront.cutTrim!({ belt: "self" })}</>)).toContain(buckle);
-    for (const belt of ["sash", "ribbon"] as const) expect(renderToStaticMarkup(<>{dressFront.cutTrim!({ belt })}</>)).not.toContain(buckle);
+    expect(renderToStaticMarkup(<>{dressFront.beltTrim!({ belt: "self" })}</>)).toContain(buckle);
+    for (const belt of ["sash", "ribbon"] as const) expect(renderToStaticMarkup(<>{dressFront.beltTrim!({ belt })}</>)).not.toContain(buckle);
     // the wrap: its sash at its side over the skirt, and nothing of its own over the bodice any more
     for (const waist of WAISTS) {
       const wrap = dressFront.cut!({ neckline: "wrap", skirt: { ...DEFAULT_SKIRT, waist } });

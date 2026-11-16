@@ -1109,31 +1109,28 @@ export const dressFront: GarmentArt = {
   },
   /**
    * Its buttons — a shirt-dress's placket, a keyhole's closure, a placket
-   * down the front — drawn under any collar; and a belt's buckle, over the
-   * belt at the centre front, on a belt that is buckled.
+   * down the front — drawn under any collar, and under any belt, which
+   * covers the last one at the waist: see `GARMENT_LAYERS`.
    */
   cutTrim: (choice) => {
     const { groups } = frontButtons(choice);
-    const buttons =
-      groups.length === 0 ? null : groups.length === 1 ? (
-        litButtons(groups[0].at, groups[0].r)
-      ) : (
-        <>
-          {groups.map((g, i) => (
-            <g key={i}>{litButtons(g.at, g.r)}</g>
-          ))}
-        </>
-      );
-    const belt = beltWorn(choice);
-    /* a belt with a tie on it, at its front or its side, is tied, not buckled: the tie is its fastening — and a sash is tied in its own bow */
-    if (!belt || isSash(belt) || (choice.tie && choice.tieAt && choice.tieAt !== "neck")) return buttons;
-    const { buckle } = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
-    return (
+    return groups.length === 0 ? null : groups.length === 1 ? (
+      litButtons(groups[0].at, groups[0].r)
+    ) : (
       <>
-        {buttons}
-        <Buckle {...buckle} />
+        {groups.map((g, i) => (
+          <g key={i}>{litButtons(g.at, g.r)}</g>
+        ))}
       </>
     );
+  },
+  /** A belt's buckle, over the belt at the centre front, on a belt that is buckled. */
+  beltTrim: (choice) => {
+    const belt = beltWorn(choice);
+    /* a belt with a tie on it, at its front or its side, is tied, not buckled: the tie is its fastening — and a sash is tied in its own bow */
+    if (!belt || isSash(belt) || (choice.tie && choice.tieAt && choice.tieAt !== "neck")) return null;
+    const { buckle } = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
+    return <Buckle {...buckle} />;
   },
   armCover: (choice) =>
     bodiceFor(

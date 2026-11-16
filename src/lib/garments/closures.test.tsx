@@ -315,12 +315,14 @@ describe("the belt", () => {
         expect(over.solid).toBeUndefined();
         expect(over.grain?.shift).toBeDefined();
       } else expect(over.solid, belt).toBe(LEATHER[belt]);
-      const trim = renderToStaticMarkup(<>{dressFront.cutTrim!({ belt })}</>);
-      expect(trim, belt).toContain("#b8944c");
+      // its buckle on it, drawn with the belt rather than the buttons, which lie under it
+      expect(renderToStaticMarkup(<>{dressFront.beltTrim!({ belt })}</>), belt).toContain("#b8944c");
+      expect(renderToStaticMarkup(<>{dressFront.cutTrim!({ belt })}</>), belt).not.toContain("#b8944c");
     }
     /* no belt on a wrap, whatever is asked, but its own sash: no buckle */
     expect(dressFront.cut!({ neckline: "wrap", belt: "brown" }).bottom!.over!.cloth).toBe("belt");
     expect(dressFront.cut!({ neckline: "wrap", belt: "brown" }).bottom!.over!.solid).toBeUndefined();
+    expect(renderToStaticMarkup(<>{dressFront.beltTrim!({ neckline: "wrap", belt: "brown" })}</>)).toBe("");
     expect(renderToStaticMarkup(<>{dressFront.cutTrim!({ neckline: "wrap", belt: "brown" })}</>)).toBe("");
   });
 });
