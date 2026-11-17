@@ -92,7 +92,7 @@ import {
   wornOn,
 } from "@/lib/garments/outfit";
 import { fabricBackground, fabricRepeatCm } from "@/lib/fabrics/artwork";
-import type { FabricFilter } from "@/lib/fabrics/filters";
+import { hasPrint, type FabricFilter } from "@/lib/fabrics/filters";
 import { suitsNames } from "@/lib/fabrics/suits";
 import { FabricPicker } from "@/components/fabric/FabricPicker";
 import { PublishDesign } from "@/components/feedback/Feedback";
@@ -683,7 +683,9 @@ export function FabricVisualizer() {
     Whether a print in view is too small to read where it is. It is drawn at
     its true size whatever the zoom, softened when a repeat is only a few
     pixels across (see `printScale.ts`) — so when one is, say so: zooming in
-    is how to see it. A plain weave has no print to see.
+    is how to see it. A plain cloth has no print to see, whatever its surface —
+    a weave, a linen's slubs, a crepe's grain, a denim's twill, a knit — and
+    zooming in shows nothing more of it, so it is never asked to (`hasPrint`).
   */
   const smallPrint = useMemo(() => {
     if (stagePx <= 0) return false;
@@ -698,7 +700,7 @@ export function FabricVisualizer() {
     return inView.some(
       (f) =>
         f !== undefined &&
-        !(f.source === "procedural" && f.motif === "solid") &&
+        hasPrint(f) &&
         needsZoom((fabricRepeatCm(f) / cmPerUnit) * pxPerUnit)
     );
   }, [stagePx, subject, zoom, focus, pan, viewport, outfitFabrics, product, partFabrics]);

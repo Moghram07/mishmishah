@@ -65,7 +65,6 @@ export const dictionaries = {
 
     "seller.eyebrow": "For fabric shops",
     "seller.title": "Show your fabrics at their true size.",
-    "seller.body": "We'll start with a few fabric shops in Jeddah.",
     "seller.contact": "Contact us",
     "seller.email": "Or email us at",
     "seller.emailOnly": "Email us at",
@@ -249,7 +248,6 @@ export const dictionaries = {
 
     "seller.eyebrow": "لمحلات الأقمشة",
     "seller.title": "اعرض أقمشتك بمقاسها الحقيقي.",
-    "seller.body": "سنبدأ مع عدد محدود من محلات الأقمشة في جدة.",
     "seller.contact": "تواصل معنا",
     "seller.email": "أو راسلنا على",
     "seller.emailOnly": "راسلنا على",

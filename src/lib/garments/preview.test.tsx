@@ -165,7 +165,8 @@ describe("a look at them", () => {
 </style>
 ${body}`;
 
-  it("writes .preview/collars.html", () => {
+  /* sheets only when images are being made: see vitest.config.mts */
+  it.skipIf(!process.env.SHEETS)("writes .preview/collars.html", () => {
     const rows: [string, BodyType, Fabric][] = [
       ["male · plain linen", "male", linen()],
       [
@@ -206,7 +207,7 @@ ${body}`;
     writeFileSync(".preview/collars.html", page("Collars", 200, body));
   });
 
-  it("writes .preview/closeup.html", () => {
+  it.skipIf(!process.env.SHEETS)("writes .preview/closeup.html", () => {
     const big: [BodyType, string, string][] = [
       ["female", "female-turtleneck-collar", "fb-apricot-linen"],
       ["female", "female-ruffled-collar", "fb-apricot-linen"],

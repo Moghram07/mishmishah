@@ -100,6 +100,14 @@ export function patternOf(fabric: Fabric): PatternFamily | undefined {
   return fabric.source === "procedural" ? PATTERN_OF[fabric.motif] : undefined;
 }
 
+/**
+ * Whether it has a print to see — a pattern, which a close-up brings out. A
+ * plain cloth has none: its surface (a plain weave, a linen's slubs, a crepe's
+ * grain, a twill, a knit) is drawn at its true size, finer than a screen shows
+ * even close up, so zooming in on it shows nothing more.
+ */
+export const hasPrint = (fabric: Fabric) => patternOf(fabric) !== "solid";
+
 export interface FabricFilter {
   color?: ColorFamily;
   material?: FabricMaterial;

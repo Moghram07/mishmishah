@@ -23,10 +23,8 @@ export function BecomeSeller() {
           <h2 className="mt-4 font-display text-3xl font-semibold text-white sm:text-4xl">
             {t("seller.title")}
           </h2>
-          <p className="mt-4 max-w-xl text-white/70">{t("seller.body")}</p>
-
           {/* until shop accounts exist: a shop joins by email */}
-          <p className="mt-6 max-w-xl font-medium text-white/90">{t("seller.join")}</p>
+          <p className="mt-4 max-w-xl text-white/80">{t("seller.join")}</p>
           <ButtonLink href={shopJoinMailto()} size="lg" className="mt-4">
             <Mail className="h-5 w-5" />
             {t("nav.sell")}

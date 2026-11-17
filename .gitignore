@@ -12,6 +12,9 @@ next-env.d.ts
 # Output of scripts/preview-garments.mjs — a look at the fit, not an asset.
 /.preview/
 
+# graphify's code graph: a local index for the assistant, rebuilt on demand.
+/graphify-out/
+
 # Claude Code's local settings for this machine, not part of the project.
 /.claude/settings.local.json
 /.claude/scheduled_tasks.lock

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fabrics } from "@/lib/data/fabrics";
-import { COLOR_FAMILIES, PATTERN_FAMILIES, filterChoices, filterFabrics, isFiltered, patternOf, swatchOrder } from "./filters";
+import { COLOR_FAMILIES, PATTERN_FAMILIES, filterChoices, filterFabrics, hasPrint, isFiltered, patternOf, swatchOrder } from "./filters";
 import { MOTIFS } from "./patterns";
 import type { FabricMotif } from "@/types";
 
@@ -46,6 +46,22 @@ describe("the fabric filters", () => {
     expect(navy.colors).toEqual(all.colors);
     // and choosing only what is offered at more than 0 never empties the grid
     for (const m of navy.materials.filter((m) => m.count > 0)) expect(filterFabrics(fabrics, { color: "navy", material: m.id }).length).toBe(m.count);
+  });
+
+  it("ask for a close-up only of a print: never of a plain cloth's surface, which no zoom shows more of", () => {
+    for (const f of fabrics) {
+      if (f.source !== "procedural") continue;
+      const plain = ["solid", "slub", "crepe", "nida", "twill", "suiting", "jersey"].includes(f.motif);
+      expect(hasPrint(f), f.id).toBe(!plain);
+    }
+    // the denims, the crepes, the knit and the wools: no hint
+    for (const id of ["fb-denim-classic", "fb-indigo-denim", "fb-burgundy-crepe", "fb-black-nida", "fb-grey-jersey", "fb-winter-grey", "fb-apricot-linen"]) {
+      expect(hasPrint(fabrics.find((f) => f.id === id)!), id).toBe(false);
+    }
+    // a print, small or large: the hint, when it is too small to read
+    for (const id of ["fb-navy-pinstripe", "fb-grey-herringbone", "fb-houndstooth", "fb-red-gingham", "fb-cream-dots"]) {
+      expect(hasPrint(fabrics.find((f) => f.id === id)!), id).toBe(true);
+    }
   });
 
   it("lay the swatches out as a swatch book: by colour family, plain before patterned", () => {

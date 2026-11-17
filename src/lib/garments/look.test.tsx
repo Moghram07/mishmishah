@@ -36,7 +36,8 @@ import { dictionaries } from "@/lib/i18n/dictionaries";
  * It asserts nothing, deliberately. Everything here that *can* be asserted is
  * asserted in `preview.test.tsx` or measured by `npm run check:garments`; what
  * is left is a judgement, and the job of this file is to put something in front
- * of an eye. Run it, then open `.preview/look.html` and `.preview/shoulders.html`
+ * of an eye. An ordinary test run leaves it out (see `vitest.config.mts`): run
+ * it with `SHEETS=1`, then open `.preview/look.html` and `.preview/shoulders.html`
  * against a dev server on :3000 (they pull the mannequin photographs through a
  * `<base href>`, so a production build is never needed).
  */
