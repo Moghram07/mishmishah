@@ -21,6 +21,9 @@ import { garments } from "@/lib/data/garments";
 import { focusOf } from "@/lib/garments/closeUp";
 import { draft } from "@/lib/garments/fit";
 import { SKIRT_SHAPES, shapeLengths } from "@/lib/garments/skirts";
+import { fabricRepeatCm } from "@/lib/fabrics/patterns";
+import { colorFamilyById, patternOf } from "@/lib/fabrics/filters";
+import { dictionaries } from "@/lib/i18n/dictionaries";
 
 /**
  * The wardrobe, dressed and photographed.
@@ -5452,4 +5455,65 @@ describe("the shirt collar on a garment it does not wrap, light and dark", () =>
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
     writeFileSync(`.preview/wardrobe/thobe-collar-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
   }, 120_000);
+});
+
+describe("every fabric in the library, on her dress and his thobe", () => {
+  /* the samples from before the beta; every other one is new */
+  const FIRST = new Set([
+    "fb-apricot-linen", "fb-saffron-stripe", "fb-rose-silk", "fb-indigo-plaid", "fb-emerald-velvet", "fb-terracotta-herring",
+    "fb-cream-dots", "fb-midnight-floral", "fb-desert-geo", "fb-denim-classic", "fb-blush-chiffon", "fb-forest-plaid",
+    "fb-ivory-damask", "fb-black-crepe", "fb-white", "fb-off-white", "fb-red", "fb-navy",
+  ]);
+  it("writes .preview/wardrobe/fabrics.html", () => {
+    const dress = garmentById("female-dress")!;
+    const thobe = garmentById("male-thobe")!;
+    const stage = (garment: NonNullable<ReturnType<typeof garmentById>>, fabric: Fabric, zoom: number, focus: [number, number]) => {
+      const worn = [cutFrom(garment, fabric.id)];
+      const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+      for (const r of regionsOf(garment, worn[0])) regions[r] = fabric;
+      const outfit: Outfit = { bodyType: garment.gender, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+      return <MannequinStage outfit={outfit} fabrics={{ [garment.id]: regions }} zoom={zoom} focus={focus} />;
+    };
+    const ar = dictionaries.ar;
+    /* two to a row, as the sheet shooter takes them */
+    const rows: Fabric[][] = [];
+    for (let i = 0; i < fabrics.length; i += 2) rows.push(fabrics.slice(i, i + 2));
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+        {row.map((fabric) => {
+          const pattern = patternOf(fabric);
+          return (
+            <figure key={fabric.id}>
+              <div className="st">
+                {stage(dress, fabric, 1, [300, 500])}
+                {stage(thobe, fabric, 1, [300, 500])}
+                {stage(dress, fabric, 4, [300, 330])}
+              </div>
+              <figcaption dir="rtl">
+                <b>{fabric.name.ar}</b> · <span dir="ltr">{fabric.name.en}</span>
+                {FIRST.has(fabric.id) ? null : <i> · جديد</i>}
+                <br />
+                {/* its own element, so the sheet shooter measures it */}
+                <span>
+                  {ar[`material.${fabric.material}`]} · {pattern ? ar[`motif.${pattern}`] : "—"} · {colorFamilyById(fabric.colorFamily).name.ar} · {fabricRepeatCm(fabric)} سم
+                </span>
+              </figcaption>
+            </figure>
+          );
+        })}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      "<style>body{margin:0;padding:14px;background:#efeae4;font:12px system-ui}" +
+      ".row{display:flex;gap:12px;margin-bottom:12px;width:max-content}" +
+      "figure{margin:0;width:550px;background:#fff;border-radius:12px;padding:8px;box-sizing:border-box}" +
+      ".st{display:flex;gap:6px}svg{width:172px;height:240px;display:block;background:#fff;border-radius:8px;color:#1f1915}" +
+      "figcaption{margin-top:6px;color:#333;line-height:1.6;text-align:right}figcaption i{color:#c63e12;font-style:normal}</style>";
+    mkdirSync(".preview/wardrobe", { recursive: true });
+    writeFileSync(".preview/wardrobe/fabrics.html", '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+  }, 240_000);
 });

@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, Sparkles, X } from "lucide-react";
+import { Menu, MessageSquare, Sparkles, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useVisualizer } from "@/components/providers/VisualizerProvider";
 import { Logo } from "@/components/ui/Logo";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { LocaleToggle } from "@/components/ui/LocaleToggle";
 import { ButtonLink } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { FeedbackEmail, FeedbackLink } from "@/components/feedback/Feedback";
 
 export function Navbar() {
   const { t } = useI18n();
@@ -22,7 +24,11 @@ export function Navbar() {
     <header className="sticky top-0 z-50 border-b border-border/70 glass">
       <nav className="container-wide flex h-16 items-center justify-between gap-4">
         <div className="flex items-center gap-8">
-          <Logo />
+          {/* the beta's badge stays by the logo when its notice is closed */}
+          <div className="flex items-center gap-2">
+            <Logo />
+            <Badge className="px-2 py-0 text-[11px] leading-5">{t("common.beta")}</Badge>
+          </div>
           <div className="hidden items-center gap-1 lg:flex">
             {links.map((l) => (
               <Link
@@ -94,6 +100,14 @@ export function Navbar() {
             <ButtonLink href="/#seller" variant="outline">
               {t("nav.sell")}
             </ButtonLink>
+            {/* feedback on the beta: always here, the notice closed or not */}
+            <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+              <FeedbackLink className="flex items-center gap-2 rounded-xl px-3 py-2 text-base font-medium text-apricot-600 dark:text-apricot-400">
+                <MessageSquare className="h-4 w-4" />
+                {t("feedback.send")}
+              </FeedbackLink>
+              <FeedbackEmail className="px-3" />
+            </div>
           </div>
         </div>
       )}

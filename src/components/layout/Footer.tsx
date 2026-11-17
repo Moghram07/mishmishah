@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/I18nProvider";
+import { MessageSquare } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
+import { FeedbackEmail, FeedbackLink } from "@/components/feedback/Feedback";
 
 export function Footer() {
   const { t } = useI18n();
@@ -36,6 +38,14 @@ export function Footer() {
             <p className="mt-4 text-sm text-muted-foreground">
               {t("footer.tagline")}
             </p>
+            {/* feedback on the beta: the link, and the address to copy for a phone with no mail app */}
+            <div className="mt-5 flex flex-col items-start gap-2">
+              <FeedbackLink className="inline-flex items-center gap-1.5 text-sm font-semibold text-apricot-600 underline-offset-4 hover:underline dark:text-apricot-400">
+                <MessageSquare className="h-4 w-4" />
+                {t("feedback.send")}
+              </FeedbackLink>
+              <FeedbackEmail />
+            </div>
           </div>
 
           {columns.map((col) => (

@@ -104,6 +104,102 @@ export interface MotifSpec {
 
 const hi = (p: FabricPalette) => p.highlight ?? p.accent;
 
+/* ------------------------------------------------- drawing the new motifs */
+
+/** Two decimals — enough for an 88 px tile, short in a `data:` URI. */
+const n = (v: number) => +v.toFixed(2);
+
+/** A repeatable stream of numbers in [0, 1): the same tile every time it is drawn. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Something drawn at (x, y), reaching `reach` round it — and again a tile
+ * over wherever it crosses an edge, so the tile joins seamlessly.
+ */
+function around(T: number, x: number, y: number, reach: number, draw: (x: number, y: number) => string): string {
+  let out = "";
+  for (const dx of [-T, 0, T]) {
+    for (const dy of [-T, 0, T]) {
+      const [cx, cy] = [x + dx, y + dy];
+      if (cx + reach < 0 || cx - reach > T || cy + reach < 0 || cy - reach > T) continue;
+      out += draw(cx, cy);
+    }
+  }
+  return out;
+}
+
+/** A lens `len` long and `th` thick, centred on (x, y), turned `deg` — a slub in a yarn, a leaf. */
+function lens(x: number, y: number, len: number, th: number, deg: number): string {
+  const [c, s] = [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
+  const at = (u: number, v: number) => `${n(x + u * c - v * s)} ${n(y + u * s + v * c)}`;
+  return `M${at(-len / 2, 0)} Q${at(0, -th)} ${at(len / 2, 0)} Q${at(0, th)} ${at(-len / 2, 0)}Z`;
+}
+
+/** A grain of fine pebbles, darker and lighter — a crepe's, a nida's, a wool's flecks. */
+function grain(
+  p: FabricPalette,
+  T: number,
+  o: { seed: number; count: number; size: [number, number]; dark: [number, number]; light: [number, number]; lightShare: number }
+): string {
+  const rand = seeded(o.seed);
+  let out = "";
+  for (let i = 0; i < o.count; i++) {
+    const r = o.size[0] + rand() * (o.size[1] - o.size[0]);
+    const light = rand() < o.lightShare;
+    const [lo, top] = light ? o.light : o.dark;
+    const a = n(lo + rand() * (top - lo));
+    const fill = light ? hi(p) : p.accent;
+    const [x, y] = [rand() * T, rand() * T];
+    out += around(T, x, y, r, (cx, cy) => `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(r)}" fill="${fill}" fill-opacity="${a}"/>`);
+  }
+  return out;
+}
+
+/** A large flower: five round petals, a pale heart, a stem with two leaves. */
+function bloom(p: FabricPalette, x: number, y: number, r: number): string {
+  let out = `<path d="M${n(x)} ${n(y + r * 0.9)} C${n(x + r * 0.3)} ${n(y + r * 1.6)} ${n(x - r * 0.25)} ${n(y + r * 2)} ${n(x + r * 0.1)} ${n(y + r * 2.6)}" fill="none" stroke="${hi(p)}" stroke-width="${n(r * 0.12)}" stroke-linecap="round"/>`;
+  out += `<path d="${lens(x + r * 0.42, y + r * 1.75, r * 0.9, r * 0.28, -30)}" fill="${hi(p)}"/>`;
+  out += `<path d="${lens(x - r * 0.4, y + r * 1.45, r * 0.75, r * 0.24, 35)}" fill="${hi(p)}" fill-opacity="0.85"/>`;
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2 - Math.PI / 2;
+    out += `<circle cx="${n(x + Math.cos(a) * r * 0.55)}" cy="${n(y + Math.sin(a) * r * 0.55)}" r="${n(r * 0.5)}" fill="${p.accent}" fill-opacity="0.9"/>`;
+  }
+  out += `<circle cx="${n(x)}" cy="${n(y)}" r="${n(r * 0.3)}" fill="${mix([[p.accent, 45], ["#FFFFFF", 55]])}"/>`;
+  out += `<circle cx="${n(x)}" cy="${n(y)}" r="${n(r * 0.13)}" fill="${p.accent}"/>`;
+  return out;
+}
+
+/** A closed bud on a short stem. */
+function bud(p: FabricPalette, x: number, y: number, r: number): string {
+  return (
+    `<path d="M${n(x)} ${n(y + r)} L${n(x + r * 0.2)} ${n(y + r * 2.4)}" stroke="${hi(p)}" stroke-width="${n(r * 0.22)}" stroke-linecap="round"/>` +
+    `<path d="${lens(x, y, r * 2.2, r * 0.8, 90)}" fill="${p.accent}" fill-opacity="0.9"/>`
+  );
+}
+
+/** A boteh: a teardrop with its tip curled over, an outline inside it, a row of dots. */
+function boteh(p: FabricPalette, x: number, y: number, s: number, deg: number): string {
+  const drop = "M0 16 C-12 16 -14 2 -8 -6 C-3 -13 6 -16 8 -24 C11 -16 12 -6 10 3 C8 12 5 16 0 16Z";
+  const inner = "M0 11 C-7 11 -9 3 -5 -3 C-2 -7 3 -10 5 -15 C7 -9 7 -3 6 3 C5 8 3 11 0 11Z";
+  let out = `<g transform="translate(${n(x)} ${n(y)}) rotate(${deg}) scale(${n(s)})">`;
+  out += `<path d="${drop}" fill="${p.accent}"/>`;
+  out += `<path d="${inner}" fill="none" stroke="${hi(p)}" stroke-width="1.4"/>`;
+  out += `<circle cx="0" cy="4" r="2.6" fill="${hi(p)}"/>`;
+  for (const [cx, cy] of [[-9, 12], [-12, 4], [-11, -4], [-6, -11], [1, -17]] as const) {
+    out += `<circle cx="${cx}" cy="${cy}" r="1.1" fill="${hi(p)}" fill-opacity="0.85"/>`;
+  }
+  return `${out}</g>`;
+}
+
 /**
  * The motif vocabulary, at true yardage sizes: a woven twill repeats within a
  * centimetre, a tartan sett is a hand-span, a damask panel is knee to hip.
@@ -323,6 +419,256 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
       `;
     },
     averageColor: (p) => mix([[p.base, 64], [p.accent, 30], [hi(p), 6]]),
+  },
+
+  /* ———— the surface of a plain cloth ———— */
+
+  slub: {
+    /* the slubs run across the cloth, along the weft: turned, they stand up */
+    directional: true,
+    repeatCm: 5, // a hand of linen: its slubs half a centimetre to a little over one long
+    draw: (p, T) => {
+      const rand = seeded(11);
+      let out = "";
+      // yarns a shade darker or lighter, the whole width — the linen's uneven, heathered weft
+      for (let i = 0; i < 26; i++) {
+        const y = n(rand() * T);
+        const light = rand() < 0.5;
+        const a = n(0.1 + rand() * 0.12);
+        const w = n(0.6 + rand() * 0.6);
+        out += `<path d="M-2 ${y} H${T + 2}" stroke="${light ? hi(p) : p.accent}" stroke-opacity="${a}" stroke-width="${w}"/>`;
+      }
+      // the slubs: short thick places in the yarn, tapered at both ends
+      for (let i = 0; i < 18; i++) {
+        const len = 6 + rand() * 16;
+        const th = 1.2 + rand() * 1;
+        const light = rand() < 0.55;
+        const fill = `fill="${light ? hi(p) : p.accent}" fill-opacity="${n(0.25 + rand() * 0.2)}"`;
+        const [x, y] = [rand() * T, rand() * T];
+        out += around(T, x, y, len, (cx, cy) => `<path d="${lens(cx, cy, len, th, 0)}" ${fill}/>`);
+      }
+      // a few along the warp, thinner
+      for (let i = 0; i < 5; i++) {
+        const len = 5 + rand() * 9;
+        const [x, y] = [rand() * T, rand() * T];
+        out += around(T, x, y, len, (cx, cy) => `<path d="${lens(cx, cy, len, 0.9, 90)}" fill="${p.accent}" fill-opacity="0.18"/>`);
+      }
+      return out;
+    },
+    averageColor: (p) => mix([[p.base, 86], [p.accent, 7], [hi(p), 7]]),
+  },
+
+  crepe: {
+    directional: false,
+    repeatCm: 1.2, // the pebbled grain of twisted yarn: a few tenths of a millimetre a pebble
+    draw: (p, T) => grain(p, T, { seed: 23, count: 140, size: [0.6, 1.3], dark: [0.25, 0.5], light: [0.2, 0.4], lightShare: 0.4 }),
+    averageColor: (p) => mix([[p.base, 88], [p.accent, 7], [hi(p), 5]]),
+  },
+
+  nida: {
+    directional: false,
+    repeatCm: 1, // finer and flatter than a crepe: the matte grain an abaya's nida is known by
+    draw: (p, T) => grain(p, T, { seed: 31, count: 150, size: [0.45, 0.85], dark: [0.12, 0.28], light: [0.08, 0.16], lightShare: 0.25 }),
+    averageColor: (p) => mix([[p.base, 93], [p.accent, 5], [hi(p), 2]]),
+  },
+
+  twill: {
+    /* a denim's steep twill: its wales climb one way */
+    directional: true,
+    repeatCm: 1, // ten wales to the repeat — one a millimetre, as on a jean
+    draw: (p, T) => {
+      // wales on 2x − y = c, every P along c: periodic in x (2T is 20 P) and in y (T is 10 P)
+      const P = T / 10;
+      let out = "";
+      for (let k = -10; k <= 20; k++) {
+        const c = k * P;
+        const d = c + P / 2;
+        out += `<path d="M${n(c / 2)} 0 L${n((c + T) / 2)} ${T}" stroke="${p.accent}" stroke-opacity="0.55" stroke-width="${n(P * 0.24)}"/>`;
+        out += `<path d="M${n(d / 2)} 0 L${n((d + T) / 2)} ${T}" stroke="${hi(p)}" stroke-opacity="0.35" stroke-width="${n(P * 0.075)}"/>`;
+      }
+      return out;
+    },
+    averageColor: (p) => mix([[p.base, 65], [p.accent, 29], [hi(p), 6]]),
+  },
+
+  suiting: {
+    /* a worsted's fine twill, at 45°: turned, it runs the other way */
+    directional: true,
+    repeatCm: 1, // ten wales to the centimetre
+    draw: (p, T) => {
+      // wales on y = x + c, every P: periodic in x and y with T = 10 P
+      const P = T / 10;
+      let out = "";
+      for (let k = -10; k <= 10; k++) {
+        const c = k * P;
+        out += `<path d="M0 ${n(c)} L${T} ${n(c + T)}" stroke="${p.accent}" stroke-opacity="0.28" stroke-width="${n(P * 0.42)}"/>`;
+      }
+      // the mélange: a fleck of lighter fibre here and there
+      return out + grain(p, T, { seed: 47, count: 60, size: [0.6, 0.9], dark: [0, 0], light: [0.2, 0.3], lightShare: 1 });
+    },
+    averageColor: (p) => mix([[p.base, 82], [p.accent, 13], [hi(p), 5]]),
+  },
+
+  jersey: {
+    /* a knit's columns of loops run down the cloth */
+    directional: true,
+    repeatCm: 1, // six columns of loops to the centimetre and ten rows, a T-shirt's
+    draw: (p, T) => {
+      const cols = 6;
+      const rows = 10;
+      const w = T / cols;
+      const h = T / rows;
+      let out = "";
+      for (let c = 0; c < cols; c++) {
+        const cx = (c + 0.5) * w;
+        // the gap between two columns
+        out += `<path d="M${n(c * w)} 0 V${T}" stroke="${p.accent}" stroke-opacity="0.22" stroke-width="${n(w * 0.12)}"/>`;
+        for (let r = 0; r <= rows; r++) {
+          const top = (r - 0.5) * h;
+          // each loop a V: two legs meeting below
+          out += `<path d="M${n(cx - w * 0.36)} ${n(top)} L${n(cx)} ${n(top + h)} L${n(cx + w * 0.36)} ${n(top)}" fill="none" stroke="${hi(p)}" stroke-opacity="0.2" stroke-width="${n(w * 0.22)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+        }
+      }
+      return out;
+    },
+    averageColor: (p) => mix([[p.base, 84], [p.accent, 8], [hi(p), 8]]),
+  },
+
+  /* ———— patterns ———— */
+
+  pinstripe: {
+    directional: true,
+    repeatCm: 1.2, // a suit's pinstripe: a fine line every centimetre and a bit
+    draw: (p, T) => `
+      <rect x="${n(T * 0.47)}" y="0" width="${n(T * 0.06)}" height="${T}" fill="${p.accent}"/>
+      ${weave(T, "#000000")}
+    `,
+    averageColor: (p) => mix([[p.base, 94], [p.accent, 6]]),
+  },
+
+  wideStripe: {
+    directional: true,
+    repeatCm: 6, // bands three centimetres wide
+    draw: (p, T) => `
+      <rect x="0" y="0" width="${n(T / 2)}" height="${T}" fill="${p.accent}"/>
+      ${weave(T, "#000000")}
+    `,
+    averageColor: (p) => mix([[p.base, 50], [p.accent, 50]]),
+  },
+
+  gingham: {
+    /* a check turns to diamonds on the bias */
+    directional: true,
+    repeatCm: 2.4, // a 1.2 cm check: the half-inch gingham of a shirt or a summer dress
+    draw: (p, T) => {
+      const h = n(T / 2);
+      // the coloured yarns one way, then the other: half-tones where only one runs, solid where they cross
+      return `
+        <rect x="0" y="0" width="${h}" height="${T}" fill="${p.accent}" fill-opacity="0.5"/>
+        <rect x="0" y="0" width="${T}" height="${h}" fill="${p.accent}" fill-opacity="0.5"/>
+        <rect x="0" y="0" width="${h}" height="${h}" fill="${p.accent}"/>
+        ${weave(T, "#000000")}
+      `;
+    },
+    averageColor: (p) => mix([[p.base, 50], [p.accent, 50]]),
+  },
+
+  tartan: {
+    directional: true,
+    repeatCm: 16, // a full sett, as on a kilt or a winter scarf
+    draw: (p, T) => {
+      // the sett — the same bands across and down, crossing darker where they meet
+      const s = T / 88;
+      const sett: Array<[string, number] | number> = [[p.accent, 20], 14, [hi(p), 3], 14, [p.accent, 8], 14, [hi(p), 3], 12];
+      let x = 0;
+      let out = "";
+      for (const band of sett) {
+        const [colour, w] = typeof band === "number" ? [undefined, band] : band;
+        if (colour) {
+          const a = colour === p.accent ? 0.55 : 0.75;
+          out += `<rect x="${n(x * s)}" y="0" width="${n(w * s)}" height="${T}" fill="${colour}" fill-opacity="${a}"/>`;
+          out += `<rect x="0" y="${n(x * s)}" width="${T}" height="${n(w * s)}" fill="${colour}" fill-opacity="${a}"/>`;
+        }
+        x += w;
+      }
+      // its twill, faint, at 45°
+      for (let k = -22; k <= 22; k++) {
+        out += `<path d="M0 ${n(k * 4 * s)} L${T} ${n(k * 4 * s + T)}" stroke="#000000" stroke-opacity="0.05" stroke-width="${n(1.2 * s)}"/>`;
+      }
+      return out;
+    },
+    averageColor: (p) => mix([[p.base, 48], [p.accent, 45], [hi(p), 7]]),
+  },
+
+  houndstooth: {
+    /* its teeth point one way */
+    directional: true,
+    repeatCm: 2, // a jacket's houndstooth: teeth about a centimetre across
+    draw: (p, T) => {
+      // the weave itself: a 2/2 twill, four dark yarns and four light each way.
+      // A cell shows the warp where the warp is up, else the weft.
+      const c = T / 8;
+      let out = "";
+      for (let y = 0; y < 8; y++) {
+        let run = -1;
+        for (let x = 0; x <= 8; x++) {
+          const up = (x + y) % 4 < 2;
+          const dark = x < 8 && (up ? x % 8 < 4 : y % 8 < 4);
+          if (dark && run < 0) run = x;
+          if (!dark && run >= 0) {
+            out += `<rect x="${n(run * c)}" y="${n(y * c)}" width="${n((x - run) * c)}" height="${n(c)}" fill="${p.accent}"/>`;
+            run = -1;
+          }
+        }
+      }
+      return out;
+    },
+    averageColor: (p) => mix([[p.base, 50], [p.accent, 50]]),
+  },
+
+  dotsLarge: {
+    directional: false,
+    repeatCm: 7, // a polka dot: two centimetres across
+    draw: (p, T) => {
+      const r = n(T * 0.16);
+      const dot = (cx: number, cy: number) => `<circle cx="${n(cx)}" cy="${n(cy)}" r="${r}" fill="${p.accent}"/>`;
+      return `${dot(T / 2, T / 2)}${dot(0, 0)}${dot(T, 0)}${dot(0, T)}${dot(T, T)}${weave(T, "#000000")}`;
+    },
+    averageColor: (p) => mix([[p.base, 84], [p.accent, 16]]),
+  },
+
+  floralLarge: {
+    /* its stems stand up */
+    directional: true,
+    repeatCm: 24, // a big bloom, eight centimetres across, as on a summer dress
+    draw: (p, T) => {
+      const s = T / 88;
+      let out = "";
+      out += around(T, 28 * s, 30 * s, 34 * s, (x, y) => bloom(p, x, y, 15 * s));
+      out += around(T, 70 * s, 72 * s, 30 * s, (x, y) => bloom(p, x, y, 11 * s));
+      out += around(T, 72 * s, 20 * s, 10 * s, (x, y) => bud(p, x, y, 5 * s));
+      out += around(T, 20 * s, 74 * s, 10 * s, (x, y) => bud(p, x, y, 4.5 * s));
+      return out;
+    },
+    averageColor: (p) => mix([[p.base, 72], [p.accent, 20], [hi(p), 8]]),
+  },
+
+  paisley: {
+    /* its teardrops lean one way */
+    directional: true,
+    repeatCm: 10, // botehs five or six centimetres long
+    draw: (p, T) => {
+      const s = T / 88;
+      let out = "";
+      // little flowers between them
+      for (const [x, y] of [[66, 18], [14, 66], [44, 52], [84, 46]] as const) {
+        out += around(T, x * s, y * s, 3 * s, (cx, cy) => `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(1.6 * s)}" fill="${hi(p)}" fill-opacity="0.8"/>`);
+      }
+      out += around(T, 26 * s, 30 * s, 30 * s, (x, y) => boteh(p, x, y, s, -25));
+      out += around(T, 70 * s, 76 * s, 30 * s, (x, y) => boteh(p, x, y, s * 0.9, -25));
+      return out;
+    },
+    averageColor: (p) => mix([[p.base, 70], [p.accent, 22], [hi(p), 8]]),
   },
 };
 

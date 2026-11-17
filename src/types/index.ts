@@ -9,6 +9,12 @@ export interface Localized {
   ar: string;
 }
 
+/**
+ * What a procedural fabric is drawn from — each with its own true repeat (see
+ * `MOTIFS` in `lib/fabrics/patterns.ts`). Two kinds: the surface of a plain
+ * cloth (a plain weave, a linen's slubs, a crepe's grain, a twill, a knit) and
+ * a pattern on it (stripes, checks, dots, flowers…).
+ */
 export type FabricMotif =
   | "solid"
   | "stripe"
@@ -17,7 +23,23 @@ export type FabricMotif =
   | "dots"
   | "floral"
   | "geometric"
-  | "damask";
+  | "damask"
+  // the surface of a plain cloth
+  | "slub"
+  | "crepe"
+  | "nida"
+  | "twill"
+  | "suiting"
+  | "jersey"
+  // patterns
+  | "pinstripe"
+  | "wideStripe"
+  | "gingham"
+  | "tartan"
+  | "houndstooth"
+  | "dotsLarge"
+  | "floralLarge"
+  | "paisley";
 
 export type FabricMaterial =
   | "cotton"
@@ -28,9 +50,32 @@ export type FabricMaterial =
   | "denim"
   | "chiffon"
   | "crepe"
-  | "leather";
+  | "leather"
+  | "jersey"
+  | "nida";
 
-export type FabricTexture = "smooth" | "woven" | "pile" | "sheer" | "ribbed";
+export type FabricTexture = "smooth" | "woven" | "pile" | "sheer" | "ribbed" | "knit";
+
+/**
+ * The colour a fabric is found under in the colour filter — a family, not a
+ * shade: a navy pinstripe is navy, a cream with pink flowers is cream. See
+ * `COLOR_FAMILIES` in `lib/fabrics/filters.ts`.
+ */
+export type ColorFamily =
+  | "white"
+  | "cream"
+  | "beige"
+  | "brown"
+  | "grey"
+  | "black"
+  | "navy"
+  | "blue"
+  | "green"
+  | "red"
+  | "pink"
+  | "orange"
+  | "yellow"
+  | "purple";
 
 export type CategoryKey =
   | "fashion"
@@ -77,8 +122,12 @@ interface FabricCommon {
 
   // — catalogue metadata —
   colorName: Localized;
+  /** The colour filter's family for it. */
+  colorFamily: ColorFamily;
   texture: FabricTexture;
   categories: CategoryKey[];
+  /** The garments it suits, by id — what a shop would cut it for. */
+  suits: readonly string[];
 }
 
 /**

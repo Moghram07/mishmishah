@@ -44,7 +44,7 @@ export const dictionaries = {
     "section.featuredFabrics.subtitle":
       "Sample fabrics to try the visualizer with.",
     "section.categories.eyebrow": "Browse",
-    "section.categories.title": "Popular categories",
+    "section.categories.title": "Categories",
     "section.categories.subtitle": "Find the right textile for every project.",
     "section.why.eyebrow": "Why Mishmishah",
     "section.why.title": "See fabric as it really is.",
@@ -65,13 +65,14 @@ export const dictionaries = {
 
     "seller.eyebrow": "For fabric shops",
     "seller.title": "Show your fabrics at their true size.",
-    "seller.body": "We're starting with a few fabric shops in Jeddah.",
+    "seller.body": "We'll start with a few fabric shops in Jeddah.",
     "seller.contact": "Contact us",
     "seller.email": "Or email us at",
     "seller.emailOnly": "Email us at",
 
     "card.tryFabric": "Try this fabric",
     "card.sample": "Mishmishah sample",
+    "card.suits": "Suits",
     "card.view": "View",
 
     "viz.title": "Fabric Visualizer",
@@ -149,14 +150,18 @@ export const dictionaries = {
     "material.chiffon": "Chiffon",
     "material.crepe": "Crepe",
     "material.leather": "Leather",
+    "material.jersey": "Jersey",
+    "material.nida": "Nida",
     "motif.solid": "Solid",
     "motif.stripe": "Stripe",
-    "motif.plaid": "Plaid",
+    "motif.plaid": "Checks",
     "motif.herringbone": "Herringbone",
     "motif.dots": "Dots",
     "motif.floral": "Floral",
     "motif.geometric": "Geometric",
     "motif.damask": "Damask",
+    "motif.houndstooth": "Houndstooth",
+    "motif.paisley": "Paisley",
 
     "product.sofa": "Sofa",
     "product.pillow": "Pillow",
@@ -175,6 +180,15 @@ export const dictionaries = {
 
     "common.beta": "Beta",
     "common.soon": "Soon",
+
+    "beta.banner":
+      "Beta: Mishmishah is in testing. The fabrics shown are samples, and ordering isn't open yet.",
+    "beta.close": "Close",
+    "feedback.send": "Send feedback",
+    "feedback.copy": "Copy",
+    "feedback.copied": "Copied",
+    "feedback.copyEmail": "Copy the email address",
+    "feedback.design": "Design",
   },
 
   ar: {
@@ -215,7 +229,7 @@ export const dictionaries = {
     "section.featuredFabrics.title": "أقمشة مميزة",
     "section.featuredFabrics.subtitle": "عيّنات لتجربة المعاينة.",
     "section.categories.eyebrow": "تصفّح",
-    "section.categories.title": "الفئات الشائعة",
+    "section.categories.title": "الفئات",
     "section.categories.subtitle": "اعثر على القماش المناسب لكل استخدام.",
     "section.why.eyebrow": "لماذا مشمشة؟",
     "section.why.title": "شاهد القماش كما هو في الحقيقة.",
@@ -234,13 +248,14 @@ export const dictionaries = {
 
     "seller.eyebrow": "لمحلات الأقمشة",
     "seller.title": "اعرض أقمشتك بمقاسها الحقيقي.",
-    "seller.body": "نبدأ مع عدد محدود من محلات الأقمشة في جدة.",
+    "seller.body": "سنبدأ مع عدد محدود من محلات الأقمشة في جدة.",
     "seller.contact": "تواصل معنا",
     "seller.email": "أو راسلنا على",
     "seller.emailOnly": "راسلنا على",
 
     "card.tryFabric": "جرّب هذا القماش",
     "card.sample": "عيّنة من مشمشة",
+    "card.suits": "يناسب",
     "card.view": "عرض",
 
     "viz.title": "معاينة الأقمشة",
@@ -317,6 +332,8 @@ export const dictionaries = {
     "material.chiffon": "شيفون",
     "material.crepe": "كريب",
     "material.leather": "جلد",
+    "material.jersey": "جيرسي",
+    "material.nida": "ندى",
     "motif.solid": "سادة",
     "motif.stripe": "مقلّم",
     "motif.plaid": "كاروهات",
@@ -325,6 +342,8 @@ export const dictionaries = {
     "motif.floral": "زهور",
     "motif.geometric": "هندسي",
     "motif.damask": "دمشقي",
+    "motif.houndstooth": "بيدبول",
+    "motif.paisley": "بيزلي",
 
     "product.sofa": "كنبة",
     "product.pillow": "مخدة",
@@ -343,6 +362,15 @@ export const dictionaries = {
 
     "common.beta": "تجريبي",
     "common.soon": "قريبًا",
+
+    "beta.banner":
+      "نسخة تجريبية: مشمشة في مرحلة الاختبار. الأقمشة المعروضة عينات للتجربة، والطلب غير متاح بعد.",
+    "beta.close": "إغلاق",
+    "feedback.send": "شاركنا رأيك",
+    "feedback.copy": "نسخ",
+    "feedback.copied": "تم النسخ",
+    "feedback.copyEmail": "نسخ عنوان البريد",
+    "feedback.design": "التصميم",
   },
 } satisfies Record<Locale, Record<string, string>>;
 

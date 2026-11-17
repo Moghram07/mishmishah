@@ -19,7 +19,8 @@ import {
   wornOn,
 } from "@/lib/garments/outfit";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
-import { FabricSwatchChip } from "@/components/fabric/FabricCard";
+import { FabricPicker } from "@/components/fabric/FabricPicker";
+import { PublishDesign } from "@/components/feedback/Feedback";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 import type { BodyType, Fabric, FabricRegionId, Outfit } from "@/types";
@@ -65,12 +66,18 @@ export default function VisualizerPage() {
     }));
   };
 
+  /** What is on the figure, for a feedback email: its garments, in the one fabric this page previews. */
+  const designLine = `${t("feedback.design")}: ${stack(wornOn(outfit.worn, outfit.bodyType))
+    .map((entry) => pick(entry.garment.name))
+    .join(" + ")} — ${t("share.fabric")}: ${pick(fabric.name)}`;
+
   /** Switch mannequin. Each keeps its own wardrobe — see `switchBody`. */
   const setBody = (id: BodyType) =>
     setOutfit((o) => switchBody(o, id, fabric.id));
 
   return (
     <div className="relative overflow-hidden">
+      <PublishDesign line={designLine} />
       <div className="pointer-events-none absolute inset-0 bg-apricot-radial" />
       <div className="container-wide relative py-14 lg:py-20">
         <div className="mx-auto max-w-2xl text-center">
@@ -177,16 +184,7 @@ export default function VisualizerPage() {
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {t("viz.pickFabric")} — {pick(fabric.name)}
               </p>
-              <div className="grid grid-cols-6 gap-2">
-                {fabrics.map((f) => (
-                  <FabricSwatchChip
-                    key={f.id}
-                    fabric={f}
-                    active={f.id === fabric.id}
-                    onClick={() => setFabric(f)}
-                  />
-                ))}
-              </div>
+              <FabricPicker fabrics={fabrics} activeId={fabric.id} onPick={setFabric} swatchPx={48} />
             </div>
 
             <Button size="lg" onClick={() => open(fabric)}>

@@ -4,6 +4,8 @@ import "./globals.css";
 import { Providers } from "@/components/providers/Providers";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { BetaBanner } from "@/components/layout/BetaBanner";
+import { betaInitScript } from "@/lib/beta";
 import { themeInitScript } from "@/lib/theme/ThemeProvider";
 
 const inter = Inter({
@@ -83,9 +85,11 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: betaInitScript }} />
       </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <Providers>
+          <BetaBanner />
           <Navbar />
           <main>{children}</main>
           <Footer />

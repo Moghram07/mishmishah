@@ -14,7 +14,27 @@ import type { Fabric, FabricMotif } from "@/types";
 describe("a pattern direction", () => {
   it("is offered for stripes, checks, lattices and one-way prints, and nothing else", () => {
     const offered = (Object.keys(MOTIFS) as FabricMotif[]).filter((m) => MOTIFS[m].directional).sort();
-    expect(offered).toEqual(["floral", "geometric", "herringbone", "plaid", "stripe"]);
+    expect(offered).toEqual([
+      "floral",
+      "floralLarge",
+      "geometric",
+      "gingham",
+      "herringbone",
+      "houndstooth",
+      "paisley",
+      "pinstripe",
+      "plaid",
+      "stripe",
+      "tartan",
+      "wideStripe",
+      // and the plain cloths whose surface runs one way: a linen's slubs, a twill, a knit's columns
+      "jersey",
+      "slub",
+      "suiting",
+      "twill",
+    ].sort());
+    // a weave or a grain the same every way round is not asked: a plain weave, a crepe, a nida, dots
+    for (const m of ["solid", "crepe", "nida", "dots", "dotsLarge", "damask"] as const) expect(MOTIFS[m].directional, m).toBe(false);
   });
 
   it("comes from the motif for every sample fabric", () => {
@@ -35,8 +55,10 @@ describe("a pattern direction", () => {
       color: "#888888",
       material: "cotton",
       colorName: { en: "Grey", ar: "رمادي" },
+      colorFamily: "grey",
       texture: "woven",
       categories: ["fashion"],
+      suits: [],
       source: "image",
       imageUrl: "/x.png",
       cmPerPixel: 0.02,

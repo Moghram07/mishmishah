@@ -131,6 +131,36 @@ describe("every print at its true size", () => {
   }, 120_000);
 
   /*
+    And every fabric of the library itself, not one of each size: each on her
+    dress and his thobe, whole and close up — so a fabric added to the library
+    is checked by name the moment it is added.
+  */
+  it("in every fabric of the library, on her dress and his thobe, at 1×, 2.5× and 8×", () => {
+    for (const id of ["female-dress", "male-thobe"]) {
+      const garment = garments.find((g) => g.id === id)!;
+      for (const fabric of fabrics) {
+        const repeat = fabricRepeatCm(fabric) / BODY_CANVAS.cmPerUnit;
+        const regions = Object.fromEntries(
+          [...garment.fabricRegions, "collar"].map((r) => [r, fabric])
+        ) as Partial<Record<FabricRegionId, Fabric>>;
+        const outfit: Outfit = {
+          bodyType: garment.gender,
+          skinTone: DEFAULT_SKIN_TONE,
+          direction: 0,
+          worn: [cutFrom(garment, fabric.id)],
+        };
+        for (const zoom of [1, 2.5, 8]) {
+          const html = renderToStaticMarkup(
+            <MannequinStage outfit={outfit} fabrics={{ [garment.id]: regions }} zoom={zoom} focus={[300, 420]} />
+          );
+          const frameW = Number(html.match(/<svg[^>]*viewBox="[^ ]+ [^ ]+ ([^ ]+) [^"]+"/)?.[1]);
+          expectTrueTiles(html, repeat, RENDER_PX / frameW, `${garment.id} in ${fabric.id} at ${zoom}×`);
+        }
+      }
+    }
+  }, 120_000);
+
+  /*
     Every skirt style, in every size of repeat, at one zoom: a style changes
     the outline the print fills, never the print's own tile, so one zoom is
     enough to prove a style draws it at true size.

@@ -1,25 +1,32 @@
 "use client";
 
+import { useRef } from "react";
 import { Sparkles } from "lucide-react";
 import type { Fabric } from "@/types";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useVisualizer } from "@/components/providers/VisualizerProvider";
-import { fabricBackground } from "@/lib/fabrics/artwork";
+import { fabricAverageColor, fabricBackground } from "@/lib/fabrics/artwork";
+import { suitsNames } from "@/lib/fabrics/suits";
+import { useSeen } from "@/lib/utils/useSeen";
 import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/Badge";
 
 export function FabricCard({ fabric }: { fabric: Fabric }) {
-  const { t, pick } = useI18n();
+  const { t, pick, locale } = useI18n();
   const { open } = useVisualizer();
+  // drawn as it nears the screen: sixty cards' tiles at once is slow on a phone
+  const preview = useRef<HTMLDivElement>(null);
+  const seen = useSeen(preview);
 
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-soft transition-all duration-300 hover:-translate-y-1 hover:shadow-lift">
       {/* fabric preview */}
       <div className="relative aspect-[4/5] w-full overflow-hidden">
         <div
+          ref={preview}
           className="absolute inset-0 transition-transform duration-500 group-hover:scale-105"
           // a ~34 cm window of cloth, so the print reads at its true size
-          style={fabricBackground(fabric, { viewCm: 34, elementPx: 250 })}
+          style={seen ? fabricBackground(fabric, { viewCm: 34, elementPx: 250 }) : { backgroundColor: fabricAverageColor(fabric) }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-charcoal/25 via-transparent to-transparent" />
 
@@ -49,6 +56,9 @@ export function FabricCard({ fabric }: { fabric: Fabric }) {
         {/* one of our own samples, sold by no store yet: no store, price or rating */}
         <p className="text-sm text-muted-foreground">
           {t(`material.${fabric.material}`)} · {t("card.sample")}
+        </p>
+        <p className="line-clamp-2 text-xs text-muted-foreground">
+          {t("card.suits")}: {suitsNames(fabric).map(pick).join(locale === "ar" ? "، " : ", ")}
         </p>
       </div>
     </article>

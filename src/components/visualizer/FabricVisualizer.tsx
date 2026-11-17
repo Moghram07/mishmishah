@@ -92,6 +92,10 @@ import {
   wornOn,
 } from "@/lib/garments/outfit";
 import { fabricBackground, fabricRepeatCm } from "@/lib/fabrics/artwork";
+import type { FabricFilter } from "@/lib/fabrics/filters";
+import { suitsNames } from "@/lib/fabrics/suits";
+import { FabricPicker } from "@/components/fabric/FabricPicker";
+import { PublishDesign } from "@/components/feedback/Feedback";
 import { fabricHasDirection } from "@/lib/fabrics/patterns";
 import { exportShareCard, type ShareEntry } from "@/lib/share/shareCard";
 import { ProductTemplate, productPanBy } from "./ProductTemplate";
@@ -234,6 +238,8 @@ export function FabricVisualizer() {
   const [openRow, setOpenRow] = useState<Partial<Record<PanelTab, string>>>({});
   /* the fabrics group keeps the part being cut open, until it is closed */
   const [fabricsOpen, setFabricsOpen] = useState(true);
+  /* the swatches' filters, held from one part to the next */
+  const [fabricFilter, setFabricFilter] = useState<FabricFilter>({});
   const [cutting, setCutting] = useState<Cutting>(() =>
     startCutting("female")
   );
@@ -907,6 +913,8 @@ export function FabricVisualizer() {
     label: string;
     value?: string;
     region?: FabricRegionId;
+    /** Nothing added — no collar, no tie, no belt: left out of the feedback email's design line. */
+    none?: boolean;
     body: React.ReactNode;
   }
   const named = (list: { id: string; name: { en: string; ar: string } }[], id: string | undefined) => {
@@ -1096,6 +1104,7 @@ export function FabricVisualizer() {
       id: "collar",
       label: t("viz.collar"),
       value: wornCollar ? pick(wornCollar.name) : t("viz.noCollar"),
+      none: !wornCollar,
       region: wornCollar ? "collar" : "top",
       body: (
         <>
@@ -1119,6 +1128,7 @@ export function FabricVisualizer() {
       id: "stripes",
       label: t("viz.stripes"),
       value: [named(stripeChoices, wornStripes), ...(wornStripes !== "none" ? stripeEdges.filter((c) => wornStripesOn.includes(c.id)).map((c) => pick(c.name)) : [])].join(" · "),
+      none: wornStripes === "none",
       region: wornStripesOn.length > 0 ? "trim" : undefined,
       body: (
         <>
@@ -1143,6 +1153,7 @@ export function FabricVisualizer() {
       id: "tie",
       label: t("viz.tie"),
       value: [named(tieChoices, wornTie), ...(tiePlaces.length > 1 && wornTieAt ? [named(tiePlaces, wornTieAt)] : [])].join(" · "),
+      none: wornTie === "none",
       region: wornTie !== "none" ? "tie" : undefined,
       body: (
         <>
@@ -1163,6 +1174,7 @@ export function FabricVisualizer() {
       id: "buttons",
       label: t("viz.buttons"),
       value: [named(buttonChoices, wornButtons), ...(rowChoices.length > 1 && wornRows ? [named(rowChoices, wornRows)] : [])].join(" · "),
+      none: wornButtons === "none",
       region: "top",
       body: (
         <>
@@ -1183,6 +1195,7 @@ export function FabricVisualizer() {
       id: "belt",
       label: t("viz.belt"),
       value: [named(beltChoices, wornBelt), ...(bowPlaces.length > 1 && wornBowAt ? [named(bowPlaces, wornBowAt)] : [])].join(" · "),
+      none: wornBelt === "none",
       region: "bottom",
       body: (
         <>
@@ -1208,6 +1221,7 @@ export function FabricVisualizer() {
       id: "cuff",
       label: t("viz.cuff"),
       value: wornSleeve.cuff ? pick(sleeveCuffById(wornSleeve.cuff)!.name) : undefined,
+      none: !wornSleeve.cuff || wornSleeve.cuff === "none",
       region: "top",
       body: (
         <div className="flex flex-wrap gap-2">
@@ -1313,27 +1327,25 @@ export function FabricVisualizer() {
             }
           }}
         >
-          <div className="grid grid-cols-6 gap-2">
-            {fabrics.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => cutRegion(f)}
-                aria-label={pick(f.name)}
-                aria-pressed={f.id === activeFabric.id}
-                title={`${pick(f.name)} · ${fabricRepeatCm(f).toFixed(1)} cm`}
-                className={cn(
-                  "aspect-square rounded-lg border transition-all",
-                  f.id === activeFabric.id ? "border-apricot-500 ring-2 ring-apricot-500/30" : "border-border hover:border-apricot-400"
-                )}
-                style={fabricBackground(f, { viewCm: 6, elementPx: 44, fitRepeat: true })}
-              />
-            ))}
-          </div>
+          <FabricPicker
+            fabrics={fabrics}
+            activeId={activeFabric.id}
+            onPick={cutRegion}
+            filter={fabricFilter}
+            onFilter={setFabricFilter}
+            swatchPx={44}
+          />
           <RowHint>
-            {t("card.sample")} · {t("viz.repeat")}:{" "}
+            {t(`material.${activeFabric.material}`)} · {t("card.sample")} · {t("viz.repeat")}:{" "}
             <span className="font-semibold text-foreground">
               {fabricRepeatCm(activeFabric).toFixed(1)} {t("unit.cm")}
             </span>
+            {activeFabric.suits.length > 0 && (
+              <>
+                <br />
+                {t("card.suits")}: {suitsNames(activeFabric).map(pick).join(locale === "ar" ? "، " : ", ")}
+              </>
+            )}
           </RowHint>
         </PanelRow>
       ))}
@@ -1358,6 +1370,27 @@ export function FabricVisualizer() {
     </>
   );
 
+  /*
+    The line a feedback email opens with (lib/feedback.ts): what is on the
+    figure — the garments, the main parts of the one being edited as its rows
+    name them, and every part's fabric — so a tester's words come with what
+    they were looking at.
+  */
+  const designLine = (() => {
+    const [sep, comma] = locale === "ar" ? ["؛ ", "، "] : ["; ", ", "];
+    const parts = [...cutRows, ...extraRows].filter((r) => r.value && !r.none).map((r) => `${r.label}: ${r.value}`);
+    const what =
+      subject === "wardrobe"
+        ? worn
+            .map(({ garment }) =>
+              garment.id === cuttingGarment?.id && parts.length > 0 ? `${pick(garment.name)} (${parts.join(sep)})` : pick(garment.name)
+            )
+            .join(" + ")
+        : pick(product.label);
+    const cloths = fabricRows.map((r) => `${r.label}: ${pick(r.fabric.name)}`).join(comma);
+    return `${t("feedback.design")}: ${what} — ${t("viz.tabFabrics")}: ${cloths}`;
+  })();
+
   const TABS: { id: PanelTab; label: string }[] = [
     { id: "cut", label: t("viz.tabCut") },
     { id: "extras", label: t("viz.tabExtras") },
@@ -1372,6 +1405,7 @@ export function FabricVisualizer() {
       dir={dir}
       className="fixed inset-0 z-[100] flex items-stretch justify-center animate-fade-in"
     >
+      <PublishDesign line={designLine} />
       {/* backdrop */}
       <button
         aria-label={t("viz.close")}

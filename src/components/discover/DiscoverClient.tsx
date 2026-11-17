@@ -9,12 +9,11 @@ import { fabrics } from "@/lib/data/fabrics";
 import { categories } from "@/lib/data/categories";
 import { cn } from "@/lib/utils/cn";
 import { FabricCard } from "@/components/fabric/FabricCard";
-import type { CategoryKey, FabricMaterial, FabricMotif } from "@/types";
-
-const uniq = <T,>(arr: T[]) => Array.from(new Set(arr));
+import { COLOR_FAMILIES, MATERIALS, PATTERN_FAMILIES, colorFamilyById, patternOf, type PatternFamily } from "@/lib/fabrics/filters";
+import type { CategoryKey, ColorFamily, FabricMaterial } from "@/types";
 
 export function DiscoverClient() {
-  const { t, pick, locale } = useI18n();
+  const { t, pick } = useI18n();
   const params = useSearchParams();
 
   const [query, setQuery] = useState(() => params.get("q") ?? "");
@@ -22,34 +21,32 @@ export function DiscoverClient() {
     () => (params.get("category") as CategoryKey) ?? null
   );
   const [material, setMaterial] = useState<FabricMaterial | null>(null);
-  const [motif, setMotif] = useState<FabricMotif | null>(null);
-  const [color, setColor] = useState<string | null>(null);
+  const [pattern, setPattern] = useState<PatternFamily | null>(null);
+  const [color, setColor] = useState<ColorFamily | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const materials = useMemo(() => uniq(fabrics.map((f) => f.material)), []);
-  const motifs = useMemo(
-    () => uniq(fabrics.flatMap((f) => (f.motif ? [f.motif] : []))),
-    []
-  );
-  const colors = useMemo(
-    () =>
-      uniq(fabrics.map((f) => `${f.color}|${f.colorName.en}|${f.colorName.ar}`)),
-    []
-  );
+  /* the picker's own vocabulary (lib/fabrics/filters.ts): only what the library has */
+  const materials = useMemo(() => MATERIALS.filter((m) => fabrics.some((f) => f.material === m)), []);
+  const patterns = useMemo(() => PATTERN_FAMILIES.filter((p) => fabrics.some((f) => patternOf(f) === p)), []);
+  const colors = useMemo(() => COLOR_FAMILIES.filter((c) => fabrics.some((f) => f.colorFamily === c.id)), []);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     return fabrics.filter((f) => {
-      // material and pattern in both languages, so either finds them
+      // material, pattern and colour in both languages, so either finds them
+      const family = patternOf(f);
       const labels = [
         `material.${f.material}` as const,
-        ...(f.motif ? [`motif.${f.motif}` as const] : []),
+        ...(family ? [`motif.${family}` as const] : []),
       ];
+      const shade = colorFamilyById(f.colorFamily).name;
       const haystack = [
         f.name.en,
         f.name.ar,
         f.colorName.en,
         f.colorName.ar,
+        shade.en,
+        shade.ar,
         ...labels.flatMap((key) => [dictionaries.en[key], dictionaries.ar[key]]),
       ]
         .join(" ")
@@ -57,19 +54,19 @@ export function DiscoverClient() {
       if (q && !haystack.includes(q)) return false;
       if (category && !f.categories.includes(category)) return false;
       if (material && f.material !== material) return false;
-      if (motif && f.motif !== motif) return false;
-      if (color && f.color !== color) return false;
+      if (pattern && patternOf(f) !== pattern) return false;
+      if (color && f.colorFamily !== color) return false;
       return true;
     });
-  }, [query, category, material, motif, color]);
+  }, [query, category, material, pattern, color]);
 
   const activeCount =
-    (category ? 1 : 0) + (material ? 1 : 0) + (motif ? 1 : 0) + (color ? 1 : 0);
+    (category ? 1 : 0) + (material ? 1 : 0) + (pattern ? 1 : 0) + (color ? 1 : 0);
 
   const clear = () => {
     setCategory(null);
     setMaterial(null);
-    setMotif(null);
+    setPattern(null);
     setColor(null);
   };
 
@@ -165,11 +162,11 @@ export function DiscoverClient() {
 
       <Group label={t("search.filter.pattern")}>
         <div className="flex flex-wrap gap-2">
-          {motifs.map((m) => (
+          {patterns.map((m) => (
             <Chip
               key={m}
-              active={motif === m}
-              onClick={() => toggle(m, motif, setMotif)}
+              active={pattern === m}
+              onClick={() => toggle(m, pattern, setPattern)}
             >
               {t(`motif.${m}`)}
             </Chip>
@@ -180,21 +177,21 @@ export function DiscoverClient() {
       <Group label={t("search.filter.color")}>
         <div className="flex flex-wrap gap-2.5">
           {colors.map((c) => {
-            const [hex, en, ar] = c.split("|");
-            const active = color === hex;
+            const active = color === c.id;
             return (
               <button
-                key={c}
-                onClick={() => toggle(hex, color, setColor)}
-                aria-label={locale === "ar" ? ar : en}
-                title={locale === "ar" ? ar : en}
+                key={c.id}
+                onClick={() => toggle(c.id, color, setColor)}
+                aria-label={pick(c.name)}
+                aria-pressed={active}
+                title={pick(c.name)}
                 className={cn(
                   "h-8 w-8 rounded-full border-2 transition-transform hover:scale-110",
                   active
                     ? "border-apricot-500 ring-2 ring-apricot-500/30"
                     : "border-border"
                 )}
-                style={{ backgroundColor: hex }}
+                style={{ backgroundColor: c.hex }}
               />
             );
           })}

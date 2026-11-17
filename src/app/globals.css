@@ -131,3 +131,8 @@
     animation: shimmer 1.6s infinite;
   }
 }
+
+/* the beta notice, once closed: `lib/beta.ts` marks the page before it paints */
+html[data-beta-closed] .beta-banner {
+  display: none;
+}
