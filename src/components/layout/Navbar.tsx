@@ -11,6 +11,7 @@ import { LocaleToggle } from "@/components/ui/LocaleToggle";
 import { ButtonLink } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { FeedbackEmail, FeedbackLink } from "@/components/feedback/Feedback";
+import { shopJoinMailto } from "@/lib/contact";
 
 export function Navbar() {
   const { t } = useI18n();
@@ -54,7 +55,8 @@ export function Navbar() {
             <LocaleToggle />
             <ThemeToggle />
           </div>
-          <ButtonLink href="/#seller" variant="outline" size="sm" className="hidden sm:inline-flex">
+          {/* until shop accounts exist, a shop joins by email */}
+          <ButtonLink href={shopJoinMailto()} variant="outline" size="sm" className="hidden sm:inline-flex">
             {t("nav.sell")}
           </ButtonLink>
 
@@ -97,7 +99,7 @@ export function Navbar() {
               <LocaleToggle />
               <ThemeToggle />
             </div>
-            <ButtonLink href="/#seller" variant="outline">
+            <ButtonLink href={shopJoinMailto()} variant="outline">
               {t("nav.sell")}
             </ButtonLink>
             {/* feedback on the beta: always here, the notice closed or not */}

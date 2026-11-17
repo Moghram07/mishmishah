@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Sparkles, ArrowRight, Ruler } from "lucide-react";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useVisualizer } from "@/components/providers/VisualizerProvider";
-import { fabrics } from "@/lib/data/fabrics";
+import { offeredFabrics } from "@/lib/data/fabrics";
 import { categories } from "@/lib/data/categories";
 import { defaultGarment } from "@/lib/data/garments";
 import { cutFrom } from "@/lib/garments/outfit";
@@ -31,8 +31,8 @@ const HERO_OUTFIT: Outfit = {
 export function Hero() {
   const { t, pick, dir } = useI18n();
   const { open } = useVisualizer();
-  const [heroFabric, setHeroFabric] = useState(fabrics[0]);
-  const demoFabrics = fabrics.slice(0, 6);
+  const [heroFabric, setHeroFabric] = useState(offeredFabrics[0]);
+  const demoFabrics = offeredFabrics.slice(0, 6);
 
   const dressed = useMemo(
     () => ({

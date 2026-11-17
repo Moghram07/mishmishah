@@ -1,10 +1,10 @@
 "use client";
 
-import { MessageCircle, Store } from "lucide-react";
+import { Mail, MessageCircle, Store } from "lucide-react";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { Section } from "@/components/ui/Section";
 import { ButtonLink } from "@/components/ui/Button";
-import { SHOP_CONTACT, whatsappLink } from "@/lib/contact";
+import { SHOP_CONTACT, shopJoinMailto, whatsappLink } from "@/lib/contact";
 
 export function BecomeSeller() {
   const { t } = useI18n();
@@ -24,6 +24,13 @@ export function BecomeSeller() {
             {t("seller.title")}
           </h2>
           <p className="mt-4 max-w-xl text-white/70">{t("seller.body")}</p>
+
+          {/* until shop accounts exist: a shop joins by email */}
+          <p className="mt-6 max-w-xl font-medium text-white/90">{t("seller.join")}</p>
+          <ButtonLink href={shopJoinMailto()} size="lg" className="mt-4">
+            <Mail className="h-5 w-5" />
+            {t("nav.sell")}
+          </ButtonLink>
 
           {/* each way in shows only once it is filled in (lib/contact.ts) */}
           {whatsapp && (

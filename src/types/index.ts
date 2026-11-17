@@ -128,6 +128,12 @@ interface FabricCommon {
   categories: CategoryKey[];
   /** The garments it suits, by id — what a shop would cut it for. */
   suits: readonly string[];
+  /**
+   * Kept in the library but not offered — in no picker, card or list — until
+   * it can be drawn as it is: a sheer chiffon until sheer cloth can be. A
+   * design already cut from it still finds it (`fabricById`).
+   */
+  hidden?: true;
 }
 
 /**

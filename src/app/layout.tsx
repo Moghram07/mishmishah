@@ -31,7 +31,7 @@ const DESCRIPTION =
   "Pick a fabric and see it on a dress or a thobe, at its true size, before you decide.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://mishmishah.app"),
+  metadataBase: new URL("https://mishmishah.com"),
   title: {
     default: TITLE,
     template: "%s · مشمشة",

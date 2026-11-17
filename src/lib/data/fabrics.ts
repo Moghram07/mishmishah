@@ -27,7 +27,7 @@ export const fabrics: Fabric[] = [
     id: "fb-apricot-linen",
     name: { en: "Apricot Grove Linen", ar: "كتّان بستان المشمش" },
     source: "procedural",
-    motif: "solid",
+    motif: "slub",
     palette: { base: "#FF8C54", accent: "#F0501A", highlight: "#FFD0B3" },
     color: "#FF6A2C",
     material: "linen",
@@ -95,7 +95,7 @@ export const fabrics: Fabric[] = [
   },
   {
     id: "fb-terracotta-herring",
-    name: { en: "Terracotta Herringbone", ar: "سنبلة قرميدي" },
+    name: { en: "Terracotta Herringbone", ar: "عظم السمكة قرميدي" },
     source: "procedural",
     motif: "herringbone",
     palette: { base: "#E7C6A8", accent: "#C4623A", highlight: "#F5E6D6" },
@@ -151,9 +151,9 @@ export const fabrics: Fabric[] = [
   },
   {
     id: "fb-denim-classic",
-    name: { en: "Selvedge Denim", ar: "دينم سيلفدج" },
+    name: { en: "Selvedge Denim", ar: "جينز سيلفدج" },
     source: "procedural",
-    motif: "solid",
+    motif: "twill",
     palette: { base: "#3A5A80", accent: "#2A4360", highlight: "#8FA9C4" },
     color: "#3A5A80",
     material: "denim",
@@ -163,6 +163,7 @@ export const fabrics: Fabric[] = [
     categories: ["fashion", "accessories"],
     suits: [...TROUSERS, ...JACKETS, "female-skirt", "male-shirt"],
   },
+  /* sheer — kept, but not offered in the beta until sheer cloth can be drawn */
   {
     id: "fb-blush-chiffon",
     name: { en: "Blush Cloud Chiffon", ar: "شيفون وردي فاتح" },
@@ -175,6 +176,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "pink",
     texture: "sheer",
     categories: ["fashion", "wedding", "curtains"],
+    hidden: true,
     suits: [...DRESSES, "female-blouse"],
   },
   {
@@ -472,7 +474,7 @@ export const fabrics: Fabric[] = [
   /* denim, its twill climbing */
   {
     id: "fb-indigo-denim",
-    name: { en: "Indigo Denim", ar: "دينم نيلي" },
+    name: { en: "Indigo Denim", ar: "جينز نيلي" },
     source: "procedural",
     motif: "twill",
     palette: { base: "#2C3F5C", accent: "#1C2A40", highlight: "#8597B0" },
@@ -486,7 +488,7 @@ export const fabrics: Fabric[] = [
   },
   {
     id: "fb-light-denim",
-    name: { en: "Light Denim", ar: "دينم فاتح" },
+    name: { en: "Light Denim", ar: "جينز فاتح" },
     source: "procedural",
     motif: "twill",
     palette: { base: "#7E9BBA", accent: "#63809F", highlight: "#C3D1E0" },
@@ -758,7 +760,7 @@ export const fabrics: Fabric[] = [
   },
   {
     id: "fb-grey-herringbone",
-    name: { en: "Grey Herringbone", ar: "سنبلة رمادي" },
+    name: { en: "Grey Herringbone", ar: "عظم السمكة رمادي" },
     source: "procedural",
     motif: "herringbone",
     palette: { base: "#8E8F91", accent: "#5F6165", highlight: "#B9BABC" },
@@ -858,7 +860,7 @@ export const fabrics: Fabric[] = [
   },
   {
     id: "fb-burgundy-paisley",
-    name: { en: "Burgundy Paisley", ar: "بيزلي عنابي" },
+    name: { en: "Burgundy Paisley", ar: "كشميري عنابي" },
     source: "procedural",
     motif: "paisley",
     palette: { base: "#5E1A28", accent: "#C9963E", highlight: "#F0DDB0" },
@@ -872,7 +874,7 @@ export const fabrics: Fabric[] = [
   },
   {
     id: "fb-navy-paisley",
-    name: { en: "Navy Paisley", ar: "بيزلي كحلي" },
+    name: { en: "Navy Paisley", ar: "كشميري كحلي" },
     source: "procedural",
     motif: "paisley",
     palette: { base: "#1F2A44", accent: "#4F7FC4", highlight: "#E9E3D3" },
@@ -906,6 +908,13 @@ export const fabrics: Fabric[] = [
 assertMotifScale(fabrics);
 
 export const fabricById = (id: string) => fabrics.find((f) => f.id === id);
+
+/**
+ * The fabrics the site offers — in the pickers, on Discover, on the home page:
+ * the library less any it holds back (`hidden`), as the sheer chiffon is until
+ * sheer cloth can be drawn.
+ */
+export const offeredFabrics: Fabric[] = fabrics.filter((f) => !f.hidden);
 
 /** The plain black in the library — the black crepe — which a new necktie or bow tie arrives in on a light shirt: see `tieStartOn`. */
 export const PLAIN_BLACK = "fb-black-crepe";

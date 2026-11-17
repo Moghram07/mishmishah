@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fabrics } from "@/lib/data/fabrics";
+import { fabricById, fabrics, offeredFabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
 import { COLOR_FAMILIES, MATERIALS, patternOf } from "./filters";
 import { MOTIFS, fabricRepeatCm } from "./patterns";
@@ -25,7 +25,7 @@ describe("the sample library", () => {
   });
 
   it("names every fabric in Arabic and English, its type, colour family and the garments it suits — a sample, no shop or price", () => {
-    const fields = new Set(["id", "name", "source", "motif", "palette", "color", "material", "colorName", "colorFamily", "texture", "categories", "suits"]);
+    const fields = new Set(["id", "name", "source", "motif", "palette", "color", "material", "colorName", "colorFamily", "texture", "categories", "suits", "hidden"]);
     for (const f of fabrics) {
       expect(f.name.en.trim(), f.id).not.toBe("");
       expect(f.name.ar, f.id).toMatch(/[؀-ۿ]/);
@@ -89,7 +89,25 @@ describe("the sample library", () => {
     }
   });
 
-  it("keeps the first eighteen samples as they were, first in the library", () => {
+  it("keeps the sheer chiffon but does not offer it, until sheer cloth can be drawn", () => {
+    const chiffon = fabricById("fb-blush-chiffon")!;
+    expect([chiffon.hidden, chiffon.texture]).toEqual([true, "sheer"]);
+    expect(offeredFabrics.map((f) => f.id)).not.toContain("fb-blush-chiffon");
+    // nothing else is held back
+    expect(offeredFabrics.length).toBe(fabrics.length - 1);
+    expect(fabrics.filter((f) => f.hidden).map((f) => f.id)).toEqual(["fb-blush-chiffon"]);
+  });
+
+  it("draws every linen and every denim alike: the linen's slubs, the denim's twill", () => {
+    for (const f of fabrics) {
+      if (f.material === "linen") expect(motifOf(f), f.id).toBe("slub");
+      if (f.material === "denim") expect(motifOf(f), f.id).toBe("twill");
+    }
+    expect(fabrics.filter((f) => f.material === "linen").length).toBe(5);
+    expect(fabrics.filter((f) => f.material === "denim").length).toBe(3);
+  });
+
+  it("keeps the first eighteen samples, first in the library", () => {
     expect(fabrics.slice(0, 18).map((f) => f.id)).toEqual([
       "fb-apricot-linen", "fb-saffron-stripe", "fb-rose-silk", "fb-indigo-plaid", "fb-emerald-velvet", "fb-terracotta-herring",
       "fb-cream-dots", "fb-midnight-floral", "fb-desert-geo", "fb-denim-classic", "fb-blush-chiffon", "fb-forest-plaid",

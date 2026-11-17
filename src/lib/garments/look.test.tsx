@@ -5494,6 +5494,7 @@ describe("every fabric in the library, on her dress and his thobe", () => {
               <figcaption dir="rtl">
                 <b>{fabric.name.ar}</b> · <span dir="ltr">{fabric.name.en}</span>
                 {FIRST.has(fabric.id) ? null : <i> · جديد</i>}
+                {fabric.hidden ? <i> · مخفي في النسخة التجريبية</i> : null}
                 <br />
                 {/* its own element, so the sheet shooter measures it */}
                 <span>
@@ -5516,4 +5517,43 @@ describe("every fabric in the library, on her dress and his thobe", () => {
     mkdirSync(".preview/wardrobe", { recursive: true });
     writeFileSync(".preview/wardrobe/fabrics.html", '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
   }, 240_000);
+});
+
+describe("every linen and every denim alike, close up", () => {
+  /* the two first samples on the new surfaces, each beside a new one: at 4×, drawn at the stage's own width */
+  it("writes .preview/wardrobe/linen-denim.html", () => {
+    const dress = garmentById("female-dress")!;
+    const looks: [string, string][] = [
+      ["fb-apricot-linen", "كتّان بستان المشمش — من قبل، الآن بنسيج الكتّان"],
+      ["fb-natural-linen", "كتّان طبيعي — جديد"],
+      ["fb-denim-classic", "جينز سيلفدج — من قبل، الآن بنسيج الجينز"],
+      ["fb-indigo-denim", "جينز نيلي — جديد"],
+    ];
+    const html = renderToStaticMarkup(
+      <div className="row">
+        {looks.map(([id, caption]) => {
+          const fabric = f(id);
+          const worn = [cutFrom(dress, fabric.id)];
+          const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+          for (const r of regionsOf(dress, worn[0])) regions[r] = fabric;
+          const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+          return (
+            <figure key={id}>
+              <MannequinStage outfit={outfit} fabrics={{ [dress.id]: regions }} zoom={4} focus={[300, 330]} />
+              <figcaption dir="rtl">
+                <span>{caption} · {fabricRepeatCm(fabric)} سم · 4×</span>
+              </figcaption>
+            </figure>
+          );
+        })}
+      </div>
+    );
+    const css =
+      "<style>body{margin:0;padding:14px;background:#efeae4;font:13px system-ui}" +
+      ".row{display:flex;gap:12px;width:max-content}figure{margin:0;width:440px}" +
+      "svg{width:440px;height:560px;display:block;background:#fff;border-radius:10px;color:#1f1915}" +
+      "figcaption{margin-top:6px;color:#333;text-align:right}</style>";
+    mkdirSync(".preview/wardrobe", { recursive: true });
+    writeFileSync(".preview/wardrobe/linen-denim.html", '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+  }, 120_000);
 });

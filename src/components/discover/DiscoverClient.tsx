@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { dictionaries } from "@/lib/i18n/dictionaries";
-import { fabrics } from "@/lib/data/fabrics";
+import { offeredFabrics as fabrics } from "@/lib/data/fabrics";
 import { categories } from "@/lib/data/categories";
 import { cn } from "@/lib/utils/cn";
 import { FabricCard } from "@/components/fabric/FabricCard";

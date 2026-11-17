@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n/I18nProvider";
 import { MessageSquare } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { FeedbackEmail, FeedbackLink } from "@/components/feedback/Feedback";
+import { shopJoinMailto } from "@/lib/contact";
 
 export function Footer() {
   const { t } = useI18n();
@@ -21,7 +22,8 @@ export function Footer() {
       },
       {
         title: t("footer.sell"),
-        links: [{ label: t("footer.becomeSeller"), href: "/#seller" }],
+        // until shop accounts exist, a shop joins by email
+        links: [{ label: t("footer.becomeSeller"), href: shopJoinMailto() }],
       },
       {
         title: t("footer.company"),
@@ -56,12 +58,18 @@ export function Footer() {
               <ul className="space-y-2.5">
                 {col.links.map((l) => (
                   <li key={l.label}>
-                    <Link
-                      href={l.href}
-                      className="text-sm text-muted-foreground transition-colors hover:text-apricot-600"
-                    >
-                      {l.label}
-                    </Link>
+                    {l.href.startsWith("mailto:") ? (
+                      <a href={l.href} className="text-sm text-muted-foreground transition-colors hover:text-apricot-600">
+                        {l.label}
+                      </a>
+                    ) : (
+                      <Link
+                        href={l.href}
+                        className="text-sm text-muted-foreground transition-colors hover:text-apricot-600"
+                      >
+                        {l.label}
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>

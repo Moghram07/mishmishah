@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useVisualizer } from "@/components/providers/VisualizerProvider";
-import { fabrics } from "@/lib/data/fabrics";
+import { offeredFabrics } from "@/lib/data/fabrics";
 import { garmentById, garmentsFor, defaultGarment } from "@/lib/data/garments";
 import { DEFAULT_SKIN_TONE, skinTones } from "@/lib/data/skinTones";
 import { bodyTypes } from "@/lib/mannequin/bodies";
@@ -28,11 +28,11 @@ import type { BodyType, Fabric, FabricRegionId, Outfit } from "@/types";
 export default function VisualizerPage() {
   const { t, pick } = useI18n();
   const { open } = useVisualizer();
-  const [fabric, setFabric] = useState<Fabric>(fabrics[0]);
+  const [fabric, setFabric] = useState<Fabric>(offeredFabrics[0]);
   const [outfit, setOutfit] = useState<Outfit>(() => ({
     bodyType: "female",
     skinTone: DEFAULT_SKIN_TONE,
-    worn: [cutFrom(defaultGarment("female"), fabrics[0].id)],
+    worn: [cutFrom(defaultGarment("female"), offeredFabrics[0].id)],
     direction: 0,
   }));
 
@@ -184,7 +184,7 @@ export default function VisualizerPage() {
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {t("viz.pickFabric")} — {pick(fabric.name)}
               </p>
-              <FabricPicker fabrics={fabrics} activeId={fabric.id} onPick={setFabric} swatchPx={48} />
+              <FabricPicker fabrics={offeredFabrics} activeId={fabric.id} onPick={setFabric} swatchPx={48} />
             </div>
 
             <Button size="lg" onClick={() => open(fabric)}>

@@ -35,7 +35,7 @@ import {
   sleeveTypeName,
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
-import { contrastingPlain, fabrics, fabricById, tieStartOn } from "@/lib/data/fabrics";
+import { contrastingPlain, fabricById, offeredFabrics, tieStartOn } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE, skinToneById, skinTones } from "@/lib/data/skinTones";
 import { regionLabel } from "@/lib/data/fabricRegions";
 import { BODY_CANVAS, bodyTypes } from "@/lib/mannequin/bodies";
@@ -1328,7 +1328,7 @@ export function FabricVisualizer() {
           }}
         >
           <FabricPicker
-            fabrics={fabrics}
+            fabrics={offeredFabrics}
             activeId={activeFabric.id}
             onPick={cutRegion}
             filter={fabricFilter}

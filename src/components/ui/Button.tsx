@@ -59,12 +59,11 @@ export function ButtonLink({
   external,
   children,
 }: ButtonAsLink) {
-  if (external) {
+  if (external || href.startsWith("mailto:")) {
     return (
       <a
         href={href}
-        target="_blank"
-        rel="noopener noreferrer"
+        {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         className={cn(base, variants[variant], sizes[size], className)}
       >
         {children}

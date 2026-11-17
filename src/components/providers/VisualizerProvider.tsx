@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import type { Fabric } from "@/types";
-import { fabrics } from "@/lib/data/fabrics";
+import { offeredFabrics } from "@/lib/data/fabrics";
 import { FabricVisualizer } from "@/components/visualizer/FabricVisualizer";
 
 interface VisualizerValue {
@@ -24,7 +24,7 @@ const VisualizerContext = createContext<VisualizerValue | null>(null);
 
 export function VisualizerProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [fabric, setFabric] = useState<Fabric>(fabrics[0]);
+  const [fabric, setFabric] = useState<Fabric>(offeredFabrics[0]);
 
   const open = useCallback((f?: Fabric) => {
     if (f) setFabric(f);
