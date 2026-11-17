@@ -17,7 +17,7 @@ const cache = new Map<string, RegionArt>();
 
 export function shirtTieArt(style: ShirtTieStyle, body: BodyType, fit: TieFit): RegionArt {
   /* a necktie as long as it reaches, a bow tie where its knot sits */
-  const key = style === "necktie" ? `${style}|${body}|${fit.meet[0]}|${fit.meet[1]}|${fit.to}` : `${style}|${body}|${fit.bow[0]}|${fit.bow[1]}`;
+  const key = style === "necktie" ? `${style}|${body}|${fit.meet[0]}|${fit.meet[1]}|${fit.to}` : `${style}|${body}|${fit.bow[0]}|${fit.bow[1]}|${fit.bowUnder ? "under" : "on"}`;
   const hit = cache.get(key);
   if (hit) return hit;
   const tie = shirtTie(style, body, fit);

@@ -5280,3 +5280,113 @@ describe("her bow under the collar, and the necktie to the waistband, light and 
     }, 120_000);
   }
 });
+
+describe("the shirt collar round the neck, and every tie at the bottom of its V, light and dark", () => {
+  /*
+    Round 25's fourth fix (the user's photos bowtieMen, bowtieSize and
+    TiePositions-Shapes): the shirt collar wraps the neck — it stands up at the
+    sides, its fold a wide V down to where its halves meet just above the top
+    button, the neck showing in the V, its back rounding over at each side.
+    `shirtcollar-<theme>`: the collar alone on her blouse and his shirt, at 1×
+    and 2.5×, and its side at 6× — the same looks are rendered from the commit
+    before it for the before half of the pair. `vcollar-ties-
+    <theme>`: her bow, his bow tie and the necktie at the bottom of the V, each
+    on a white and a navy shirt, at 1× and 2.5×; and her bow on the shirt-dress
+    and under a Peter Pan. Every tie starts in plain black.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Look = { caption: string; body: BodyType; wear: { id: string; cloth: string }[]; neckline?: string; collar?: string; tie?: TieId; zoom: number; focus: [number, number] };
+  const stage = (look: Look) => {
+    let worn: WornGarment[] = [];
+    for (const { id, cloth } of look.wear) worn = wear(worn, cutFrom(garmentById(id)!, cloth));
+    const main = look.wear[0].id;
+    if (look.neckline) worn = setNeckline(worn, main, look.neckline);
+    if (look.collar) worn = setCollar(worn, main, look.collar);
+    if (look.tie) worn = setTie(worn, main, look.tie, PLAIN_BLACK);
+    const cloths: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const w of worn) {
+      const g = garmentById(w.garmentId)!;
+      const cloth = look.wear.find((x) => x.id === w.garmentId)!.cloth;
+      const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+      for (const r of regionsOf(g, w)) regions[r] = f(r === "tie" ? (w.fabrics.tie ?? PLAIN_BLACK) : cloth);
+      cloths[g.id] = regions;
+    }
+    const outfit: Outfit = { bodyType: look.body, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={cloths} zoom={look.zoom} focus={look.focus} />;
+  };
+  const WHITE = "fb-white";
+  const NAVY = "fb-navy";
+  const BLACK = "fb-black-crepe";
+  const blouse = (cloth: string) => [{ id: "female-blouse", cloth }, { id: "female-skirt", cloth: BLACK }];
+  const shirt = (cloth: string) => [{ id: "male-shirt", cloth }, { id: "male-trousers", cloth: BLACK }];
+  const dress = (cloth: string) => [{ id: "female-dress", cloth }];
+  const pair = (caption: string, look: Omit<Look, "caption" | "zoom" | "focus">, near: [number, number]): Look[] => [
+    { caption: `${caption}, 1×`, ...look, zoom: 1, focus: [300, 500] },
+    { caption: `${caption}, 2.5×`, ...look, zoom: 2.5, focus: near },
+  ];
+  const SHEETS: Record<string, Look[][]> = {
+    /* and close, at 6×, its side: where its back turns round the neck */
+    shirtcollar: [
+      [
+        ...pair("her blouse, collar alone", { body: "female", wear: blouse(WHITE) }, [298, 225]),
+        { caption: "her blouse, collar alone, 6×", body: "female", wear: blouse(WHITE), zoom: 6, focus: [292, 178] },
+      ],
+      [
+        ...pair("his shirt, collar alone", { body: "male", wear: shirt(WHITE) }, [301, 225]),
+        { caption: "his shirt, collar alone, 6×", body: "male", wear: shirt(WHITE), zoom: 6, focus: [295, 176] },
+      ],
+    ],
+    "vcollar-ties": [
+      [
+        ...pair("black bow, white blouse", { body: "female", wear: blouse(WHITE), tie: "bowtie" }, [298, 232]),
+        ...pair("black bow, navy blouse", { body: "female", wear: blouse(NAVY), tie: "bowtie" }, [298, 232]),
+      ],
+      [
+        ...pair("black bow tie, white shirt", { body: "male", wear: shirt(WHITE), tie: "bowtie" }, [301, 225]),
+        ...pair("black bow tie, navy shirt", { body: "male", wear: shirt(NAVY), tie: "bowtie" }, [301, 225]),
+      ],
+      [
+        ...pair("black necktie, his white shirt", { body: "male", wear: shirt(WHITE), tie: "necktie" }, [301, 290]),
+        ...pair("black necktie, his navy shirt", { body: "male", wear: shirt(NAVY), tie: "necktie" }, [301, 290]),
+      ],
+      [
+        ...pair("black necktie, her white blouse", { body: "female", wear: blouse(WHITE), tie: "necktie" }, [298, 280]),
+        ...pair("black necktie, her navy blouse", { body: "female", wear: blouse(NAVY), tie: "necktie" }, [298, 280]),
+      ],
+      [
+        { caption: "black bow, white shirt-dress, 2.5×", body: "female", wear: dress(WHITE), neckline: "female-collared-neckline", tie: "bowtie", zoom: 2.5, focus: [298, 232] },
+        { caption: "black bow, navy shirt-dress, 2.5×", body: "female", wear: dress(NAVY), neckline: "female-collared-neckline", tie: "bowtie", zoom: 2.5, focus: [298, 232] },
+        { caption: "black bow under a white Peter Pan, 2.5×", body: "female", wear: dress(WHITE), neckline: "female-round-neckline", collar: "female-peter-pan-collar", tie: "bowtie", zoom: 2.5, focus: [298, 262] },
+        { caption: "black bow under a navy Peter Pan, 2.5×", body: "female", wear: dress(NAVY), neckline: "female-round-neckline", collar: "female-peter-pan-collar", tie: "bowtie", zoom: 2.5, focus: [298, 262] },
+      ],
+    ],
+  };
+  for (const [name, rows] of Object.entries(SHEETS)) {
+    it.each(["light", "dark"] as const)(`writes .preview/wardrobe/${name}-%s.html`, (theme) => {
+      const t = THEMES[theme];
+      const html = renderToStaticMarkup(
+        <>
+          {rows.map((row, r) => (
+            <div key={r} className="row">
+              {row.map((look) => (
+                <figure key={look.caption}>
+                  {stage(look)}
+                  <figcaption>{look.caption}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ))}
+        </>
+      );
+      const css =
+        `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+        `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+        `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+        `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+      writeFileSync(`.preview/wardrobe/${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    }, 120_000);
+  }
+});

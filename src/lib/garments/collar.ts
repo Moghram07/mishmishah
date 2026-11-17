@@ -337,3 +337,103 @@ export const shadowOf = (corners: Point[], bows: number[], drop: number) =>
  */
 export const rollShade = (from: Point, to: Point, depth: number) =>
   `M${xy(from)} ${arc(from, to, 0)} ${arc(to, from, -depth)} Z`;
+
+/* --------------------------------------------------------- a shirt collar's V */
+
+/**
+ * Where a shirt collar's fold leaves the side of the neck and where it comes
+ * into the point where its halves meet, as shares of the way across and down
+ * between them: the first handle, from the side; the second, back from the
+ * meeting point.
+ *
+ * A shirt collar wraps the neck. Seen from the front it stands up at each side
+ * of the neck, and its fold runs down from there to centre front, where the
+ * two halves meet just above the top button: a wide V, the neck showing in it
+ * (the user's photos bowtieMen and TiePositions-Shapes). So the fold leaves the
+ * side steeply, still going round the neck, and comes into the meeting point
+ * at about 37° below level — the two halves meet in a V, not a U. It used to be
+ * level straight across the throat, the points hanging off its ends: a strip.
+ */
+const FOLD_LEAVE = [0.12, 0.5] as const;
+const FOLD_ARRIVE = [0.35, 0.3] as const;
+
+/** One half of a shirt collar's fold, as a cubic from the side of the neck, `side`, to where the halves meet, `meet`: its four points. */
+export function foldCurve(side: Point, meet: Point): [Point, Point, Point, Point] {
+  const [dx, dy] = [meet[0] - side[0], meet[1] - side[1]];
+  return [
+    side,
+    [side[0] + FOLD_LEAVE[0] * dx, side[1] + FOLD_LEAVE[1] * dy],
+    [meet[0] - FOLD_ARRIVE[0] * dx, meet[1] - FOLD_ARRIVE[1] * dy],
+    meet,
+  ];
+}
+
+/** That half of the fold as points, side to meeting point — for a band's top edge, a fold's light, measuring. */
+export function foldPoints(side: Point, meet: Point, n = 16): [number, number][] {
+  const [a, b, c, d] = foldCurve(side, meet);
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const t = i / n;
+    const u = 1 - t;
+    return [
+      round1(u * u * u * a[0] + 3 * u * u * t * b[0] + 3 * u * t * t * c[0] + t * t * t * d[0]),
+      round1(u * u * u * a[1] + 3 * u * u * t * b[1] + 3 * u * t * t * c[1] + t * t * t * d[1]),
+    ] as [number, number];
+  });
+}
+
+/** The whole fold, left to right: the left half from the side down to where the halves meet, and up the other side — the same half, reflected about `axis`. */
+export function foldRoll(side: Point, meet: Point, axis: Axis): [number, number][] {
+  const half = foldPoints(side, meet);
+  const other = half
+    .slice(0, -1)
+    .reverse()
+    .map(([x, y]) => [round1(2 * axisAt(axis, y) - x), y] as [number, number]);
+  return [...half, ...other];
+}
+
+/** The same half as a path segment, back from the meeting point to the side — for a leaf's outline, which starts where the halves meet. */
+export function foldBack(side: Point, meet: Point): string {
+  const [a, b, c] = foldCurve(side, meet);
+  return `C${xy(c)} ${xy(b)} ${xy(a)}`;
+}
+
+/**
+ * A shirt collar's back, seen from the front, as the points of its outline:
+ * the band behind the neck, its top level behind the neck at the height the
+ * collar stands to at its sides, and its two outer corners rounded off — a
+ * quarter ellipse from `drop` below the top on its outer side, up and in to
+ * where the front's fold starts at that side, `corners` — so that beside the
+ * neck the collar turns round it, rather than standing up as a box. It was
+ * the plain band behind the neck: straight sides and a flat top, square at
+ * both ends — a rectangle behind the collar (the user's note).
+ *
+ * `edges` are the band's: each side from the seam up, the foot from right to
+ * left — see `standEdges`.
+ */
+export function roundedBack(
+  edges: { leftSide: readonly (readonly [number, number])[]; rightSide: readonly (readonly [number, number])[]; foot: readonly (readonly [number, number])[] },
+  corners: readonly [Point, Point],
+  drop: number,
+  n = 8
+): [number, number][] {
+  const top = corners[0][1];
+  const below = top + drop;
+  /* a side's outer x at a row, between its samples */
+  const xAt = (side: readonly (readonly [number, number])[], y: number): number => {
+    for (let i = 1; i < side.length; i++) {
+      const [[x0, y0], [x1, y1]] = [side[i - 1], side[i]];
+      if ((y0 - y) * (y1 - y) <= 0 && y0 !== y1) return x0 + ((x1 - x0) * (y - y0)) / (y1 - y0);
+    }
+    return side[side.length - 1][0];
+  };
+  /* a quarter ellipse from the outer side at `below`, up and in to the corner — vertical where it leaves the side, level where it arrives */
+  const quarter = (from: Point, to: Point): [number, number][] =>
+    Array.from({ length: n + 1 }, (_, i) => {
+      const t = (i / n) * (Math.PI / 2);
+      return [round1(from[0] + (to[0] - from[0]) * (1 - Math.cos(t))), round1(from[1] + (to[1] - from[1]) * Math.sin(t))] as [number, number];
+    });
+  const left = quarter([xAt(edges.leftSide, below), below], corners[0]);
+  const right = quarter([xAt(edges.rightSide, below), below], corners[1]).reverse();
+  const pts = (side: readonly (readonly [number, number])[]) => side.filter(([, y]) => y > below + 0.5).map(([x, y]) => [x, y] as [number, number]);
+  return [...pts(edges.leftSide), ...left, ...right, ...pts(edges.rightSide).reverse(), ...edges.foot.map(([x, y]) => [x, y] as [number, number])];
+}

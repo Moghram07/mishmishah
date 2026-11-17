@@ -121,11 +121,12 @@ export const peterPanCollarFront: GarmentArt = {
   /*
     On the dress, along the cut's own opening. Worn with her ribbon bow, tied
     under it, it draws the bow, just below where its rounded ends meet, and
-    lays its halves again over the bow's loops: see `Collar.ties`.
+    lays its halves again over the bow — only the loops' tops: see
+    `ribbonUnder` and `Collar.ties`.
   */
   cut: (choice) => {
     if (!(choice.tieUnder && choice.tie === "bowtie")) return { collar: collarFor(choice.neckline) };
     const { collar, meet, bow } = underFor(choice.neckline);
-    return { collar, tie: shirtTieArt("bowtie", "female", { meet, to: necktieTo("female", choice), bow }) };
+    return { collar, tie: shirtTieArt("bowtie", "female", { meet, to: necktieTo("female", choice), bow, bowUnder: true }) };
   },
 };

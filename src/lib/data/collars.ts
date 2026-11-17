@@ -61,17 +61,20 @@ export const collars: Collar[] = [
     compatibleWith: ROUND_NECK,
     /**
      * A band round her neck and two leaves folded down from its top, as his
-     * is — see `art/female/collars/shirt.tsx`. The band rises 13 units above
-     * the seam at the side of her neck, about as tall as her mandarin; the
-     * leaves hang from it and open in a narrow V, where the band shows with
-     * one button, to points about 6.5 cm long. Measured, the front is
-     * 14.3 × 6.5 cm.
+     * is — see `art/female/collars/shirt.tsx`. It wraps the neck: it stands
+     * 3.4 cm up each side of her neck, and its fold runs down in a wide V to
+     * centre front, where the halves meet just above the top button, the neck
+     * showing in the V; the leaves fall from the fold down and a little out
+     * to their points, the band showing between them with its button.
+     * Measured, the front is 11.4 × 7.4 cm.
      *
-     * It was 10–15 cm deep when the leaves were cut from the neckline, with
-     * her neck bare between them above the placket.
+     * It was 14.3 × 6.5 cm when its fold ran level across the throat, the
+     * points hanging off its ends — a strip; and 10–15 cm deep when the leaves
+     * were cut from the neckline, with her neck bare between them above the
+     * placket.
      */
-    footprint: { width: [13, 16.5], drop: [5.5, 8] },
-    build: { stand: 13, fall: "points" },
+    footprint: { width: [10.5, 12.5], drop: [6.5, 8.5] },
+    build: { stand: 18, fall: "points" },
     opening: "high",
     asset: { front: "female-shirt-collar-front", behindBody: "female-shirt-collar-behind" },
     /** A necktie or a bow tie, knotted round its band under its leaves, where they meet — see `shirtTie`. */
@@ -283,15 +286,19 @@ export const collars: Collar[] = [
     compatibleWith: ["top", "dress"],
     /**
      * A band round his neck and two leaves folded down from its top — see
-     * `art/male/collars/shirt.tsx`. The band rises 20 units above the seam at
-     * the side of his neck, to a roll line halfway to his jaw; the leaves hang
-     * from it to a centimetre below the seam and open in a narrow V to points
-     * about 8 cm long on the upper chest. Measured, the front is 16.1 × 8.0 cm.
+     * `art/male/collars/shirt.tsx`. It wraps the neck: it stands 3.8 cm up
+     * each side of his neck, halfway to his jaw, and its fold runs down in a
+     * wide V to centre front, where the halves meet just above the top button,
+     * the neck showing in the V; the leaves fall from the fold down and a
+     * little out to their points, the band showing between them with its
+     * button. Measured, the front is 12.7 × 7.8 cm.
      *
-     * It was 11–16 cm deep when the leaves were cut from the neckline and ran
-     * down to points on the chest, with the neck bare above them.
+     * It was 16.1 × 8.0 cm when its fold ran level across the throat, the
+     * points hanging off its ends — a strip; and 11–16 cm deep when the leaves
+     * were cut from the neckline and ran down to points on the chest, with the
+     * neck bare above them.
      */
-    footprint: { width: [14.5, 18], drop: [7, 9.5] },
+    footprint: { width: [11.5, 14], drop: [7, 9] },
     build: { stand: 20, fall: "points" },
     opening: "high",
     asset: {

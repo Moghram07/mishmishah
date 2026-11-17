@@ -1,21 +1,13 @@
-import { arc, type Point } from "@/lib/garments/collar";
-import { line, run, type Pt } from "@/lib/garments/fit";
-import { ringsOf } from "@/lib/garments/stripes";
+import { arc, foldBack, foldRoll, roundedBack, type Point } from "@/lib/garments/collar";
+import { line, outline, reverse, type Pt } from "@/lib/garments/fit";
 import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
 import { collarFold, collarTone } from "../../collarLight";
-import {
-  COLLAR_AXIS,
-  NECK_BASE_SEAM,
-  reflect,
-  standBehind,
-  standFront,
-  standFrontEdges,
-} from "../yoke";
+import { COLLAR_AXIS, reflect, standBehindEdges, standFrontEdges } from "../yoke";
 import { behindBandArt } from "../../behindBand";
 import { litButtons } from "../../buttons";
 import { seamFolds, sleeveFoldDefs } from "../../sleeveFolds";
 import { shirtTieArt } from "../../shirtTieArt";
-import { necktieTo, ribbonUnder, shirtTie, type TieFit } from "../../shirtTies";
+import { necktieTo, ribbonAt, shirtTie, type TieFit } from "../../shirtTies";
 import type { GarmentArt, GarmentChoice, RegionArt } from "../../index";
 
 /**
@@ -24,63 +16,58 @@ import type { GarmentArt, GarmentChoice, RegionArt } from "../../index";
  *
  * The **band** (the stand) is sewn to the neckline and wraps the neck, closing
  * at the throat on the collar's axis. The **leaves** (the fall) are sewn to the
- * *top* of the band and fold down over it, so the band's top edge is the roll
- * line and the leaves hang from it, covering the band and reaching a little
- * below the neckline seam. Above the roll line you see the neck; below it,
- * only the leaves, and in the small V between them the band, closing with a
- * button.
+ * *top* of the band and fold down over it, so the band's top edge is the fold
+ * and the leaves hang from it, covering the band.
  *
- * It used to be cut from the neckline: each leaf's inner edge was the seam and
- * the two met at the top of the placket, so a triangle of neck showed between
- * the points, above the placket — the inside of an open collar where a closed
- * one should be.
+ * **It wraps the neck** (the user's photos bowtieMen and TiePositions-Shapes).
+ * Seen from the front it stands up at each side of the neck, 3.4 cm above the
+ * seam there, and its fold runs down from the sides to centre front, where the
+ * two halves meet just above the top button: a wide V, the neck showing in it
+ * — see `foldCurve`. Each leaf falls from the fold down and a little out to its
+ * point; between the two, below where they meet, the band shows with its
+ * button. Its fold used to run level straight across the throat, the points
+ * hanging off its ends: a strip, not a collar round a neck.
  *
- * Her numbers, not his scaled: the band rises 13 units at the side of her
- * neck, about as tall as her mandarin, to a roll line two and a half centimetres up
- * it; the points are shorter than his and splay as much.
+ * Before that it was cut from the neckline: each leaf's inner edge was the seam
+ * and the two met at the top of the placket, so a triangle of neck showed
+ * between the points, above the placket — the inside of an open collar where a
+ * closed one should be.
+ *
+ * Her numbers, not his scaled: it stands 18 units at the side of her neck and
+ * its V is 23 deep, to his 20 and 25.
  */
 
-/** How high the band rises above the neckline seam at the side of the neck: about her mandarin's 14. */
-const BAND_RISE = 13;
-/** How far the leaves reach below the seam at the side. */
-const BELOW_SEAM = 4;
-/** How far a leaf's outer corner stands out past the band. */
-const SPREAD = 10;
-/** A point's front edge: about 6.5 cm long, angled down toward the placket. */
-const POINT_LENGTH = 34;
-const POINT_ANGLE = (22 * Math.PI) / 180;
+/** How high the collar stands at the side of her neck, above the seam it is sewn to there: 3.4 cm. */
+const BAND_RISE = 18;
+/** How far its fold comes down from the sides to where its halves meet, just above the top button: the V's depth, 4.4 cm. */
+const V_DEPTH = 23;
 
-const BAND_PATH = standFront(BAND_RISE);
-const STAND_BEHIND_PATH = standBehind(BAND_RISE);
+/** The band: its sides up the throat, its foot along the seam — its top is the fold. */
+const BAND_EDGES = standFrontEdges(BAND_RISE);
+/** Where the fold turns round the side of the neck: the band's top corner. */
+const SIDE: Point = BAND_EDGES.leftSide[BAND_EDGES.leftSide.length - 1];
+/** Where the halves meet, at centre front: the bottom of the V. */
+const MEET: Point = [COLLAR_AXIS(SIDE[1] + V_DEPTH), SIDE[1] + V_DEPTH];
+/** The fold, left to right: from the side down to where the halves meet, and up the other side — the same half, reflected. */
+const ROLL: Pt[] = foldRoll(SIDE, MEET, COLLAR_AXIS);
+const BAND_PATH = outline(BAND_EDGES.leftSide, ROLL, reverse(BAND_EDGES.rightSide), BAND_EDGES.foot);
+/** How far down its outer side the collar's back rounds over, at each side of the neck: see `roundedBack`. */
+const BACK_ROUND = 14;
+/** Its back, behind the neck: turning round the neck at each side, where it rounds over — not a box standing behind the collar. */
+const STAND_BEHIND_PATH = outline(roundedBack(standBehindEdges(BAND_RISE), [SIDE, BAND_EDGES.rightSide[BAND_EDGES.rightSide.length - 1]], BACK_ROUND));
 
-/** The roll line: the band's top edge, left to right. */
-const ROLL: Pt[] = standFrontEdges(BAND_RISE).top;
-const MID = (ROLL.length - 1) / 2;
-
-/** Where the leaves meet: the top of the band, on the collar's axis. */
-const MEET: Point = [COLLAR_AXIS(ROLL[MID][1]), ROLL[MID][1]];
-/** Where the roll line turns round the side of the neck. */
-const SIDE: Point = ROLL[0];
-/** The leaf's outer corner, past the band and just below the seam. */
-const OUTER: Point = [SIDE[0] - SPREAD, NECK_BASE_SEAM + BELOW_SEAM];
-/** The point, on the upper chest. */
-const TIP: Point = [
-  MEET[0] - POINT_LENGTH * Math.sin(POINT_ANGLE),
-  MEET[1] + POINT_LENGTH * Math.cos(POINT_ANGLE),
-];
-
-/** The roll line from where the leaves meet out to the side of the neck. */
-const ROLL_LEFT: Pt[] = [[MEET[0], MEET[1]], ...ROLL.slice(0, MID).reverse()];
+/** A leaf's outer corner: down the side of the neck from the fold, a little out, where the collar meets the shoulder. */
+const OUTER: Point = [SIDE[0] - 3.3, SIDE[1] + 20];
+/** Its point: below where the halves meet, and out — the leaf falls from the fold down and slightly out. */
+const TIP: Point = [MEET[0] - 17, MEET[1] + 17];
 
 /*
-  One leaf: along the roll line from the meeting point out to the side of the
-  neck, down and out to the outer corner, in to the point, and up the front
-  edge back to the meeting point. Edges bow outward a little, as cloth folded
-  over a neck does; the front edge runs a shade hollow.
+  One leaf: back along the fold from where the halves meet up to the side of
+  the neck, down the side to the outer corner, in to the point, and up the
+  front edge to where the halves meet. Its sides bow outward a little, as
+  cloth folded round a neck does; the front edge runs a shade hollow.
 */
-const LEAF_LEFT_PATH =
-  `M${MEET[0]} ${MEET[1]} ${run(ROLL_LEFT.slice(1))} ` +
-  `${arc(SIDE, OUTER, 2)} ${arc(OUTER, TIP, 1.5)} ${arc(TIP, MEET, -1)} Z`;
+const LEAF_LEFT_PATH = `M${MEET[0]} ${MEET[1]} ${foldBack(SIDE, MEET)} ${arc(SIDE, OUTER, 1.5)} ${arc(OUTER, TIP, 1.5)} ${arc(TIP, MEET, -1)} Z`;
 const LEAF_RIGHT_PATH = reflect(LEAF_LEFT_PATH);
 
 /**
@@ -97,8 +84,8 @@ const ROLL_FOLD: Fold = collarFold(ROLL.map(([x, y]) => [x, y + 2] as Pt), 2);
 /** Where the band is sewn to the neckline: a soft fold, seen only in the V between the leaves. */
 const BAND_SEAM = seamFolds([BAND_FOOT]);
 
-/** The button on the band, in the V: one, below the meeting point. */
-const BUTTON_DROP = 15;
+/** The button on the band, in the V between the points: one, just below where the halves meet. */
+const BUTTON_DROP = 4;
 
 /** The collar: its band, and its two leaves over it. */
 const COLLAR: RegionArt = {
@@ -177,31 +164,28 @@ const LEAVES: RegionArt = {
 /** The collar with a tie knotted round its band: drawn as ever, its leaves laid again over the tie — see `LEAVES`. */
 const UNDER_TIE: RegionArt = { ...COLLAR, over: LEAVES };
 
-/** Where her bow's knot sits under its leaves — see `ribbonUnder` — found once. */
-let bowAt: Pt | undefined;
-const bowOf = (): Pt => (bowAt ??= ribbonUnder([ringsOf(LEAF_LEFT_PATH), ringsOf(LEAF_RIGHT_PATH)], [MEET[0], MEET[1]]));
-
-/** How a tie fits it, worn as `choice` says: knotted where its leaves meet, a necktie reaching the waistband — see `TieFit`. */
+/** How a tie fits it, worn as `choice` says: knotted at the bottom of its V, where its halves meet; a necktie reaching the waistband — see `TieFit`. */
 const fitFor = (choice: GarmentChoice): TieFit => ({
   meet: [MEET[0], MEET[1]],
   to: necktieTo("female", choice),
-  bow: bowOf(),
+  bow: ribbonAt([MEET[0], MEET[1]]),
 });
 
 export const shirtCollarFront: GarmentArt = {
   regions: { collar: COLLAR },
   /*
-    Worn with a necktie or her bow tie, knotted round its band and under its
-    leaves where they meet, it draws the tie — and lays its leaves again over
-    it: over the sides of a necktie's knot, over the loops of her bow. Its
-    leaves still meet: the collar is closed at the top.
+    Worn with a necktie or her bow, knotted round its band at the bottom of
+    its V, it draws the tie — and lays its leaves again over a necktie's knot,
+    whose sides they cover. Her bow lies on the leaves, in front, as the
+    photos' do: their outer edges come down to its loops' top outer corners.
+    Its halves still meet: the collar is closed.
   */
   cut: (choice) => {
     const style = choice.tieUnder ? choice.tie : undefined;
     if (style !== "necktie" && style !== "bowtie") return {};
     const fit = fitFor(choice);
     const tie = shirtTieArt(style, "female", fit);
-    /* under the leaves, as its pieces say — both of hers are: see `ShirtTie.under` */
+    /* a necktie's knot under the leaves, her bow on them — as its pieces say: see `ShirtTie.under` */
     return shirtTie(style, "female", fit).under ? { collar: UNDER_TIE, tie } : { tie };
   },
   /** One button on the band, whatever the garment asks: there is room for one in the V. */
@@ -209,7 +193,7 @@ export const shirtCollarFront: GarmentArt = {
 };
 
 /** For the record and the checker: the collar's own measurements — see `MALE_SHIRT_COLLAR`. */
-export const SHIRT_COLLAR = { stand: BAND_RISE, meet: MEET, side: SIDE, outer: OUTER, tip: TIP };
+export const SHIRT_COLLAR = { stand: BAND_RISE, depth: V_DEPTH, meet: MEET, side: SIDE, outer: OUTER, tip: TIP, roll: ROLL };
 
 export const shirtCollarBehind = behindBandArt(STAND_BEHIND_PATH);
 

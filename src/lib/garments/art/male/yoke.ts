@@ -234,6 +234,10 @@ export const standGapped = (rise: number, half: number) =>
 export const standBehind = (rise: number) =>
   stand("male", { ...STAND, rise, off: BEHIND, flatTop: true });
 
+/** That half's edges — for a shirt collar, whose back rounds over at each side of the neck: see `roundedBack`. */
+export const standBehindEdges = (rise: number) =>
+  standEdges("male", { ...STAND, rise, off: BEHIND, flatTop: true });
+
 /** The front band's edges, for a collar whose leaves hang from its fold. */
 export const standFrontEdges = (rise: number) => standEdges("male", { ...STAND, rise });
 
