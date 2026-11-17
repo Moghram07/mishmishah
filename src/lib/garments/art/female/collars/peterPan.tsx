@@ -1,7 +1,10 @@
 import { FLAT_COLLAR_SHADOW, collarTone, edgeLight, edgeLightDefs } from "../../collarLight";
 import { line, outline, type Pt } from "@/lib/garments/fit";
+import { ringsOf } from "@/lib/garments/stripes";
 import { peterPan } from "../collarCuts";
 import type { NecklineId } from "@/lib/garments/necklines";
+import { shirtTieArt } from "../../shirtTieArt";
+import { necktieTo, ribbonUnder } from "../../shirtTies";
 import type { GarmentArt, RegionArt } from "../../index";
 
 /**
@@ -92,8 +95,37 @@ const collarFor = (cut?: string): RegionArt => {
   return r;
 };
 
+/**
+ * Her ribbon bow under it, on each cut: the collar again, its halves laid
+ * over the bow — the stage draws them over the tie, and only there: see
+ * `GARMENT_LAYERS`' `fall` — where its two rounded ends meet, at the
+ * neckline's centre front, and where the bow's knot sits, just below them:
+ * see `ribbonUnder`.
+ */
+const underCut = new Map<string, { collar: RegionArt; meet: Pt; bow: Pt }>();
+const underFor = (cut?: string) => {
+  const key = cut ?? "";
+  let u = underCut.get(key);
+  if (!u) {
+    const own = collarFor(cut);
+    const halves = peterPan(cut as NecklineId | undefined);
+    const meet: Pt = [halves.left[0][0], halves.left[0][1]];
+    u = { collar: { ...own, over: { ...own } }, meet, bow: ribbonUnder([ringsOf(outline(halves.left)), ringsOf(outline(halves.right))], meet) };
+    underCut.set(key, u);
+  }
+  return u;
+};
+
 export const peterPanCollarFront: GarmentArt = {
   regions: { collar: collarFor() },
-  /* on the dress, along the cut's own opening */
-  cut: (choice) => ({ collar: collarFor(choice.neckline) }),
+  /*
+    On the dress, along the cut's own opening. Worn with her ribbon bow, tied
+    under it, it draws the bow, just below where its rounded ends meet, and
+    lays its halves again over the bow's loops: see `Collar.ties`.
+  */
+  cut: (choice) => {
+    if (!(choice.tieUnder && choice.tie === "bowtie")) return { collar: collarFor(choice.neckline) };
+    const { collar, meet, bow } = underFor(choice.neckline);
+    return { collar, tie: shirtTieArt("bowtie", "female", { meet, to: necktieTo("female", choice), bow }) };
+  },
 };

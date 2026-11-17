@@ -1,25 +1,26 @@
-import type { Pt } from "@/lib/garments/fit";
 import type { BodyType } from "@/types";
 import type { RegionArt } from "./index";
 import { BOW_SHADOW, asFold, crispLayers, type CrispPart } from "./female/tieArt";
-import { shirtTie, type ShirtTieStyle } from "./shirtTies";
+import { shirtTie, type ShirtTieStyle, type TieFit } from "./shirtTies";
 
 /**
- * A tie worn with a shirt collar, as a region of the garment the collar is
- * sewn to — see `shirtTie` for its pieces. Lit as the round 24 bows are, flat
- * and crisp in any cloth: each piece in the flat tone, its folds a crisp
- * crest over a soft turn, a fine light along the edges of what shows of each
- * part, and under its edges a narrow, sharp shadow — no blur, no relief, so
- * a print on it stays at its true size. In a cloth of its own: see `setTie`.
+ * A tie a collar draws, knotted under it, as a region of the garment the
+ * collar is sewn to — see `shirtTie` for its pieces. Lit as the round 24
+ * bows are, flat and crisp in any cloth: each piece in the flat tone, its
+ * folds a crisp crest over a soft turn, a fine light along the edges of what
+ * shows of each part, and under its edges a narrow, sharp shadow — no blur,
+ * no relief, so a print on it stays at its true size. In a cloth of its own:
+ * see `setTie`.
  */
 
 const cache = new Map<string, RegionArt>();
 
-export function shirtTieArt(style: ShirtTieStyle, body: BodyType, meet: Pt, waistY: number): RegionArt {
-  const key = `${style}|${body}|${meet[0]}|${meet[1]}|${waistY}`;
+export function shirtTieArt(style: ShirtTieStyle, body: BodyType, fit: TieFit): RegionArt {
+  /* a necktie as long as it reaches, a bow tie where its knot sits */
+  const key = style === "necktie" ? `${style}|${body}|${fit.meet[0]}|${fit.meet[1]}|${fit.to}` : `${style}|${body}|${fit.bow[0]}|${fit.bow[1]}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  const tie = shirtTie(style, body, meet, waistY);
+  const tie = shirtTie(style, body, fit);
   /* what shows of each part: it, less every part after it */
   const parts: CrispPart[] = tie.parts.map((p, i) => ({
     id: `tie-${p.id}`,

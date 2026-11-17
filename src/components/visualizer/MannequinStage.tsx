@@ -156,10 +156,21 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
           : undefined;
       const underTop = over ? garmentArt(over.garment.asset.front)!.cover!(choiceOf(over.worn)) : undefined;
       /* what it is cut to on its own — see `wornChoice` — and what it is worn under */
+      const own = wornChoice(w);
+      /* a necktie reaches the waistband of what it is worn over: the bottom under it, if any — see `necktieTo` */
+      const waistband =
+        own.tie === "necktie" && own.tieUnder && index >= 0
+          ? visible
+              .slice(0, index)
+              .reverse()
+              .map((v) => (v.garment.category === "bottom" ? garmentArt(v.garment.asset.front)?.waistband : undefined))
+              .find(Boolean)
+          : undefined;
       return {
-        ...wornChoice(w),
+        ...own,
         ...(inside ? { inside } : {}),
         ...(underTop ? { underTop } : {}),
+        ...(waistband ? { waistband } : {}),
       };
     };
 
@@ -532,9 +543,10 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
             /* its tie, over the collar and the belt, and the placket */
             tie,
             /*
-              a shirt collar's leaves, laid again over a necktie's knot — which
-              is knotted round the band under them — and only over the tie, so
-              its points lie over the sides of the knot: see the collar's `over`
+              the collar laid again over a tie knotted under it — a shirt
+              collar's leaves over a necktie's knot or her bow, a Peter Pan's
+              halves over her bow — and only over the tie, so its points lie
+              over the knot's sides and the bow's loops: see the collar's `over`
             */
             fall:
               tie && collarFront?.over ? (
@@ -550,7 +562,7 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
             cuffs: art.cuffTrim?.(choice),
             collarTrim: collarDrawing?.trim,
             /* the button closing a collar's band — under the knot of a tie round the band, so not drawn */
-            bandButtons: choice.tieBand ? null : collarDrawing?.bandButtons?.(art.collarButtons ?? 1),
+            bandButtons: choice.tieUnder ? null : collarDrawing?.bandButtons?.(art.collarButtons ?? 1),
           };
           return (
             <g key={garment.id}>

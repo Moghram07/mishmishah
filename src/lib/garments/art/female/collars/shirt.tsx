@@ -1,5 +1,6 @@
 import { arc, type Point } from "@/lib/garments/collar";
-import { draft, line, run, type Pt } from "@/lib/garments/fit";
+import { line, run, type Pt } from "@/lib/garments/fit";
+import { ringsOf } from "@/lib/garments/stripes";
 import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
 import { collarFold, collarTone } from "../../collarLight";
 import {
@@ -14,8 +15,8 @@ import { behindBandArt } from "../../behindBand";
 import { litButtons } from "../../buttons";
 import { seamFolds, sleeveFoldDefs } from "../../sleeveFolds";
 import { shirtTieArt } from "../../shirtTieArt";
-import { shirtTie } from "../../shirtTies";
-import type { GarmentArt, RegionArt } from "../../index";
+import { necktieTo, ribbonUnder, shirtTie, type TieFit } from "../../shirtTies";
+import type { GarmentArt, GarmentChoice, RegionArt } from "../../index";
 
 /**
  * Shirt collar, female: a band round the neck, and two leaves folded down over
@@ -173,26 +174,35 @@ const LEAVES: RegionArt = {
   ),
 };
 
-/** The collar with a necktie knotted round its band: drawn as ever, its leaves laid again over the knot — see `LEAVES`. */
+/** The collar with a tie knotted round its band: drawn as ever, its leaves laid again over the tie — see `LEAVES`. */
 const UNDER_TIE: RegionArt = { ...COLLAR, over: LEAVES };
 
-/** The row a necktie worn with it ends at: her waist — see `shirtTie`. */
-const WAIST_Y = draft("female").waistY;
+/** Where her bow's knot sits under its leaves — see `ribbonUnder` — found once. */
+let bowAt: Pt | undefined;
+const bowOf = (): Pt => (bowAt ??= ribbonUnder([ringsOf(LEAF_LEFT_PATH), ringsOf(LEAF_RIGHT_PATH)], [MEET[0], MEET[1]]));
+
+/** How a tie fits it, worn as `choice` says: knotted where its leaves meet, a necktie reaching the waistband — see `TieFit`. */
+const fitFor = (choice: GarmentChoice): TieFit => ({
+  meet: [MEET[0], MEET[1]],
+  to: necktieTo("female", choice),
+  bow: bowOf(),
+});
 
 export const shirtCollarFront: GarmentArt = {
   regions: { collar: COLLAR },
   /*
-    Worn with a necktie or a bow tie, knotted round its band and under its
+    Worn with a necktie or her bow tie, knotted round its band and under its
     leaves where they meet, it draws the tie — and lays its leaves again over
-    a necktie's knot. Its leaves still meet: the collar is closed at the top.
+    it: over the sides of a necktie's knot, over the loops of her bow. Its
+    leaves still meet: the collar is closed at the top.
   */
   cut: (choice) => {
-    const style = choice.tieBand ? choice.tie : undefined;
+    const style = choice.tieUnder ? choice.tie : undefined;
     if (style !== "necktie" && style !== "bowtie") return {};
-    const meet: Pt = [MEET[0], MEET[1]];
-    const tie = shirtTieArt(style, "female", meet, WAIST_Y);
-    /* a necktie's knot lies under the leaves, a bow tie on them — as its pieces say: see `ShirtTie.under` */
-    return shirtTie(style, "female", meet, WAIST_Y).under ? { collar: UNDER_TIE, tie } : { tie };
+    const fit = fitFor(choice);
+    const tie = shirtTieArt(style, "female", fit);
+    /* under the leaves, as its pieces say — both of hers are: see `ShirtTie.under` */
+    return shirtTie(style, "female", fit).under ? { collar: UNDER_TIE, tie } : { tie };
   },
   /** One button on the band, whatever the garment asks: there is room for one in the V. */
   bandButtons: () => litButtons([[COLLAR_AXIS(MEET[1] + BUTTON_DROP), MEET[1] + BUTTON_DROP]], 2),

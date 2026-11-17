@@ -372,9 +372,10 @@ export type StripeEdgeId = "collar" | "neckline" | "sleeves" | "hem" | "belt";
 
 /**
  * A tie: none, a small tied bow, a necktie hanging down the centre, a bow
- * tie «بابيون» — her ribbon bow with two tails, his butterfly with none — or
- * a scarf «وشاح» with two broad tails. A necktie and a bow tie need a shirt
- * collar to sit under: see `Collar.ties`.
+ * tie — her ribbon bow «فيونكة» with two tails, his butterfly «بابيون» with
+ * none — or a scarf «وشاح» with two broad tails. A necktie needs a shirt
+ * collar to sit under, and a bow tie a shirt collar or her Peter Pan: see
+ * `Collar.ties`.
  */
 export type TieId = "none" | "knot" | "necktie" | "bowtie" | "scarf";
 
@@ -754,15 +755,16 @@ export interface Collar {
    * The ties knotted at its front, of those its garment offers — see
    * `tiePlacesOf`. Over it, where its ends meet at the neckline's centre
    * front: a sailor collar's knot, necktie and scarf, a Peter Pan's knot and
-   * scarf. Or, `band`, round its band and under its leaves, knotted where
-   * they meet, its band never showing: a shirt collar's necktie and bow tie,
-   * which it draws — see `shirtTie`. A necktie and a bow tie need a shirt
+   * scarf. Or, `under`, knotted under it, which it draws — see `shirtTie`:
+   * round a shirt collar's band, under its leaves where they meet, its band
+   * never showing — its necktie and bow tie; and her ribbon bow under a Peter
+   * Pan, just below where its rounded ends meet. A necktie needs a shirt
    * collar to sit under, and nothing else here is one.
    *
    * Absent, a garment wearing it is tied anywhere but the neck: a bow collar
    * is its own tie, and a standing collar covers the neck.
    */
-  ties?: { offered: Exclude<TieId, "none">[]; band?: true };
+  ties?: { offered: Exclude<TieId, "none">[]; under?: Exclude<TieId, "none">[] };
 }
 
 /**

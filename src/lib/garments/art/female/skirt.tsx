@@ -4,7 +4,7 @@ import { circleFolds, foldDefs, foldLights, foldOpen, foldShadows, pleatFolds, r
 import { fallOf, sameSkirt, skirtKey } from "@/lib/garments/skirts";
 import type { SkirtChoice } from "@/types";
 import type { GarmentArt, RegionArt } from "../index";
-import { DEFAULT_SKIRT, FINISH, FOLD_AT, HIP_Y, cloth, skirtFor } from "./skirtCut";
+import { DEFAULT_SKIRT, FINISH, FOLD_AT, HIP_Y, WAISTBAND, cloth, skirtFor } from "./skirtCut";
 
 /**
  * Skirt, front. As it arrives it stops above the knee, which is why it
@@ -113,6 +113,8 @@ const styledRegions = new Map<string, RegionArt>();
 
 export const skirtFront: GarmentArt = {
   regions: { body: skirtRegion() },
+  /* where a necktie worn over it reaches */
+  waistband: WAISTBAND,
   /**
    * Cut to a style, or worn under a jacket, where it comes out from under its
    * hem — or under a top it would show past, drawn in under it.

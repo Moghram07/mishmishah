@@ -322,8 +322,8 @@ describe("choosing the stripes, the edges they go along, and the tie", () => {
     for (const id of ["female-peter-pan-collar", "female-shirt-collar", "female-bow-collar"]) expect(collarById(id)?.takesStripes, id).toBeUndefined();
     // a tie is knotted over the sailor — its knot, its short necktie, a scarf — and over the Peter Pan a knot or a scarf; a shirt collar takes a necktie or a bow tie round its band; the bow is its own, a standing collar covers the neck
     expect(c?.ties).toEqual({ offered: ["knot", "necktie", "scarf"] });
-    expect(collarById("female-peter-pan-collar")?.ties).toEqual({ offered: ["knot", "scarf"] });
-    expect(collarById("female-shirt-collar")?.ties).toEqual({ offered: ["necktie", "bowtie"], band: true });
+    expect(collarById("female-peter-pan-collar")?.ties).toEqual({ offered: ["knot", "bowtie", "scarf"], under: ["bowtie"] });
+    expect(collarById("female-shirt-collar")?.ties).toEqual({ offered: ["necktie", "bowtie"], under: ["necktie", "bowtie"] });
     for (const id of ["female-bow-collar", "female-mandarin-collar"]) expect(collarById(id)?.ties, id).toBeUndefined();
   });
 

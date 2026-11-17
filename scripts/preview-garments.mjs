@@ -74,7 +74,8 @@ const { GARMENT_LAYERS } = await import(src("src/lib/garments/drawOrder.ts"));
 const { tieAt } = await import(src("src/lib/garments/art/female/ties.ts"));
 /* where a tie can be knotted, by the rule the app offers by; and a shirt collar's own ties, as it draws them — see `checkShirtTies` */
 const { BELT_TIE_STYLES, tiePlaces } = await import(src("src/lib/garments/tieRules.ts"));
-const { shirtTie, KNOT_DROP, NECKTIE, BUTTERFLY } = await import(src("src/lib/garments/art/shirtTies.ts"));
+const { shirtTie, KNOT_DROP, NECKTIE, BUTTERFLY, RIBBON_BOW, butterflyAt, necktieTo, ribbonUnder } = await import(src("src/lib/garments/art/shirtTies.ts"));
+const { ringsOf } = await import(src("src/lib/garments/stripes.ts"));
 
 /* The fifteen cuts, and what each of them bares — see `garments/necklines.ts`. */
 const { LOPSIDED, NECKLINE_BARES, NECKLINE_BARE_SHOULDERS, NECKLINE_OPENING, NECKLINE_SLEEVES, NECKLINE_TIED } = await import(
@@ -3342,12 +3343,6 @@ function checkBeltOnTop(bodyKey, body, wardrobe) {
       collar.asset.front === SAILOR_ART && cut !== "v" ? COLLAR_CUTS.sailorOn(cut, waist, sleeve ?? undefined).map((p) => p.path) : artPaths(collar.asset.front, body, { cut, sleeve });
     const ysOf = (paths) => paths.flatMap((d) => flatten(d).flat().map(([, y]) => y));
     const tieStyles = (garment.ties?.offered ?? []).filter((t) => t !== "none");
-    /* a shirt collar's own ties, knotted round its band where its leaves meet — read off its drawing, once */
-    const meets_ = new Map();
-    const meetOf = (collar) => {
-      if (!meets_.has(collar.id)) meets_.set(collar.id, artTable(collar.asset.front, body).get("MEET"));
-      return meets_.get(collar.id);
-    };
 
     let checked = 0;
     let collarsDrawn = 0;
@@ -3376,8 +3371,9 @@ function checkBeltOnTop(bodyKey, body, wardrobe) {
       );
       /*
         every tie knotted at a cut's neck, in each style it takes there — with
-        no collar, or over one — and a shirt collar's necktie and bow tie,
-        round its band, drawn from where its leaves meet: at this waist
+        no collar, or over one — and a tie a collar draws, knotted under it —
+        a shirt collar's necktie and bow tie, her bow under a Peter Pan — as
+        the collar fits it: at this waist, a necktie to its seam
       */
       const neckTies = new Map(
         cuts.map((cut) => {
@@ -3386,10 +3382,14 @@ function checkBeltOnTop(bodyKey, body, wardrobe) {
           for (const collar of [undefined, ...collarsOn(cut)])
             for (const style of tieStyles) {
               if (!tiePlaces(garment.ties.offered, cut, collar, false, style).includes("neck")) continue;
-              const band = collar?.ties?.band;
-              const name = band ? `${style} on its ${collar.id.replace(/^female-|-collar$/g, "")} collar` : style;
+              const own = collar?.ties?.under?.includes(style);
+              const name = own ? `${style} on its ${collar.id.replace(/^female-|-collar$/g, "")} collar` : style;
               if (ties.has(name)) continue;
-              const pieces = band ? shirtTie(style, bodyKey, meetOf(collar), FIT_KIT.draft(bodyKey).waistY).pieces : point ? tieAt(style, point.at, "neck").pieces : null;
+              const pieces = own
+                ? shirtTie(style, bodyKey, collarTieFit(collar, bodyKey, body, cut, { skirt: { ...mod.DEFAULT_SKIRT, waist } })).pieces
+                : point
+                  ? tieAt(style, point.at, "neck").pieces
+                  : null;
               if (pieces) ties.set(name, { style: name, pixels: ownedOf(inRows(pieces)) });
             }
           return [cut, [...ties.values()]];
@@ -3612,61 +3612,112 @@ function checkBeltOnTop(bodyKey, body, wardrobe) {
   return failed;
 }
 
-/* --------------------------------------------------- ties on a shirt collar */
+/* --------------------------------------------------- ties under a collar */
 
 /** The garments a necktie or a bow tie is offered on — the user's three: her blouse, the shirt-dress, his shirt; not a thobe, not a polo. */
 const SHIRTED = ["female-blouse", "female-dress", "male-shirt"];
-/** A shirt collar: the one collar a necktie or a bow tie sits under. */
+/** A shirt collar: the one collar a necktie sits under. */
 const isShirtCollar = (collar) => /-shirt-collar$/.test(collar?.id ?? "");
+/** Her Peter Pan: her ribbon bow is tied under it as well — the user's call. */
+const isPeterPan = (collar) => /-peter-pan-collar$/.test(collar?.id ?? "");
 /** The collars a knot or a scarf is tied over, as before: a sailor's, a Peter Pan's. */
 const OVER_COLLARS = /-(sailor|peter-pan)-collar$/;
 
 /**
- * A necktie or a bow tie belongs on a shirt collar — round 25, the user's
- * photos ShirtCollarTie and ShirtCollarBowtie:
+ * How a collar fits a tie it draws — see `TieFit`: where its edges meet, read
+ * off its drawing (a shirt collar's `MEET`; a Peter Pan's two halves, cut to
+ * the cut, touch at the neckline's centre front), the row a necktie reaches
+ * for `choice` — the app's `necktieTo` — and where a bow tie's knot sits:
+ * her ribbon bow under the collar's own pieces (`ribbonUnder`), his butterfly
+ * just under where his leaves meet. With the collar's pieces, as paths, and
+ * each as its own rings.
+ */
+const tieFits_ = new Map();
+function collarTieFit(collar, bodyKey, body, cut, choice = {}) {
+  const key = `${collar.id}|${cut ?? ""}`;
+  if (!tieFits_.has(key)) {
+    let meet;
+    let paths;
+    if (isPeterPan(collar)) {
+      const halves = COLLAR_CUTS.peterPan(cut);
+      meet = halves.left[0];
+      paths = [FIT_KIT.outline(halves.left), FIT_KIT.outline(halves.right)];
+    } else {
+      const T = artTable(collar.asset.front, body);
+      meet = T.get("MEET");
+      paths = [T.get("LEAF_LEFT_PATH"), T.get("LEAF_RIGHT_PATH")];
+    }
+    const pieces = paths.map((d) => ringsOf(d));
+    const bow = bodyKey === "female" ? ribbonUnder(pieces, meet) : butterflyAt(meet);
+    tieFits_.set(key, { meet, bow, paths, pieces });
+  }
+  return { ...tieFits_.get(key), to: necktieTo(bodyKey, choice) };
+}
+
+/** The rows a run of points spans, top and bottom; and the columns, left and right. */
+const rowsOf = (pts) => [Math.min(...pts.map(([, y]) => y)), Math.max(...pts.map(([, y]) => y))];
+const colsOf = (pts) => [Math.min(...pts.map(([x]) => x)), Math.max(...pts.map(([x]) => x))];
+
+/**
+ * The ties a collar draws, knotted under it — round 25, the user's photos
+ * ShirtCollarTie, ShirtCollarBowtie, WomenRibbon and femaleBowtieMenTie:
  *
- * - **Offered** only with a shirt collar on, on her blouse, the shirt-dress
- *   and his shirt — never a thobe or a polo, whatever collar they wear, never
- *   a neckline with no collar — by the rule the app offers by, `tiePlaces`,
- *   for every garment, every cut it takes and every collar on it. The knot,
- *   the scarf and the sailor's own necktie where they always were.
+ * - **Offered**: a necktie only with a shirt collar on, on her blouse, the
+ *   shirt-dress and his shirt — never a thobe or a polo, whatever collar they
+ *   wear, never a neckline with no collar; a bow tie with one, or under her
+ *   Peter Pan — by the rule the app offers by, `tiePlaces`, for every
+ *   garment, every cut it takes and every collar on it. The knot, the scarf
+ *   and the sailor's own necktie where they always were.
  * - **Drawn under the collar.** The stage's order, `GARMENT_LAYERS`: the
- *   placket's buttons, then the tie, then the leaves laid again over a
- *   necktie's knot. On each body's shirt collar, each tie filled in where the
- *   stage draws it: the collar closed at the top — its leaves meet; nothing
- *   of the tie above the roll line, so no band shows round the neck; the
- *   necktie's knot snug between the leaves — every pixel between them its
+ *   placket's buttons, then the tie, then the collar laid again over a tie
+ *   knotted under it. On each body's shirt collar, each tie filled in where
+ *   the stage draws it: the collar closed at the top — its leaves meet;
+ *   nothing of the tie above the roll line, so no band shows round the neck;
+ *   the necktie's knot snug between the leaves — every pixel between them its
  *   own, down past half its height — and under each leaf; its blade straight
- *   down the middle, widening and never narrowing, gently, to a point at the
- *   waist. Her bow tie's knot just under where the leaves meet, its loops
- *   flat and sideways, its tails 15–20 cm in a slight upside-down V, cut on a
- *   slant; his a butterfly about 11 × 5 cm, with no tails.
+ *   down the middle, widening and never narrowing, gently, to a point.
+ * - **How far a necktie reaches**: the middle of the waistband it is worn
+ *   over — a skirt's, trousers', as each draws its band — or, on the dress,
+ *   the middle of its belt, or its waist seam, at every waist and belt.
+ * - **Her bow** under the collar — her shirt collar, and her Peter Pan on a
+ *   top and on every cut it follows — just below where its edges meet, above
+ *   where the collar comes down beside it; the collar over a little of each
+ *   loop, its points on them, and four fifths of the loops showing; full and
+ *   round: 10–12 cm across, each loop 4–5 cm tall and about as long; a ribbon
+ *   2.5–3 cm wide and a knot a little narrower; two tails straight down, one
+ *   either side, never crossing, 0.5–2 cm apart, 15–20 cm, as wide as the
+ *   ribbon, cut on a slant. His a butterfly about 11 × 5 cm, with no tails,
+ *   on the leaves.
  * - **Under a jacket**, in its opening: the knot shows there, and nothing of
  *   the tie anywhere else.
  */
 function checkShirtTies(bodyKey, body, wardrobe) {
-  const bad = { order: [], offer: [], top: [], band: [], snug: [], points: [], blade: [], bow: [], jacket: [] };
+  const bad = { order: [], offer: [], top: [], band: [], snug: [], points: [], blade: [], reach: [], bow: [], jacket: [] };
   const ORDER = Object.fromEntries(GARMENT_LAYERS.map((layer, i) => [layer, i]));
   if (!(ORDER.tie > ORDER.trim)) bad.order.push("the tie is drawn before the placket's buttons: they would show on it");
   if (!(ORDER.tie > ORDER.belt)) bad.order.push("the tie is drawn before the belt: it is worn over it");
-  if (!(ORDER.tie > ORDER.collar)) bad.order.push("the tie is drawn before the collar: a bow tie lies on its leaves, a necktie's knot over its band");
-  if (!(ORDER.fall > ORDER.tie)) bad.order.push("the leaves laid over a necktie's knot are drawn before it: they would not lie over its sides");
+  if (!(ORDER.tie > ORDER.collar)) bad.order.push("the tie is drawn before the collar: his bow tie lies on its leaves, a tie's knot over its band");
+  if (!(ORDER.fall > ORDER.tie)) bad.order.push("the collar laid over a tie knotted under it is drawn before the tie: it would not lie over the knot's sides, or the bow's loops");
 
   /* 1. where each is offered: every garment, every cut it takes, every collar that fits the cut, and none */
   let offers = 0;
+  /* a bow tie is only ever a collar's to draw: a garment knots a knot, a necktie or a scarf of its own, never a bow tie */
+  for (const c of collars)
+    if (c.ties?.offered.includes("bowtie") && !c.ties.under?.includes("bowtie")) bad.offer.push(`${c.id}: offers a bow tie it does not draw itself — no garment draws one of its own`);
+  const fits = (c, cut) => cut === undefined || (c.necklines ? c.necklines.includes(cut) : NECKLINE_OPENING[cut] != null && (c.cuts ?? [c.opening]).includes(NECKLINE_OPENING[cut]));
   for (const garment of wardrobe) {
     const offered = garment.ties?.offered ?? [];
     const cuts = garment.acceptsNeckline ? cutsOf(garment.asset.front) : [undefined];
     for (const cut of cuts) {
-      const fits = (c) => cut === undefined || (c.necklines ? c.necklines.includes(cut) : NECKLINE_OPENING[cut] != null && (c.cuts ?? [c.opening]).includes(NECKLINE_OPENING[cut]));
-      for (const collar of [undefined, ...collarsForGarment(garment).filter(fits)]) {
+      for (const collar of [undefined, ...collarsForGarment(garment).filter((c) => fits(c, cut))]) {
         offers++;
         const centred = cut === undefined || NECKLINE_TIED.includes(cut);
         const shirted = SHIRTED.includes(garment.id) && isShirtCollar(collar);
+        const ppBow = SHIRTED.includes(garment.id) && isPeterPan(collar);
         const over = garment.id === "female-dress" && cut !== undefined && (!collar || OVER_COLLARS.test(collar.id));
         const want = {
           necktie: centred && (shirted || (garment.id === "female-dress" && /-sailor-collar$/.test(collar?.id ?? ""))),
-          bowtie: centred && shirted,
+          bowtie: centred && (shirted || ppBow),
           knot: centred && over,
           scarf: centred && over,
         };
@@ -3678,14 +3729,95 @@ function checkShirtTies(bodyKey, body, wardrobe) {
     }
   }
 
+  const notes = [];
+  /*
+    Her bow, under a collar whose pieces are `collarPaths` and whose edges
+    meet at `meet`: filled in round it, and measured — see the comment above.
+  */
+  const ribbonChecks = (tag, tie, collarPaths, meet) => {
+    const all = tie.pieces.flatMap((d) => flatten(d).flat());
+    const [top, bottom] = rowsOf(all);
+    const y0 = Math.floor(Math.min(top, meet[1]) - 4);
+    const inRows = (paths) => rasterizeRows(paths, y0, Math.ceil(bottom + 4 - y0));
+    const collarBuf = inRows(collarPaths);
+    const knot = flatten(tie.knot).flat();
+    const [kx, ky] = [colsOf(knot), rowsOf(knot)];
+    if (!tie.under) bad.bow.push(`${tag}: drawn over the collar — her bow sits under it`);
+    /* just below where its edges meet, on the middle, and above where the collar comes down beside it */
+    if (ky[0] <= meet[1] + KNOT_DROP) bad.bow.push(`${tag}: its knot's top at row ${ky[0].toFixed(1)}, not below where the collar's edges meet, ${meet[1].toFixed(1)}`);
+    if (Math.abs((kx[0] + kx[1]) / 2 - meet[0]) > 0.5) bad.bow.push(`${tag}: its knot ${((kx[0] + kx[1]) / 2 - meet[0]).toFixed(1)} units off the middle`);
+    for (const d of collarPaths) {
+      const low = rowsOf(flatten(d).flat().filter(([x]) => Math.abs(x - meet[0]) < RIBBON_BOW.span / 2))[1];
+      if (ky[0] >= low) bad.bow.push(`${tag}: its knot starts at row ${ky[0].toFixed(1)}, below the collar's point at ${low.toFixed(1)} — hanging below the collar, not under it`);
+    }
+    /* the loops: each partly under the collar — its points on them — and four fifths of them showing */
+    const loops = tie.parts.find((p) => p.id === "loops")?.pieces ?? [];
+    let [px, hid] = [0, 0];
+    for (const d of loops) {
+      const buf = inRows([d]);
+      let [n, h] = [0, 0];
+      for (let i = 0; i < buf.length; i++) {
+        if (buf[i] < OWNS) continue;
+        n++;
+        if (collarBuf[i] >= OWNS) h++;
+      }
+      if (n === 0 || h < 0.03 * n) bad.points.push(`${tag}: the collar lies over ${n ? ((100 * h) / n).toFixed(0) : 0}% of a loop — its point does not come down over it`);
+      px += n;
+      hid += h;
+    }
+    const shows = px ? 1 - hid / px : 0;
+    if (shows < 0.78) bad.bow.push(`${tag}: ${(100 * shows).toFixed(0)}% of its loops show past the collar — tucked too far under it`);
+    /* full and round */
+    const loopPts = loops.map((d) => flatten(d).flat());
+    const across = loopPts.length ? colsOf(loopPts.flat()) : [0, 0];
+    if (cm(across[1] - across[0]) < 10 || cm(across[1] - across[0]) > 12) bad.bow.push(`${tag}: its loops ${cm(across[1] - across[0]).toFixed(1)} cm across, not 10–12`);
+    for (const pts of loopPts) {
+      const [[a, b], [c, d]] = [colsOf(pts), rowsOf(pts)];
+      if (cm(d - c) < 4 || cm(d - c) > 5) bad.bow.push(`${tag}: a loop ${cm(d - c).toFixed(1)} cm tall, not 4–5`);
+      if (d - c < 0.75 * (b - a)) bad.bow.push(`${tag}: a loop ${cm(b - a).toFixed(1)} × ${cm(d - c).toFixed(1)} cm — a flat strip, not full and round`);
+    }
+    /* the ribbon, and the knot a little narrower */
+    if (cm(RIBBON_BOW.width) < 2.5 || cm(RIBBON_BOW.width) > 3) bad.bow.push(`${tag}: a ribbon ${cm(RIBBON_BOW.width).toFixed(1)} cm wide, not 2.5–3`);
+    if (kx[1] - kx[0] >= RIBBON_BOW.width || kx[1] - kx[0] < 0.75 * RIBBON_BOW.width) bad.bow.push(`${tag}: its knot ${cm(kx[1] - kx[0]).toFixed(1)} cm across — not a little narrower than the ribbon, ${cm(RIBBON_BOW.width).toFixed(1)}`);
+    /* the tails */
+    const tails = tie.parts.filter((p) => p.id.startsWith("tail")).map((p) => flatten(p.pieces[0]));
+    const lines = tie.tailLines ?? [];
+    if (tails.length !== 2 || lines.length !== 2) bad.bow.push(`${tag}: ${tails.length} tails, not two`);
+    else {
+      const [l, r] = tails.map((t) => colsOf(t.flat()));
+      if (!(l[1] < meet[0] && r[0] > meet[0])) bad.bow.push(`${tag}: its tails cross the middle — they hang one either side, never crossing`);
+      const gap = r[0] - l[1];
+      if (cm(gap) < 0.5 || cm(gap) > 2) bad.bow.push(`${tag}: its tails ${cm(gap).toFixed(1)} cm apart, not slightly apart, 0.5–2`);
+      lines.forEach((line, k) => {
+        const [a, b] = [line[0], line[line.length - 1]];
+        const angle = (Math.atan2(Math.abs(b[0] - a[0]), b[1] - a[1]) * 180) / Math.PI;
+        if (angle > 3) bad.bow.push(`${tag}: a tail falls ${angle.toFixed(1)}° from upright — not straight down`);
+        let length = 0;
+        for (let i = 1; i < line.length; i++) length += Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1]);
+        if (cm(length) < 15 || cm(length) > 20) bad.bow.push(`${tag}: a tail ${cm(length).toFixed(1)} cm long, not 15–20`);
+        const [mx, my] = line[Math.floor(line.length / 2)];
+        const xs = crossingsAt(tails[k], my).flat();
+        const wide = Math.max(...xs) - Math.min(...xs);
+        if (cm(wide) < 2.5 || cm(wide) > 3 || Math.abs((Math.max(...xs) + Math.min(...xs)) / 2 - mx) > 0.6) bad.bow.push(`${tag}: a tail ${cm(wide).toFixed(1)} cm across halfway down, not the ribbon's 2.5–3`);
+        /* cut on a slant: its lowest point on its outer side, a fifth of the ribbon's width below its inner corner — read well inside its inner half */
+        const low = tails[k].flat().reduce((p, q) => (q[1] > p[1] ? q : p));
+        const innerLow = Math.max(...tails[k].flat().filter(([x]) => -Math.sign(b[0] - meet[0]) * (x - b[0]) > 0.3 * RIBBON_BOW.width).map(([, y]) => y));
+        if (Math.sign(low[0] - b[0]) !== Math.sign(b[0] - meet[0]) || low[1] - innerLow < 0.2 * RIBBON_BOW.width)
+          bad.bow.push(`${tag}: a tail's end is not cut on a slant, its outer corner ${(low[1] - innerLow).toFixed(1)} units lower`);
+      });
+      notes.push(
+        `${tag}: knot ${(ky[0] - meet[1]).toFixed(0)} units below where its edges meet, loops ${cm(across[1] - across[0]).toFixed(1)} cm across and ${(100 * shows).toFixed(0)}% showing, ` +
+          `tails ${cm(gap).toFixed(1)} cm apart, ${lines.map((line) => cm(line.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - line[i][0], p[1] - line[i][1]), 0)).toFixed(1)).join("/")} cm`
+      );
+    }
+    if (top <= meet[1]) bad.bow.push(`${tag}: something of it above where the collar's edges meet`);
+  };
+
   /* 2. drawn, on this body's shirt collar */
   const collar = collars.find((c) => c.gender === bodyKey && isShirtCollar(c));
   const T = artTable(collar.asset.front, body);
   const [meet, roll] = [T.get("MEET"), T.get("ROLL")];
   const leaves = [T.get("LEAF_LEFT_PATH"), T.get("LEAF_RIGHT_PATH")];
-  const waist = FIT_KIT.draft(bodyKey).waistY;
-  const profile = profileFor(bodyKey);
-  const notes = [];
   if (!meet || !roll || leaves.some((d) => !d)) bad.top.push(`${collar.id}: its drawing does not read — no point where its leaves meet, no roll line, or no leaves`);
   else {
     /* closed at the top: both leaves run to the point where they meet */
@@ -3701,19 +3833,21 @@ function checkShirtTies(bodyKey, body, wardrobe) {
       }
       return x < Math.min(roll[0][0], roll[roll.length - 1][0]) || x > Math.max(roll[0][0], roll[roll.length - 1][0]) ? -Infinity : Math.min(...roll.map(([, y]) => y));
     };
+    /* as it arrives over nothing: a necktie to the waistband of what each body wears under a shirt */
+    const fit = collarTieFit(collar, bodyKey, body, undefined);
     const y0 = Math.floor(meet[1] - 16);
-    const h = Math.ceil(waist + 12 - y0);
+    const h = Math.ceil(fit.to + 12 - y0);
     const inRows = (paths) => rasterizeRows(paths, y0, h);
     const leaf = inRows(leaves);
     const jacketGarment = wardrobe.find((g) => g.category === "outerwear" && g.layer === "outer" && g.defaultCollar);
     const J = jacketGarment ? jacketOf(jacketGarment, body) : null;
     const lapel = jacketGarment ? rasterize(artPaths(collars.find((c) => c.id === jacketGarment.defaultCollar).asset.front, body)) : null;
     for (const style of ["necktie", "bowtie"]) {
-      const tie = shirtTie(style, bodyKey, meet, waist);
+      const tie = shirtTie(style, bodyKey, fit);
       const tag = `${collar.id}, ${style}`;
       const buf = inRows(tie.pieces);
       const knotBuf = inRows([tie.knot]);
-      /* what shows of it: a necktie's knot lies under the leaves laid again over it; a bow tie on them */
+      /* what shows of it: a tie knotted under the leaves lies under them, laid again over it; his bow tie on them */
       const shows = (i) => buf[i] >= OWNS && !(tie.under && leaf[i] >= OWNS);
       const xy = (i) => [(i % W) + 0.5, Math.floor(i / W) + y0 + 0.5];
       /* no band round the neck: nothing of it above the roll line */
@@ -3745,7 +3879,7 @@ function checkShirtTies(bodyKey, body, wardrobe) {
         for (let i = 0; i < knotBuf.length; i++) if (knotBuf[i] >= OWNS && leaf[i] >= OWNS) underLeaf[xy(i)[0] < meet[0] ? 0 : 1]++;
         if (Math.min(...underLeaf) < 12) bad.points.push(`${tag}: the knot runs under the leaves ${underLeaf[0]} px on the left and ${underLeaf[1]} on the right — the points do not lie over its sides`);
         if (!tie.under) bad.points.push(`${tag}: the necktie is not drawn under the collar's leaves`);
-        /* the blade: straight down the middle, widening, never narrowing, to a point at the waist */
+        /* the blade: straight down the middle, widening, never narrowing, to a point */
         const foot = Math.max(...flatten(tie.knot).flat().map(([, y]) => y));
         const widest = NECKTIE[bodyKey].blade[1];
         let last = 0;
@@ -3753,7 +3887,7 @@ function checkShirtTies(bodyKey, body, wardrobe) {
         let narrows = 0;
         let lowest = -1;
         for (let r = 0; r < h; r++) for (let x = 0; x < W; x++) if (shows(r * W + x)) lowest = Math.max(lowest, r);
-        for (let y = Math.ceil(foot + 2); y < waist - widest / 2 - 1; y++) {
+        for (let y = Math.ceil(foot + 2); y < fit.to - widest / 2 - 1; y++) {
           const row = (y - y0) * W;
           let [l, r] = [Infinity, -Infinity];
           for (let x = 0; x < W; x++) if (shows(row + x)) [l, r] = [Math.min(l, x), Math.max(r, x)];
@@ -3768,10 +3902,10 @@ function checkShirtTies(bodyKey, body, wardrobe) {
         const [lo, hi] = bodyKey === "female" ? [4.8, 6.2] : [6.6, 8.2];
         if (wide < lo || wide > hi) bad.blade.push(`${tag}: the blade is ${wide.toFixed(1)} cm at its widest, not ${lo}–${hi}`);
         const under = NECKTIE[bodyKey].blade[0];
-        const lean = (Math.atan2((widest - under) / 2, waist - widest / 2 - foot) * 180) / Math.PI;
+        const lean = (Math.atan2((widest - under) / 2, fit.to - widest / 2 - foot) * 180) / Math.PI;
         if (lean > 6) bad.blade.push(`${tag}: the blade widens ${lean.toFixed(1)}° a side — not gently`);
         const tipY = lowest + y0 + 1;
-        if (Math.abs(tipY - profile.waistY) > 8) bad.blade.push(`${tag}: the point ends ${cm(tipY - profile.waistY).toFixed(1)} cm from her waist — at row ${tipY}, the waist ${profile.waistY}`);
+        if (Math.abs(tipY - fit.to) > 1.5) bad.blade.push(`${tag}: the point ends at row ${tipY}, not ${fit.to}, where it reaches`);
         const point = (() => {
           const row = (lowest - 2) * W;
           let n = 0;
@@ -3780,43 +3914,20 @@ function checkShirtTies(bodyKey, body, wardrobe) {
         })();
         /* a point is a few pixels across there; a blade cut square, its whole width */
         if (point > widest / 3) bad.blade.push(`${tag}: ${point} px wide two rows above its end — it does not end in a point`);
-        notes.push(`necktie knot ${cm(kt).toFixed(1)} cm snug ${depth.toFixed(0)} units down, under the leaves ${underLeaf.join("/")} px, blade to ${wide.toFixed(1)} cm, point at row ${tipY}`);
+        notes.push(`necktie knot ${cm(kt).toFixed(1)} cm snug ${depth.toFixed(0)} units down, under the leaves ${underLeaf.join("/")} px, blade to ${wide.toFixed(1)} cm`);
+      } else if (bodyKey === "female") {
+        ribbonChecks(`${collar.id}, her bow`, tie, leaves, meet);
       } else {
         const knot = flatten(tie.knot).flat();
         const top = Math.min(...knot.map(([, y]) => y)) - meet[1];
         const all = tie.pieces.flatMap((d) => flatten(d).flat());
-        if (tie.under) bad.bow.push(`${tag}: drawn under the collar's leaves — a bow tie lies on them`);
-        if (bodyKey === "female") {
-          if (top < 0 || top > 3) bad.bow.push(`${tag}: its knot is ${top.toFixed(1)} units below where the points meet, not right under them`);
-          const loops = tie.parts.find((p) => p.id === "loops").pieces.map((d) => flatten(d).flat());
-          for (const l of loops) {
-            const [w, hh] = [Math.max(...l.map(([x]) => x)) - Math.min(...l.map(([x]) => x)), Math.max(...l.map(([, y]) => y)) - Math.min(...l.map(([, y]) => y))];
-            if (w < 1.75 * hh) bad.bow.push(`${tag}: a loop ${cm(w).toFixed(1)} × ${cm(hh).toFixed(1)} cm — not lying flat, sideways`);
-          }
-          const sides = new Set();
-          for (const [k, line] of (tie.tailLines ?? []).entries()) {
-            let length = 0;
-            for (let i = 1; i < line.length; i++) length += Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1]);
-            const [a, b] = [line[0], line[line.length - 1]];
-            const angle = (Math.atan2(Math.abs(b[0] - a[0]), b[1] - a[1]) * 180) / Math.PI;
-            if (cm(length) < 15 || cm(length) > 20) bad.bow.push(`${tag}: a tail ${cm(length).toFixed(1)} cm long, not 15–20`);
-            if (angle < 5 || angle > 15) bad.bow.push(`${tag}: a tail falls ${angle.toFixed(1)}° from upright — not a slight upside-down V`);
-            sides.add(Math.sign(b[0] - meet[0]));
-            /* cut on a slant: its lowest point on its outer side */
-            const pts = flatten(tie.parts.find((p) => p.id === `tail-${k}`).pieces[0]).flat();
-            const low = pts.reduce((p, q) => (q[1] > p[1] ? q : p));
-            if (Math.sign(low[0] - b[0]) !== Math.sign(b[0] - meet[0])) bad.bow.push(`${tag}: a tail's end is not cut on a slant, its outer corner lower`);
-          }
-          if ((tie.tailLines ?? []).length !== 2 || sides.size !== 2) bad.bow.push(`${tag}: not two tails, one either side`);
-          notes.push(`her bow tie knot ${top.toFixed(1)} under the point, loops ${cm(tie.reach).toFixed(1)} cm, tails ${(tie.tailLines ?? []).map((l) => cm(l.reduce((s, p, i) => s + (i ? Math.hypot(p[0] - l[i - 1][0], p[1] - l[i - 1][1]) : 0), 0)).toFixed(1)).join("/")} cm`);
-        } else {
-          const [x0, x1] = [Math.min(...all.map(([x]) => x)), Math.max(...all.map(([x]) => x))];
-          const [ya, yb] = [Math.min(...all.map(([, y]) => y)), Math.max(...all.map(([, y]) => y))];
-          if (tie.tailLines || yb > tie.at[1] + BUTTERFLY.wing + 0.5) bad.bow.push(`${tag}: it has tails, or something hangs below its wings`);
-          if (cm(x1 - x0) < 10.5 || cm(x1 - x0) > 11.6 || cm(yb - ya) < 4.5 || cm(yb - ya) > 5.4) bad.bow.push(`${tag}: ${cm(x1 - x0).toFixed(1)} × ${cm(yb - ya).toFixed(1)} cm — not a classic small bow tie, about 11 × 5`);
-          if (top <= 0 || top > 8) bad.bow.push(`${tag}: its knot is ${top.toFixed(1)} units below where the points meet, not just under them`);
-          notes.push(`his bow tie ${cm(x1 - x0).toFixed(1)} × ${cm(yb - ya).toFixed(1)} cm, no tails`);
-        }
+        const [x0, x1] = colsOf(all);
+        const [ya, yb] = rowsOf(all);
+        if (tie.under) bad.bow.push(`${tag}: drawn under the collar's leaves — his bow tie lies on them`);
+        if (tie.tailLines || yb > tie.at[1] + BUTTERFLY.wing + 0.5) bad.bow.push(`${tag}: it has tails, or something hangs below its wings`);
+        if (cm(x1 - x0) < 10.5 || cm(x1 - x0) > 11.6 || cm(yb - ya) < 4.5 || cm(yb - ya) > 5.4) bad.bow.push(`${tag}: ${cm(x1 - x0).toFixed(1)} × ${cm(yb - ya).toFixed(1)} cm — not a classic small bow tie, about 11 × 5`);
+        if (top <= 0 || top > 8) bad.bow.push(`${tag}: its knot is ${top.toFixed(1)} units below where the points meet, not just under them`);
+        notes.push(`his bow tie ${cm(x1 - x0).toFixed(1)} × ${cm(yb - ya).toFixed(1)} cm, no tails`);
       }
       /* under the jacket, in its opening */
       if (J) {
@@ -3839,13 +3950,79 @@ function checkShirtTies(bodyKey, body, wardrobe) {
       }
     }
   }
+
+  /* 3. her bow under a Peter Pan: on a top's crew neck, and on every cut of the dress it follows */
+  const pp = collars.find((c) => c.gender === bodyKey && isPeterPan(c));
+  const dress = wardrobe.find((g) => g.id === "female-dress");
+  if (pp && dress) {
+    for (const cut of [undefined, ...cutsOf(dress.asset.front).filter((cut) => fits(pp, cut) && NECKLINE_TIED.includes(cut))]) {
+      const f = collarTieFit(pp, bodyKey, body, cut);
+      ribbonChecks(`her bow under the Peter Pan${cut ? ` on ${cut}` : " on a top"}`, shirtTie("bowtie", bodyKey, f), f.paths, f.meet);
+    }
+  }
+
+  /*
+    4. How far a necktie reaches: the middle of the waistband it is worn over,
+    as each bottom draws its band — the app gives a top the waistband its
+    bottom declares; over nothing, the band of what each body arrives in under
+    a shirt — and on the dress, the middle of its belt, or its waist seam.
+  */
+  const reaches = [];
+  const bandRows = (bottom) => {
+    const mod = CUT_MODULES[bottom.asset.front];
+    const cut = mod?.skirtFor ? mod.skirtFor() : mod?.legsFor?.();
+    return cut?.band ? rowsOf(flatten(cut.band).flat()) : null;
+  };
+  const bottoms = wardrobe.filter((g) => g.category === "bottom" && g.gender === bodyKey);
+  for (const top of wardrobe.filter((g) => g.category === "top" && (g.ties?.offered ?? []).includes("necktie"))) {
+    for (const bottom of bottoms) {
+      const rows = bandRows(bottom);
+      const band = CUT_MODULES[bottom.asset.front]?.WAISTBAND;
+      if (!rows || !band) {
+        bad.reach.push(`${top.id} over ${bottom.id}: ${rows ? "no waistband declared" : "no band drawn"} to reach`);
+        continue;
+      }
+      const to = necktieTo(bodyKey, { waistband: band });
+      const want = (rows[0] + rows[1]) / 2;
+      if (Math.abs(to - want) > 1) bad.reach.push(`${top.id} over ${bottom.id}: its necktie's point at row ${to}, the waistband's middle ${want.toFixed(1)} (${rows.map((y) => y.toFixed(1)).join("–")})`);
+      reaches.push(`${bottom.id.replace(/^(fe)?male-/, "")} ${to}`);
+    }
+    /* over nothing: the band of what each body arrives in under a shirt — her skirt, his trousers */
+    const arrives = bottoms.find((g) => g.id === (bodyKey === "female" ? "female-skirt" : "male-trousers"));
+    const rows = arrives && bandRows(arrives);
+    const to = necktieTo(bodyKey, {});
+    if (!rows || Math.abs(to - (rows[0] + rows[1]) / 2) > 1) bad.reach.push(`${top.id} over nothing: its necktie's point at row ${to}, not the middle of ${arrives?.id ?? "a"} waistband`);
+  }
+  if (dress && bodyKey === "female") {
+    const mod = CUT_MODULES[dress.asset.front];
+    for (const waist of dress.skirt.waists)
+      for (const belt of ["none", ...(dress.belts?.offered ?? []).filter((b) => b !== "none")]) {
+        const skirt = { ...mod.DEFAULT_SKIRT, waist };
+        const want = belt === "none" ? mod.seamAt(waist) : mod.beltFor(skirt).mid;
+        const to = necktieTo(bodyKey, { skirt, belt });
+        if (Math.abs(to - want) > 1) bad.reach.push(`the shirt-dress, ${waist} waist, ${belt === "none" ? "no belt" : `${belt} belt`}: its necktie's point at row ${to}, not ${belt === "none" ? "its waist seam" : "its belt's middle"}, ${want}`);
+      }
+    reaches.push(`shirt-dress at its seam or belt ${[...new Set(dress.skirt.waists.flatMap((waist) => ["none", "self"].map((belt) => necktieTo(bodyKey, { skirt: { ...mod.DEFAULT_SKIRT, waist }, belt }))))].join("/")}`);
+  }
+  if (reaches.length) notes.push(`necktie points at the waistband: ${reaches.join(", ")}`);
+
   const all = Object.values(bad).flat();
   console.log(
     `${all.length ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${collar?.id ?? "-"} · ties`.padEnd(28)} ` +
-      `ties on a shirt collar: ${offers} garment × cut × collar offers by the rule — a necktie and a bow tie only under a shirt collar, on ${SHIRTED.filter((id) => wardrobe.some((g) => g.id === id)).join(", ")}; ` +
+      `ties under a collar: ${offers} garment × cut × collar offers by the rule — a necktie only under a shirt collar, a bow tie under one or her Peter Pan, on ${SHIRTED.filter((id) => wardrobe.some((g) => g.id === id)).join(", ")}; ` +
       `${notes.join("; ")}${all.length ? "" : "; the collar closed at the top, no band showing, each in the jacket's opening"}`
   );
-  const LABEL = { offer: "offered where it should not be, or not where it should", top: "the collar open at the top", band: "a tie's band round the neck", snug: "a knot not snug between the points", points: "the points not over the knot's sides", blade: "the blade not straight, gentle or ending at the waist", bow: "a bow tie not as the photos", jacket: "a tie not in the jacket's opening" };
+  const LABEL = {
+    offer: "offered where it should not be, or not where it should",
+    top: "the collar open at the top",
+    band: "a tie's band round the neck",
+    snug: "a knot not snug between the points",
+    points: "the points not over the knot's sides, or the bow's loops",
+    blade: "the blade not straight, gentle or ending in a point",
+    reach: "a necktie not reaching the waistband, the belt or the seam",
+    bow: "a bow tie not as the photos",
+    jacket: "a tie not in the jacket's opening",
+  };
   for (const line of bad.order) console.log(`     ${bodyKey.padEnd(6)} ${line}`);
   for (const [kind, lines] of Object.entries(bad)) {
     if (kind === "order" || !lines.length) continue;
@@ -4821,7 +4998,7 @@ failures += timed("edges", () => {
       skirt: { shapes: garment.skirt.shapes, waists: garment.skirt.waists, lengthsOf: (shape) => shapeLengths(shape, garment.skirt.lengths) },
       buttonsOn: (cut, shape) => buttonsOn(cut, garment.buttons?.offered ?? ["none"], shape),
       openingsOn: (cut) => [...new Set(collarsForGarment(garment).filter((c) => (c.necklines ? c.necklines.includes(cut) : sews(c, NECKLINE_OPENING[cut]))).map((c) => c.opening))],
-      /* the ties it knots itself, and where each can be knotted — the panel's own rule, see `tiePlaces`; a bow tie is only ever a shirt collar's, which draws it: see `checkShirtTies` */
+      /* the ties it knots itself, and where each can be knotted — the panel's own rule, see `tiePlaces`; a bow tie is only ever a collar's, which draws it: see `checkShirtTies` */
       tieStyles: (garment.ties?.offered ?? []).filter((t) => t !== "none" && t !== "bowtie"),
       doubleCuts: garment.buttons?.rows?.includes("two") ? DOUBLE_CUTS : [],
       /* the sashes: which belts are one, how wide each is, where each is tied on a cut, and how far the bow's loops reach */
@@ -4832,9 +5009,10 @@ failures += timed("edges", () => {
       /* her arms where the photograph is drawn again over the clothes — the forearms' and the hands' zones */
       armRings: ["forearm", "hand"].flatMap((z) => flatten(bodies.female.zones[z])),
       tiePlacesOn: (cut, opening, belt, style) => {
-        /* with an opening, each collar over it a tie is knotted over — a shirt collar's band ties are its own, drawn by it; with none, a collar that takes no tie */
+        /* with an opening, each collar over it a tie is knotted over — a tie a collar knots under it is its own, drawn by it; with none, a collar that takes no tie */
+        const drawsIt = (c) => (style ? Boolean(c.ties?.under?.includes(style)) : Boolean(c.ties?.under && c.ties.offered.every((s) => c.ties.under.includes(s))));
         const collared = opening
-          ? collarsForGarment(garment).filter((c) => c.opening === opening && !c.ties?.band && (c.necklines ? c.necklines.includes(cut) : sews(c, NECKLINE_OPENING[cut])))
+          ? collarsForGarment(garment).filter((c) => c.opening === opening && !drawsIt(c) && (c.necklines ? c.necklines.includes(cut) : sews(c, NECKLINE_OPENING[cut])))
           : [undefined];
         const places = new Set((collared.length ? collared : [{ id: "none" }]).flatMap((c) => tiePlaces(garment.ties?.offered ?? [], cut, c, belt === "self", style)));
         return ["neck", "belt-front", "belt-side"].filter((p) => places.has(p));

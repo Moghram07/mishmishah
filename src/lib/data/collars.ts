@@ -75,7 +75,7 @@ export const collars: Collar[] = [
     opening: "high",
     asset: { front: "female-shirt-collar-front", behindBody: "female-shirt-collar-behind" },
     /** A necktie or a bow tie, knotted round its band under its leaves, where they meet — see `shirtTie`. */
-    ties: { offered: ["necktie", "bowtie"], band: true },
+    ties: { offered: ["necktie", "bowtie"], under: ["necktie", "bowtie"] },
   },
   {
     id: "female-peter-pan-collar",
@@ -95,8 +95,13 @@ export const collars: Collar[] = [
     build: { stand: 0, fall: "flat" },
     opening: "round",
     asset: { front: "female-peter-pan-collar-front" },
-    /** A knot or a scarf tied where its two rounded ends meet, over them — a necktie needs a shirt collar. */
-    ties: { offered: ["knot", "scarf"] },
+    /**
+     * A knot or a scarf tied where its two rounded ends meet, over them; or
+     * her ribbon bow, tied under it just below where they meet, as a shirt
+     * collar's is — the user's call: a ribbon bow under a Peter Pan collar is
+     * a classic look. A necktie needs a shirt collar.
+     */
+    ties: { offered: ["knot", "bowtie", "scarf"], under: ["bowtie"] },
   },
   {
     id: "female-mandarin-collar",
@@ -298,7 +303,7 @@ export const collars: Collar[] = [
      * shirt: a polo and a thobe are not worn with one, whatever their collar,
      * and offer no tie — see `Garment.ties`.
      */
-    ties: { offered: ["necktie", "bowtie"], band: true },
+    ties: { offered: ["necktie", "bowtie"], under: ["necktie", "bowtie"] },
   },
   {
     id: "male-polo-collar",
@@ -472,6 +477,11 @@ const TIE_NAMES: Record<TieId, Localized> = {
   scarf: { en: "Scarf", ar: "وشاح" },
 };
 
+/** Her ties' names, where they are not his: her bow tie is a ribbon bow, «فيونكة»; his a butterfly, «بابيون» — the user's names. */
+const HER_TIE_NAMES: Partial<Record<TieId, Localized>> = {
+  bowtie: { en: "Bow", ar: "فيونكة" },
+};
+
 /** The places a tie is knotted, by name. */
 const TIE_AT_NAMES: Record<TieAtId, Localized> = {
   neck: { en: "At the neck", ar: "عند الرقبة" },
@@ -487,8 +497,9 @@ export const stripesFor = (offer: { offered: StripesId[] } | undefined): { id: S
 export const stripeEdgesFor = (edges: readonly StripeEdgeId[]): { id: StripeEdgeId; name: Localized }[] =>
   edges.map((id) => ({ id, name: STRIPE_EDGE_NAMES[id] }));
 
-/** Ties, by name, in the order given — see `tiesOffered`. */
-export const tiesFor = (ties: readonly TieId[]): { id: TieId; name: Localized }[] => ties.map((id) => ({ id, name: TIE_NAMES[id] }));
+/** Ties, by name, in the order given — see `tiesOffered` — as each is called on `body`: her bow tie is «فيونكة». */
+export const tiesFor = (ties: readonly TieId[], body?: BodyType): { id: TieId; name: Localized }[] =>
+  ties.map((id) => ({ id, name: (body === "female" ? HER_TIE_NAMES[id] : undefined) ?? TIE_NAMES[id] }));
 
 /** The places a tie can be knotted, by name — see `tiePlacesOf`. */
 export const tiePlacesFor = (places: readonly TieAtId[]): { id: TieAtId; name: Localized }[] => places.map((id) => ({ id, name: TIE_AT_NAMES[id] }));

@@ -243,6 +243,9 @@ assertMotifScale(fabrics);
 
 export const fabricById = (id: string) => fabrics.find((f) => f.id === id);
 
+/** The plain black in the library — the black crepe — which a new necktie or bow tie arrives in: see `setTie`. */
+export const PLAIN_BLACK = "fb-black-crepe";
+
 /**
  * The plain cloth a collar's stripes arrive in, so they show from the first —
  * stripes cut from the collar's own cloth would not show at all: of the plain

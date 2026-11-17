@@ -1,5 +1,5 @@
 import { arc, type Point } from "@/lib/garments/collar";
-import { draft, line, run, type Pt } from "@/lib/garments/fit";
+import { line, run, type Pt } from "@/lib/garments/fit";
 import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
 import { collarFold, collarTone } from "../../collarLight";
 import {
@@ -14,8 +14,8 @@ import { behindBandArt } from "../../behindBand";
 import { litButtons } from "../../buttons";
 import { seamFolds, sleeveFoldDefs } from "../../sleeveFolds";
 import { shirtTieArt } from "../../shirtTieArt";
-import { shirtTie } from "../../shirtTies";
-import type { GarmentArt, RegionArt } from "../../index";
+import { butterflyAt, necktieTo, shirtTie, type TieFit } from "../../shirtTies";
+import type { GarmentArt, GarmentChoice, RegionArt } from "../../index";
 
 /**
  * Shirt collar, male: a band round the neck, and two leaves folded down over it.
@@ -184,8 +184,12 @@ const LEAVES: RegionArt = {
 /** The collar with a necktie knotted round its band: drawn as ever, its leaves laid again over the knot — see `LEAVES`. */
 const UNDER_TIE: RegionArt = { ...COLLAR, over: LEAVES };
 
-/** The row a necktie worn with it ends at: his waist — see `shirtTie`. */
-const WAIST_Y = draft("male").waistY;
+/** How a tie fits it, worn as `choice` says: knotted where its leaves meet, a necktie reaching the waistband — see `TieFit`. */
+const fitFor = (choice: GarmentChoice): TieFit => ({
+  meet: [MEET[0], MEET[1]],
+  to: necktieTo("male", choice),
+  bow: butterflyAt([MEET[0], MEET[1]]),
+});
 
 export const maleShirtCollarFront: GarmentArt = {
   regions: { collar: COLLAR },
@@ -195,12 +199,12 @@ export const maleShirtCollarFront: GarmentArt = {
     a necktie's knot. Its leaves still meet: the collar is closed at the top.
   */
   cut: (choice) => {
-    const style = choice.tieBand ? choice.tie : undefined;
+    const style = choice.tieUnder ? choice.tie : undefined;
     if (style !== "necktie" && style !== "bowtie") return {};
-    const meet: Pt = [MEET[0], MEET[1]];
-    const tie = shirtTieArt(style, "male", meet, WAIST_Y);
+    const fit = fitFor(choice);
+    const tie = shirtTieArt(style, "male", fit);
     /* a necktie's knot lies under the leaves, a bow tie on them — as its pieces say: see `ShirtTie.under` */
-    return shirtTie(style, "male", meet, WAIST_Y).under ? { collar: UNDER_TIE, tie } : { tie };
+    return shirtTie(style, "male", fit).under ? { collar: UNDER_TIE, tie } : { tie };
   },
   bandButtons: (count) =>
     litButtons((BUTTON_ROWS[count] ?? BUTTON_ROWS[1]).map((dy) => [COLLAR_AXIS(MEET[1] + dy), MEET[1] + dy] as const), 2.2),

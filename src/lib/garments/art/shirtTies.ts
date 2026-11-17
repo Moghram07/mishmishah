@@ -2,39 +2,43 @@
   Plain `.ts`, relative and extensioned, and no JSX — so `scripts/
   preview-garments.mjs` can import it and measure the same ties the app draws.
 
-  The ties worn with a shirt collar — a necktie and a bow tie — and only with
-  one: a necktie or a bow tie needs a shirt collar to sit under (the user's
-  photos ShirtCollarTie and ShirtCollarBowtie). Each is knotted round the
-  collar's band, under its leaves, so its band never shows; and the collar
-  stays closed at the top — its leaves still meet. Where they meet is the
-  tie's point, `meet`: the collar's own — see `SHIRT_COLLAR` and
-  `MALE_SHIRT_COLLAR`.
+  The ties a collar draws itself, knotted under it: a necktie and a bow tie
+  with a shirt collar — a necktie needs a shirt collar to sit under (the
+  user's photos ShirtCollarTie and ShirtCollarBowtie) — and her ribbon bow
+  under a Peter Pan as well. Each is knotted round the collar's band, or
+  round the neck under a flat collar, so its band never shows; and the collar
+  stays closed at the top — its edges still meet. Where they meet is
+  `TieFit.meet`.
 
   - **The necktie** (ShirtCollarTie): its knot sits snug in the V between
     the leaves, its top where they meet and its sides running on under them
     — the collar's points lie over the sides of the knot: see the collar's
     `over`. Under it the blade hangs straight down the middle, widening
-    gently, and ends in a point at the waist — hers, or his.
-  - **Her bow tie** (ShirtCollarBowtie): a ribbon bow right under where the
-    points meet — the round 24 belt bow, smaller: two loops lying flat,
-    sideways, a small knot, and two tails 18 and 16.3 cm long falling in a
-    slight upside-down V, cut on a slant.
-  - **His bow tie**: a classic small one, two wings pinched into a knot, and
-    no tails.
-
-  Both bow ties lie over the collar, on its leaves, as the photo's does; the
-  necktie's knot lies under them.
+    gently, and ends in a point at the waistband — see `necktieTo`.
+  - **Her bow tie «فيونكة»** (WomenRibbon for where it sits and its tails,
+    femaleBowtieMenTie for its loops): a ribbon bow under the collar, just
+    below where its edges meet, both points lying over its loops — see
+    `ribbonUnder`; two full, rounded loops, a small wrapped knot, and two
+    tails hanging straight down side by side, slightly apart, cut on a slant.
+  - **His bow tie «بابيون»**: a classic small one, two wings pinched into a
+    knot, and no tails — lying on the collar's leaves.
 */
 import { blade, mirror } from "../collar.ts";
-import { outline, type Pt } from "../fit.ts";
-import { bowAt, crease, type BowSize, type FoldSpec } from "./female/ties.ts";
+import { draft, outline, run, type Pt } from "../fit.ts";
+import { insideRings, ringsOf } from "../stripes.ts";
+import { WAIST_DROP } from "../skirts.ts";
+import { BELT_ABOVE_SEAM } from "../closures.ts";
+import { WAISTBAND as SKIRT_BAND } from "./female/skirtCut.ts";
+import { WAISTBAND as HIS_TROUSERS_BAND } from "./male/trousersCut.ts";
+import { crease, type FoldSpec } from "./female/ties.ts";
 import type { BodyType } from "@/types";
+import type { GarmentChoice } from "./index.ts";
 
-/** The ties a shirt collar takes — see `Collar.ties`. */
+/** The ties a collar draws, knotted under it — see `Collar.ties`. */
 export type ShirtTieStyle = "necktie" | "bowtie";
 export const SHIRT_TIE_STYLES: readonly ShirtTieStyle[] = ["necktie", "bowtie"];
 
-/** How far below the point where the leaves meet a knot's top sits: just under it, so no band shows above the knot. */
+/** How far below the point where the leaves meet a necktie's knot's top sits: just under it, so no band shows above the knot. */
 export const KNOT_DROP = 1;
 
 /**
@@ -49,22 +53,35 @@ export const NECKTIE: Record<BodyType, { knot: readonly [top: number, bottom: nu
 };
 
 /**
- * Her bow tie: a ribbon `width` wide (2.3 cm), tied in the belt bow — see
- * `bowAt` — with loops reaching 6.1 cm either side of the knot, lying flat,
- * and tails of 18 and 16.3 cm along them, falling 9° and 9.5° from upright
- * — a slight upside-down V — and cut on a slant.
+ * Her bow tie «فيونكة», a ribbon bow, in canvas units: a ribbon `width` wide
+ * — 2.8 cm, the loops and the tails alike; its two loops `span` across from
+ * end to end — 11 cm, about as wide as the collar's opening — each `loop`
+ * tall at its fullest, 4.6 cm, and about as long, so they stand full and
+ * round; its `knot` 2.3 cm across, a little narrower than the ribbon, and
+ * 2.6 tall; and its two `tails`, 18 and 17 cm, hanging straight down side by
+ * side — `apart` under the knot, 0.85 cm, each leaning out `lean` degrees, so
+ * they part a little more by their ends and never cross.
  */
-export const RIBBON_BOW: { width: number } & BowSize = {
-  width: 12,
-  reach: 32,
-  tails: [95, 86],
-  spread: { longDir: 1, long: { angle: 9, ease: 0.1 }, short: { angle: 9.5, ease: 0.1 } },
-  ends: "slant",
+export const RIBBON_BOW = {
+  width: 14.5,
+  span: 58,
+  loop: 24,
+  knot: [12.2, 13.6] as const,
+  tails: [95, 89] as const,
+  apart: 4.5,
+  lean: 1.2,
 };
 
 /**
- * His bow tie, a classic butterfly: 11 cm across and 4.9 cm deep at its
- * wings' ends, pinched to a knot 1.9 cm wide and 2.3 cm tall; its knot's
+ * How much of its loops her bow shows under a collar: at least this share of
+ * their cloth below and beside the collar's points, which lie over the rest
+ * — see `ribbonUnder`.
+ */
+export const RIBBON_SHOWS = 0.8;
+
+/**
+ * His bow tie «بابيون», a classic butterfly: 11 cm across and 4.9 cm deep at
+ * its wings' ends, pinched to a knot 1.9 cm wide and 2.3 cm tall; its knot's
  * middle `drop` below where the leaves meet — just low enough that its
  * wings' ends, which rise above the knot, stay under the collar's roll as it
  * climbs round his neck. In canvas units.
@@ -78,7 +95,19 @@ export interface TiePart {
   folds: FoldSpec[];
 }
 
-/** A tie worn with a shirt collar, as `shirtTie` draws it. */
+/**
+ * Where a tie is worn with a collar: where the collar's edges meet, `meet`;
+ * the row a necktie's point reaches, `to` — see `necktieTo`; and where a bow
+ * tie's knot sits, `bow` — under her ribbon bow's collar see `ribbonUnder`,
+ * his butterfly `BUTTERFLY.drop` below where his leaves meet.
+ */
+export interface TieFit {
+  meet: Pt;
+  to: number;
+  bow: Pt;
+}
+
+/** A tie worn with a collar, as `shirtTie` draws it. */
 export interface ShirtTie {
   style: ShirtTieStyle;
   body: BodyType;
@@ -89,22 +118,47 @@ export interface ShirtTie {
   /** Its knot's piece, and the knot's centre. */
   knot: string;
   at: Pt;
-  /** Whether the collar's leaves lie over it: a necktie's knot is under its points; a bow tie lies over them. */
+  /** Whether the collar lies over it: a necktie's knot is under its points, and her bow under them; his bow tie lies over them. */
   under: boolean;
   /** A necktie's point, where its blade ends. */
   tip?: Pt;
-  /** A bow tie's tails, where it has them: the line down each, back to front. */
+  /** Her bow tie's tails: the line down the middle of each, from under the knot to its end, back to front. */
   tailLines?: Pt[][];
   /** How far a bow tie's loops or wings reach either side of its knot. */
   reach?: number;
 }
 
+/** A tie worn with a collar, as the collar fits it — see `TieFit`, and the comment at the top. */
+export function shirtTie(style: ShirtTieStyle, body: BodyType, fit: TieFit): ShirtTie {
+  return style === "necktie" ? necktie(body, fit.meet, fit.to) : body === "female" ? ribbonBow(fit.bow) : butterfly(fit.bow);
+}
+
+/** Where his butterfly's knot sits on a shirt collar whose leaves meet at `meet`. */
+export const butterflyAt = (meet: Pt): Pt => [meet[0], meet[1] + BUTTERFLY.drop];
+
 /**
- * A tie worn with a shirt collar whose leaves meet at `meet`, on a body
- * whose waist is the row `waistY` — see the comment at the top.
+ * The waistband of what each body wears under a shirt when nothing is said:
+ * her skirt's, his trousers' — see `necktieTo`.
  */
-export function shirtTie(style: ShirtTieStyle, body: BodyType, meet: Pt, waistY: number): ShirtTie {
-  return style === "necktie" ? necktie(body, meet, waistY) : body === "female" ? ribbonBow(meet) : butterfly(meet);
+const WAISTBANDS: Record<BodyType, readonly [number, number]> = { female: SKIRT_BAND, male: HIS_TROUSERS_BAND };
+
+/**
+ * The row a necktie's point reaches — the user's rule: a necktie's tip
+ * reaches the waistband of the trousers or skirt, or the belt if there is
+ * one. Its middle, as a tie's point reaches a belt's buckle:
+ *
+ * - over a skirt or trousers, their waistband: `choice.waistband`, which the
+ *   stage gives a top worn over one;
+ * - on a dress, its own belt — a sash's band is centred where a belt is —
+ *   or, with none, its waist seam, wherever its waist is;
+ * - over nothing, the waistband of what each body arrives in under a shirt:
+ *   her skirt's, his trousers'.
+ */
+export function necktieTo(body: BodyType, choice: GarmentChoice): number {
+  const band = choice.waistband ?? (choice.skirt ? undefined : WAISTBANDS[body]);
+  if (band) return (band[0] + band[1]) / 2;
+  const seam = draft(body).waistY + WAIST_DROP[choice.skirt?.waist ?? "natural"];
+  return choice.belt && choice.belt !== "none" ? seam - BELT_ABOVE_SEAM : seam;
 }
 
 /**
@@ -113,9 +167,9 @@ export function shirtTie(style: ShirtTieStyle, body: BodyType, meet: Pt, waistY:
  * corners run on under the leaves either side; its blade from under the
  * knot, straight down the middle — the collar's axis where the leaves meet
  * — widening evenly to `NECKTIE.blade[1]` and ending in a right-angled point
- * at `waistY`.
+ * at the row `to`.
  */
-function necktie(body: BodyType, meet: Pt, waistY: number): ShirtTie {
+function necktie(body: BodyType, meet: Pt, to: number): ShirtTie {
   const [kt, kb, kh] = NECKTIE[body].knot;
   const [b0, b1] = NECKTIE[body].blade;
   const [mx, my] = meet;
@@ -125,8 +179,8 @@ function necktie(body: BodyType, meet: Pt, waistY: number): ShirtTie {
   const knot = blade([[mx - kt / 2, top], [mx - kb / 2, bottom], [mx + kb / 2, bottom], [mx + kt / 2, top]], [0.8, 1, 0.8, 0]);
   /* the blade, from under the knot to its point: a right angle, as deep as half its width */
   const under = bottom - 3;
-  const wide = waistY - b1 / 2;
-  const bladePath = blade([[mx - b0 / 2, under], [mx - b1 / 2, wide], [mx, waistY], [mx + b1 / 2, wide], [mx + b0 / 2, under]], [0.5, 0, 0, 0.5, 0]);
+  const wide = to - b1 / 2;
+  const bladePath = blade([[mx - b0 / 2, under], [mx - b1 / 2, wide], [mx, to], [mx + b1 / 2, wide], [mx + b0 / 2, under]], [0.5, 0, 0, 0.5, 0]);
   /*
     Its folds, where the knot shows — in the V between the leaves, and below
     them where its sides draw in: the edge of the band wrapped round it,
@@ -155,47 +209,188 @@ function necktie(body: BodyType, meet: Pt, waistY: number): ShirtTie {
     knot,
     at: [mx, top + kh / 2],
     under: true,
-    tip: [mx, waistY],
+    tip: [mx, to],
   };
 }
 
+/** A number written to a tenth, as a path takes it. */
+const f1 = (v: number) => String(Math.round(v * 10) / 10);
+
 /**
- * Her bow tie: the belt bow — see `bowAt` — tied in `RIBBON_BOW`'s ribbon,
- * its knot's top `KNOT_DROP` under where the leaves meet.
+ * Her ribbon bow's loops about a knot at `at`, as the pink bow's are: full
+ * and round. Each, left side first, a fan from its root under the knot — its
+ * top rising quickly from the knot to the loop's full height two thirds of
+ * the way out, round its broad end, and back along its bottom, a little
+ * fuller as cloth hangs — written as four curves, so its edge runs smooth;
+ * a curve through many points wobbles between them. As long as it is tall,
+ * a loop of ribbon standing out, not a strip lying flat.
  */
-function ribbonBow(meet: Pt): ShirtTie {
-  const { width: w, ...size } = RIBBON_BOW;
-  const at: Pt = [meet[0], meet[1] + KNOT_DROP + (0.78 * w) / 2];
-  const bow = bowAt(at, "front", w, false, size);
-  const { tails, loops, knot } = bow.parts;
+function ribbonLoops(at: Pt): { loops: string[]; root: number; half: number; full: number } {
+  const { width: w, span, loop, knot } = RIBBON_BOW;
+  const half = span / 2;
+  const root = -knot[0] / 2 + 1.2;
+  const h = loop / 2;
+  const pinch = 0.42 * w;
+  const droop = 0.8;
+  /* where it is fullest, and how far its round end stands past that; its end's middle, a little low */
+  const full = -half + 8;
+  const e = full + half;
+  const mid = 0.4 + droop / 2;
+  const k = 0.5523;
+  const P = ([x, y]: Pt): string => `${f1(at[0] + x)} ${f1(at[1] + y)}`;
+  const C = (c1: Pt, c2: Pt, to: Pt) => `C${P(c1)} ${P(c2)} ${P(to)}`;
+  const left =
+    `M${P([root, -pinch])} ` +
+    `${C([root - 6, -pinch - 1.6], [full + 6.5, -h], [full, -h])} ` +
+    `${C([full - k * e, -h], [-half, mid - k * (mid + h)], [-half, mid])} ` +
+    `${C([-half, mid + k * (h + droop - mid)], [full - k * e, h + droop], [full, h + droop])} ` +
+    `${C([full + 6.5, h + droop], [root - 6, pinch + 1.8], [root, pinch])} Z`;
+  return { loops: [left, mirror(left, at[0])], root, half, full };
+}
+
+/**
+ * Her bow tie: a ribbon bow knotted at `at` — see `RIBBON_BOW`, and
+ * `ribbonUnder` for where it sits. Back to front: its two tails, its loops,
+ * and the knot over both; all of it under the collar, whose points lie over
+ * its loops.
+ *
+ * - **The knot**, a short length of the ribbon wrapped round its middle: a
+ *   little narrower than the ribbon, its sides and foot bowed out.
+ * - **The loops**, full and round — see `ribbonLoops` — with soft folds
+ *   fanning out from the knot into each, one into the dimple at its end.
+ * - **The tails** come out from under the knot side by side, `apart`, and
+ *   hang straight down — never crossing — each as wide as the ribbon from a
+ *   little under the knot, where it is gathered in, to its end, cut on a
+ *   slant, its outer corner lower; a soft crease down each, a gather where it
+ *   leaves the knot.
+ */
+function ribbonBow(at: Pt): ShirtTie {
+  const { width: w, knot: [kw, kh], tails: lengths, apart, lean } = RIBBON_BOW;
+  const rel = (pts: Pt[], flip = false): Pt[] => pts.map(([x, y]) => [at[0] + (flip ? -x : x), at[1] + y] as Pt);
+  const { loops, root, half, full } = ribbonLoops(at);
+  const knot = blade(
+    [[at[0] - kw / 2, at[1] - kh / 2], [at[0] - kw / 2 + 0.7, at[1] + kh / 2], [at[0] + kw / 2 - 0.7, at[1] + kh / 2], [at[0] + kw / 2, at[1] - kh / 2]],
+    [0.9, 0.7, 0.9, 0.6]
+  );
+
+  /* the tails: each from under the knot, `apart` from the other, straight down and a little out */
+  const a = (lean * Math.PI) / 180;
+  const top = at[1] + kh / 2 - 3;
+  const N = 8;
+  const tail = (dir: -1 | 1, len: number) => {
+    const x0 = at[0] + dir * (apart / 2 + w / 2);
+    const line: Pt[] = [];
+    for (let i = 0; i <= N; i++) line.push([x0 + dir * Math.sin(a) * len * (i / N), top + Math.cos(a) * len * (i / N)]);
+    /* across it, the way out from the other tail: square to its line */
+    const out: Pt = [dir * Math.cos(a), -Math.sin(a)];
+    const along: Pt = [dir * Math.sin(a), Math.cos(a)];
+    const share = (t: number) => (t >= 0.12 ? 1 : 0.86 + 0.14 * ((3 - 2 * (t / 0.12)) * (t / 0.12) ** 2));
+    const outer = line.map(([x, y], i) => [x + (out[0] * share(i / N) * w) / 2, y + (out[1] * share(i / N) * w) / 2] as Pt);
+    const inner = line.map(([x, y], i) => [x - (out[0] * share(i / N) * w) / 2, y - (out[1] * share(i / N) * w) / 2] as Pt);
+    /* the end cut on a slant, its outer corner lower */
+    const s = 0.16 * w;
+    outer[N] = [outer[N][0] + along[0] * s, outer[N][1] + along[1] * s];
+    inner[N] = [inner[N][0] - along[0] * s, inner[N][1] - along[1] * s];
+    const d = `M${f1(outer[0][0])} ${f1(outer[0][1])} ${run(outer)} ${run([outer[N], inner[N]])} ${run([...inner].reverse())} ${run([inner[0], outer[0]])} Z`;
+    /* a point `t` down it, `u` across it from its inner edge (-1) to its outer (1) */
+    const p = (t: number, u: number): Pt => {
+      const [x, y] = [line[0][0] + along[0] * len * t, line[0][1] + along[1] * len * t];
+      return [x + (out[0] * u * share(t) * w) / 2, y + (out[1] * u * share(t) * w) / 2];
+    };
+    const folds: FoldSpec[] = [
+      ...crease([p(0.015, 0.05), p(0.06, 0.12), p(0.13, 0.16)], 0.12 * w, 0.9),
+      ...crease([p(0.16, 0.34), p(0.52, 0.28), p(0.9, 0.36)], 0.14 * w, 0.55),
+      [[p(0.1, -0.58), p(0.5, -0.62), p(0.92, -0.56)], [0.8, 0.2 * w], 0.1, 0.04, 2],
+    ];
+    return { d, line, folds };
+  };
+  const tails = [tail(-1, lengths[0]), tail(1, lengths[1])];
+
+  /*
+    The loops' folds: two fanning out from the knot into each, above and below
+    its middle; where the ribbon folds back at its end, a soft crease in from
+    the end's middle; and its roundness — its upper half catching the light,
+    its lower half turning away into a broad soft shade — which is what makes
+    it read full.
+  */
+  const loopFolds = (flip: boolean): FoldSpec[] => [
+    ...crease(rel([[root - 0.6, -2.4], [(root + full) / 2, -6.2], [full - 3.5, -7.6]], flip), 0.16 * w, 0.8),
+    ...crease(rel([[root - 0.6, 2.6], [(root + full) / 2, 6.6], [full - 3.5, 8.4]], flip), 0.16 * w, 0.75),
+    ...crease(rel([[-half + 0.8, 0.8], [full - 1, 0.7], [full + 5, 0.5]], flip), 0.12 * w, 0.7),
+    [rel([[root - 1, 6], [(root + full) / 2, 10.4], [full - 5, 8.8]], flip), [0.4 * w, 0.4 * w], 0.12, 0, 2],
+    [rel([[root - 1, -5], [(root + full) / 2, -9.4], [full - 4, -8]], flip), [0.3 * w, 0.3 * w], 0, 0.1, 2],
+  ];
+  const knotFolds: FoldSpec[] = [
+    [rel([[-0.22 * kw, -kh / 2 + 1.2], [-0.25 * kw, 0], [-0.2 * kw, kh / 2 - 1.2]]), [0.6, 0.6], 0.2, 0.22, 0.6],
+    [rel([[0.22 * kw, -kh / 2 + 1.2], [0.25 * kw, 0], [0.2 * kw, kh / 2 - 1.2]]), [0.6, 0.6], 0.18, 0.2, 0.6],
+    [rel([[-0.4 * kw, kh / 2 - 0.8], [0, kh / 2 + 0.2], [0.4 * kw, kh / 2 - 0.8]]), [2, 2], 0.16, 0, 1.4],
+  ];
   return {
     style: "bowtie",
     body: "female",
-    pieces: bow.pieces,
+    pieces: [...tails.map((t) => t.d), ...loops, knot],
     parts: [
-      ...tails.map((d, i) => ({ id: `tail-${i}`, pieces: [d], folds: bow.folds.tails[i] })),
-      { id: "loops", pieces: loops, folds: bow.folds.loops },
-      { id: "knot", pieces: [knot], folds: bow.folds.knot },
+      ...tails.map((t, i) => ({ id: `tail-${i}`, pieces: [t.d], folds: t.folds })),
+      { id: "loops", pieces: loops, folds: [...loopFolds(false), ...loopFolds(true)] },
+      { id: "knot", pieces: [knot], folds: knotFolds },
     ],
     knot,
     at,
-    under: false,
-    tailLines: bow.tailLines,
-    reach: bow.reach,
+    under: true,
+    tailLines: tails.map((t) => t.line),
+    reach: half,
   };
 }
 
 /**
- * His bow tie, a butterfly: two wings, each pinched into the knot and
- * flaring out to a rounded end `BUTTERFLY.wing` above and below the knot's
- * middle, a small dimple at the middle of its end where the cloth folds
- * back; and the knot over them, a little narrower than it is tall. Its knot
- * sits just under where the leaves meet, low enough that the wings' ends
- * stay under the collar's roll.
+ * Where her ribbon bow's knot sits under a collar whose edges meet at
+ * `meet`, the collar's pieces `collar` — each its own rings: just below
+ * where its edges meet, as high as it can sit while its loops show at least
+ * `RIBBON_SHOWS` of themselves — so the collar's points lie over the loops,
+ * both of them seen above the loops, and the loops still show full and
+ * round below them (the user's photo WomenRibbon). A shirt collar's leaves
+ * meet at the top of its band and open in a V down to their points; a Peter
+ * Pan's rounded ends touch at the neckline's centre and part below it.
  */
-function butterfly(meet: Pt): ShirtTie {
-  const { half, wing, knot: [kw, kh], drop } = BUTTERFLY;
-  const at: Pt = [meet[0], meet[1] + drop];
+export function ribbonUnder(collar: Pt[][][], meet: Pt): Pt {
+  const kh = RIBBON_BOW.knot[1];
+  const start = meet[1] + KNOT_DROP + kh / 2;
+  for (let y = start; y < start + 90; y += 0.5) {
+    const at: Pt = [meet[0], y];
+    if (loopsShowing(at, collar) >= RIBBON_SHOWS) return at;
+  }
+  return [meet[0], start + 90];
+}
+
+/** How much of her bow's loops, knotted at `at`, shows past `collar`: the share of their cloth not under any of its pieces, sampled every unit. */
+export function loopsShowing(at: Pt, collar: Pt[][][]): number {
+  /* the left loop, and the right its mirror */
+  const ring = ringsOf(ribbonLoops(at).loops[0]);
+  const pts = ring.flat();
+  const xs = pts.map(([x]) => x);
+  const ys = pts.map(([, y]) => y);
+  let [all, seen] = [0, 0];
+  for (let y = Math.floor(Math.min(...ys)) + 0.5; y < Math.max(...ys); y++)
+    for (let x = Math.floor(Math.min(...xs)) + 0.5; x < Math.max(...xs); x++) {
+      if (!insideRings(ring, [x, y])) continue;
+      for (const p of [[x, y], [2 * at[0] - x, y]] as Pt[]) {
+        all++;
+        if (!collar.some((piece) => insideRings(piece, p))) seen++;
+      }
+    }
+  return all ? seen / all : 0;
+}
+
+/**
+ * His bow tie, a butterfly knotted at `at`: two wings, each pinched into the
+ * knot and flaring out to a rounded end `BUTTERFLY.wing` above and below the
+ * knot's middle, a small dimple at the middle of its end where the cloth
+ * folds back; and the knot over them, a little narrower than it is tall. Its
+ * knot sits just under where the leaves meet, low enough that the wings'
+ * ends stay under the collar's roll — see `butterflyAt`.
+ */
+function butterfly(at: Pt): ShirtTie {
+  const { half, wing, knot: [kw, kh] } = BUTTERFLY;
   const rel = (pts: Pt[]): Pt[] => pts.map(([x, y]) => [at[0] + x, at[1] + y] as Pt);
   /* the left wing, round from its root under the knot: up and out along its top, down its end, back along its foot */
   const root = -kw / 2 + 2;

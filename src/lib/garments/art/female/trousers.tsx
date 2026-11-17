@@ -8,7 +8,7 @@ import { seamFolds, sleeveFoldDefs } from "../sleeveFolds";
 import { beltLoops, detailDefs, detailShading, detailStitch } from "../trouserDetails";
 import type { GarmentArt, RegionArt } from "../index";
 import type { LegId } from "@/types";
-import { DEFAULT_LEG, HEM_Y, cloth, legsFor } from "./trousersCut";
+import { DEFAULT_LEG, HEM_Y, WAISTBAND, cloth, legsFor } from "./trousersCut";
 
 /**
  * Trousers, front, cut to a leg — straight, slim or wide: see `legs.ts`. The
@@ -109,6 +109,8 @@ const cutRegions = new Map<string, RegionArt>();
 
 export const trousersFront: GarmentArt = {
   regions: { body: legsRegion() },
+  /* where a necktie worn over them reaches */
+  waistband: WAISTBAND,
   /** In a leg, or under a jacket, where they come out from under its hem. */
   cut: (choice) => {
     const { inside, leg = DEFAULT_LEG } = choice;

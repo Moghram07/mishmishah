@@ -5,32 +5,39 @@ import { historyReducer, type History } from "@/components/visualizer/history";
 import { garmentById, garments } from "@/lib/data/garments";
 import { collarsForGarment, tiesFor } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
-import { fabricById } from "@/lib/data/fabrics";
+import { PLAIN_BLACK, fabricById } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { collarArt, type GarmentChoice } from "./art";
 import { SHIRT_COLLAR } from "./art/female/collars/shirt";
 import { MALE_SHIRT_COLLAR } from "./art/male/collars/shirt";
+import { peterPan } from "./art/female/collarCuts";
 import { BOW_SHADOW } from "./art/female/tieArt";
-import { BUTTERFLY, KNOT_DROP, NECKTIE, RIBBON_BOW, shirtTie, type ShirtTieStyle } from "./art/shirtTies";
+import { BUTTERFLY, KNOT_DROP, NECKTIE, RIBBON_BOW, butterflyAt, necktieTo, ribbonUnder, shirtTie, type ShirtTieStyle, type TieFit } from "./art/shirtTies";
+import { WAISTBAND as SKIRT_BAND, skirtFor } from "./art/female/skirtCut";
+import { WAISTBAND as HER_TROUSERS_BAND, legsFor as herLegs } from "./art/female/trousersCut";
+import { WAISTBAND as HIS_TROUSERS_BAND, legsFor as hisLegs } from "./art/male/trousersCut";
 import { standFrontEdges as herStand } from "./art/female/yoke";
 import { standFrontEdges as hisStand } from "./art/male/yoke";
 import { FLAT_LIT } from "./shading";
 import { GARMENT_LAYERS } from "./drawOrder";
 import { NECKLINE_TIED } from "./necklines";
-import { draft, type Pt } from "./fit";
+import { draft, outline, type Pt } from "./fit";
 import { insideRings, ringsOf } from "./stripes";
-import { choiceOf, clothOf, collarOf, cutFrom, regionsOf, setCollar, setNeckline, setTie, tieOf, tiePlacesOf, tiesOffered, wear } from "./outfit";
+import { choiceOf, clothOf, collarOf, cutFrom, regionsOf, setBelt, setCollar, setNeckline, setSkirt, setTie, tieOf, tiePlacesOf, tiesOffered, wear } from "./outfit";
 import type { BodyType, Fabric, FabricRegionId, Outfit, TieId, WornGarment } from "@/types";
 
 /*
-  The necktie and the bow tie belong on a shirt collar (round 25's fix, the
-  user's photos ShirtCollarTie and ShirtCollarBowtie): offered only with one —
-  her blouse, the shirt-dress, his shirt; never a thobe or a polo, never a
-  neckline with no collar — knotted round its band under the leaves, the
-  collar closed at the top; the necktie's knot snug between the points, which
-  lie over its sides, its blade straight down the middle to the waist; her
-  bow tie the belt bow, smaller, his a butterfly; lit flat and crisp; under a
-  jacket, in its opening.
+  The ties a collar draws, knotted under it (round 25's fixes, the user's
+  photos ShirtCollarTie, ShirtCollarBowtie, WomenRibbon and
+  femaleBowtieMenTie): a necktie only under a shirt collar — her blouse, the
+  shirt-dress, his shirt; never a thobe or a polo, never a neckline with no
+  collar — and a bow tie under one, or her ribbon bow under a Peter Pan; the
+  collar closed at the top; the necktie's knot snug between the points, its
+  blade straight down the middle to the middle of the waistband; her bow
+  under the collar, just below where its edges meet, both points over its
+  full round loops, its tails straight down side by side; his a butterfly;
+  lit flat and crisp; a new one in plain black; under a jacket, in its
+  opening.
 */
 
 const white = fabricById("fb-white")!;
@@ -63,15 +70,30 @@ const box = (ds: string[]) => {
   const pts = ds.flatMap(points);
   return { x0: Math.min(...pts.map(([x]) => x)), x1: Math.max(...pts.map(([x]) => x)), y0: Math.min(...pts.map(([, y]) => y)), y1: Math.max(...pts.map(([, y]) => y)) };
 };
+const lengthOf = (line: Pt[]) => line.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - line[i][0], p[1] - line[i][1]), 0);
+const mid = (band: readonly [number, number]) => (band[0] + band[1]) / 2;
 
-/** Each body's shirt collar: where its leaves meet, its drawing, its roll line, and the waist its necktie ends at. */
+/** Each body's shirt collar: where its leaves meet, its drawing, its roll line, and its band's button. */
 const COLLARS = {
-  female: { asset: "female-shirt-collar-front", meet: [SHIRT_COLLAR.meet[0], SHIRT_COLLAR.meet[1]] as Pt, roll: herStand(SHIRT_COLLAR.stand).top, waist: draft("female").waistY, band: 15, bandR: 2 },
-  male: { asset: "male-shirt-collar-front", meet: [MALE_SHIRT_COLLAR.meet[0], MALE_SHIRT_COLLAR.meet[1]] as Pt, roll: hisStand(MALE_SHIRT_COLLAR.stand).top, waist: draft("male").waistY, band: 20, bandR: 2.2 },
+  female: { asset: "female-shirt-collar-front", meet: [SHIRT_COLLAR.meet[0], SHIRT_COLLAR.meet[1]] as Pt, roll: herStand(SHIRT_COLLAR.stand).top, band: 15, bandR: 2 },
+  male: { asset: "male-shirt-collar-front", meet: [MALE_SHIRT_COLLAR.meet[0], MALE_SHIRT_COLLAR.meet[1]] as Pt, roll: hisStand(MALE_SHIRT_COLLAR.stand).top, band: 20, bandR: 2.2 },
 } as const;
-const TIED: GarmentChoice = { tieAt: "neck", tieBand: true };
-/** The collar's leaves, as it lays them again over a necktie's knot. */
+const TIED: GarmentChoice = { tieAt: "neck", tieUnder: true };
+/** The collar's leaves, as it lays them again over a tie knotted under them. */
 const leavesOf = (body: BodyType) => pathsOf(collarArt(COLLARS[body].asset)!.cut!({ ...TIED, tie: "necktie" }).collar!.over!.shape("#000"));
+const leafRings = (body: BodyType) => leavesOf(body).map(ringsOf);
+/** How each body's shirt collar fits a tie: a necktie to `to`, her bow under its leaves, his butterfly just under where they meet. */
+const fitOf = (body: BodyType, to = necktieTo(body, {})): TieFit => {
+  const meet = COLLARS[body].meet;
+  return { meet, to, bow: body === "female" ? ribbonUnder(leafRings("female"), meet) : butterflyAt(meet) };
+};
+/** A Peter Pan on a cut — a top's crew neck with none — where its rounded ends meet, its halves, and her bow under it. */
+const ppOf = (cut?: "round" | "scoop" | "boat") => {
+  const halves = peterPan(cut);
+  const meet: Pt = [halves.left[0][0], halves.left[0][1]];
+  const rings = [ringsOf(outline(halves.left)), ringsOf(outline(halves.right))];
+  return { meet, rings, bow: ribbonUnder(rings, meet) };
+};
 /** The roll line's row at a column — the collar's top edge, where its leaves turn: interpolated along it. */
 const rollAt = (body: BodyType, x: number) => {
   const roll = COLLARS[body].roll;
@@ -81,19 +103,39 @@ const rollAt = (body: BodyType, x: number) => {
   }
   return Math.min(...roll.map(([, y]) => y));
 };
+/**
+ * The share of a bow's loops that shows past a collar — measured here on its
+ * own, every half unit over each loop as drawn, not by `ribbonUnder`'s count.
+ */
+const showing = (loops: string[], collar: Pt[][][]) => {
+  let [all, seen] = [0, 0];
+  for (const d of loops) {
+    const ring = ringsOf(d);
+    const b = box([d]);
+    for (let y = b.y0 + 0.25; y < b.y1; y += 0.5)
+      for (let x = b.x0 + 0.25; x < b.x1; x += 0.5) {
+        if (!insideRings(ring, [x, y])) continue;
+        all++;
+        if (!collar.some((piece) => insideRings(piece, [x, y]))) seen++;
+      }
+  }
+  return seen / all;
+};
 
-describe("a necktie and a bow tie, on a shirt collar", () => {
-  it("names the bow tie «بابيون», and offers both on her blouse, the shirt-dress and his shirt, as they arrive", () => {
-    expect(tiesFor(["necktie", "bowtie"]).map((t) => t.name.ar)).toEqual(["ربطة عنق", "بابيون"]);
+describe("a necktie and a bow tie, knotted under a collar", () => {
+  it("names her bow tie «فيونكة» and his «بابيون», and offers both on her blouse, the shirt-dress and his shirt, as they arrive", () => {
+    expect(tiesFor(["necktie", "bowtie"], "female").map((t) => t.name.ar)).toEqual(["ربطة عنق", "فيونكة"]);
+    expect(tiesFor(["necktie", "bowtie"], "male").map((t) => t.name.ar)).toEqual(["ربطة عنق", "بابيون"]);
+    expect([tiesFor(["bowtie"], "female")[0].name.en, tiesFor(["bowtie"], "male")[0].name.en]).toEqual(["Bow", "Bow tie"]);
     for (const [id, neckline] of [["female-blouse"], ["female-dress", "female-collared-neckline"], ["male-shirt"]] as const) {
       const w = one(wearing([id], neckline), id);
-      expect(collarOf(w)?.ties, id).toEqual({ offered: ["necktie", "bowtie"], band: true });
+      expect(collarOf(w)?.ties, id).toEqual({ offered: ["necktie", "bowtie"], under: ["necktie", "bowtie"] });
       expect(tiesOffered(w), id).toEqual(["none", "necktie", "bowtie"]);
       for (const style of ["necktie", "bowtie"] as const) expect(tiePlacesOf(w, style), `${id} ${style}`).toEqual(["neck"]);
     }
   });
 
-  it("offers them only under a shirt collar, on those three — never a thobe or a polo, never a neckline with no collar; the scarf, the knot and the sailor's ties as they were", () => {
+  it("offers a necktie only under a shirt collar, and a bow tie under one or her Peter Pan, on those three — never a thobe or a polo, never a neckline with no collar; the scarf, the knot and the sailor's ties as they were", () => {
     for (const g of garments) {
       const cuts = necklinesForGarment(g).map((n) => n.id);
       for (const neckline of cuts.length ? cuts : [undefined])
@@ -106,34 +148,42 @@ describe("a necktie and a bow tie, on a shirt collar", () => {
           const collar = collarOf(w);
           const cut = neckline?.replace(/^female-|-neckline$/g, "");
           const centred = cut === undefined || (NECKLINE_TIED as readonly string[]).includes(cut);
-          const shirt = collar?.ties?.band === true;
+          const shirt = /-shirt-collar$/.test(collar?.id ?? "");
+          const pp = collar?.id === "female-peter-pan-collar";
           const tag = `${g.id} ${cut ?? "-"} ${collar?.id ?? "no collar"}`;
           const at = (style: TieId) => tiePlacesOf(w, style).includes("neck");
-          expect(at("bowtie"), tag).toBe(SHIRTED.includes(g.id) && shirt && centred);
+          expect(at("bowtie"), tag).toBe(SHIRTED.includes(g.id) && (shirt || pp) && centred);
           expect(at("necktie"), tag).toBe(centred && ((SHIRTED.includes(g.id) && shirt) || (g.id === "female-dress" && collar?.id === "female-sailor-collar")));
           /* the knot and the scarf: the dress's, at a neck with no collar, or over a sailor's or a Peter Pan's — as before */
-          const over = !collar || collar.id === "female-sailor-collar" || collar.id === "female-peter-pan-collar";
+          const over = !collar || collar.id === "female-sailor-collar" || pp;
           for (const style of ["knot", "scarf"] as const) expect(at(style), `${tag} ${style}`).toBe(g.id === "female-dress" && centred && cut !== undefined && over);
           if (!SHIRTED.includes(g.id)) expect(tiesOffered(w), tag).toEqual([]);
         }
     }
+    // her blouse in a Peter Pan: her bow alone; the dress's: the knot, her bow and the scarf
+    expect(tiesOffered(one(setCollar(wearing(["female-blouse"]), "female-blouse", "female-peter-pan-collar"), "female-blouse"))).toEqual(["none", "bowtie"]);
+    expect(tiesOffered(one(setCollar(wearing(["female-dress"], "female-round-neckline"), "female-dress", "female-peter-pan-collar"), "female-dress"))).toEqual(["none", "knot", "bowtie", "scarf"]);
     // a thobe and a polo in his shirt collar: still no tie
     for (const id of ["male-thobe", "male-polo"]) expect(tiesOffered(one(setCollar(wearing([id]), id, "male-shirt-collar"), id)), id).toEqual([]);
   });
 
   it("takes a tie off with a neckline or a collar that cannot take it, as any choice that no longer fits — and undo brings it back", () => {
-    const cases: [string, (w: WornGarment[]) => WornGarment[], string?][] = [
-      ["female-dress", (w) => setNeckline(w, "female-dress", "female-round-neckline"), "female-collared-neckline"],
-      ["female-blouse", (w) => setCollar(w, "female-blouse", "female-mandarin-collar")],
-      ["male-shirt", (w) => setCollar(w, "male-shirt", "male-mandarin-collar")],
+    const pp = (w: WornGarment[], id: string) => setCollar(w, id, "female-peter-pan-collar");
+    const cases: [string, (w: WornGarment[]) => WornGarment[], ShirtTieStyle[], (w: WornGarment[]) => WornGarment[]][] = [
+      ["female-dress", (w) => setNeckline(w, "female-dress", "female-round-neckline"), ["necktie", "bowtie"], (w) => setNeckline(w, "female-dress", "female-collared-neckline")],
+      ["female-blouse", (w) => setCollar(w, "female-blouse", "female-mandarin-collar"), ["necktie", "bowtie"], (w) => w],
+      ["male-shirt", (w) => setCollar(w, "male-shirt", "male-mandarin-collar"), ["necktie", "bowtie"], (w) => w],
+      /* her bow under a Peter Pan: off with a cut it does not follow, or a collar that takes no bow */
+      ["female-dress", (w) => setNeckline(w, "female-dress", "female-v-neckline"), ["bowtie"], (w) => pp(setNeckline(w, "female-dress", "female-round-neckline"), "female-dress")],
+      ["female-blouse", (w) => setCollar(w, "female-blouse", "female-mandarin-collar"), ["bowtie"], (w) => pp(w, "female-blouse")],
     ];
-    for (const [id, change, neckline] of cases)
-      for (const style of ["necktie", "bowtie"] as const) {
-        const tag = `${id} ${style}`;
-        let h: History<WornGarment[]> = { past: [], present: wearing([id], neckline), future: [] };
-        h = historyReducer(h, { type: "set", next: (w) => setTie(w, id, style) });
+    for (const [id, change, styles, dress] of cases)
+      for (const style of styles) {
+        const tag = `${id} ${style} ${collarOf(one(dress(wearing([id])), id))?.id}`;
+        let h: History<WornGarment[]> = { past: [], present: dress(wearing([id])), future: [] };
+        h = historyReducer(h, { type: "set", next: (w) => setTie(w, id, style, PLAIN_BLACK) });
         const tied = h.present;
-        expect([tieOf(one(tied, id)), one(tied, id).fabrics.tie], tag).toEqual([style, white.id]);
+        expect([tieOf(one(tied, id)), one(tied, id).fabrics.tie], tag).toEqual([style, PLAIN_BLACK]);
         h = historyReducer(h, { type: "set", next: change });
         const off = one(h.present, id);
         expect([off.tie, off.tieAt, off.fabrics.tie, tieOf(off) ?? "none"], tag).toEqual([undefined, undefined, undefined, "none"]);
@@ -144,9 +194,37 @@ describe("a necktie and a bow tie, on a shirt collar", () => {
         h = historyReducer(h, { type: "redo" });
         expect(one(h.present, id).tie, tag).toBeUndefined();
       }
+    // from a shirt collar to a Peter Pan her bow stays, a necktie goes
+    const blouse = (style: ShirtTieStyle) => one(setCollar(setTie(wearing(["female-blouse"]), "female-blouse", style, PLAIN_BLACK), "female-blouse", "female-peter-pan-collar"), "female-blouse");
+    expect(tieOf(blouse("bowtie"))).toBe("bowtie");
+    expect(blouse("necktie").tie).toBeUndefined();
   });
 
-  it("knots the necktie under the collar's points and the bow tie over them, over the placket's buttons, with the band's button under the knot", () => {
+  it("starts a new necktie or bow tie in plain black; one on keeps its cloth; the knot and the scarf as before", () => {
+    const plain = fabricById(PLAIN_BLACK)!;
+    expect([plain.motif, plain.colorName?.en]).toEqual(["solid", "Black"]);
+    for (const [ids, neckline] of [[["female-blouse", "female-skirt"]], [["female-dress"], "female-collared-neckline"], [["male-shirt", "male-trousers"]]] as const)
+      for (const style of ["necktie", "bowtie"] as const) {
+        const id = ids[0];
+        const tag = `${id} ${style}`;
+        const tied = setTie(wearing([...ids], neckline), id, style, PLAIN_BLACK);
+        expect(one(tied, id).fabrics.tie, tag).toBe(PLAIN_BLACK);
+        // the other style keeps the cloth the tie has: black, or what was chosen for it
+        const other = style === "necktie" ? "bowtie" : "necktie";
+        expect(one(setTie(tied, id, other, PLAIN_BLACK), id).fabrics.tie, tag).toBe(PLAIN_BLACK);
+        const red = tied.map((w) => (w.garmentId === id ? { ...w, fabrics: { ...w.fabrics, tie: "fb-red" } } : w));
+        expect(one(setTie(red, id, other, PLAIN_BLACK), id).fabrics.tie, tag).toBe("fb-red");
+      }
+    // a knot on a Peter Pan as before, in the collar's cloth; her bow after it, new, in black
+    let dress = setCollar(wearing(["female-dress"], "female-round-neckline"), "female-dress", "female-peter-pan-collar");
+    dress = setTie(dress, "female-dress", "knot", PLAIN_BLACK);
+    expect(one(dress, "female-dress").fabrics.tie).toBe(white.id);
+    expect(one(setTie(dress, "female-dress", "bowtie", PLAIN_BLACK), "female-dress").fabrics.tie).toBe(PLAIN_BLACK);
+    // with no black given, as before: the collar's cloth
+    expect(one(setTie(wearing(["female-blouse"]), "female-blouse", "necktie"), "female-blouse").fabrics.tie).toBe(white.id);
+  });
+
+  it("knots the necktie under the collar's points and her bow under them, his bow tie over them, over the placket's buttons, with the band's button under the knot", () => {
     const cases: [BodyType, string[], string?][] = [
       ["female", ["female-blouse", "female-skirt"]],
       ["female", ["female-dress"], "female-collared-neckline"],
@@ -156,18 +234,19 @@ describe("a necktie and a bow tie, on a shirt collar", () => {
       for (const style of ["necktie", "bowtie"] as const) {
         const tag = `${ids[0]} ${style}`;
         const c = COLLARS[body];
-        const worn = setTie(wearing(ids, neckline), ids[0], style);
-        expect(choiceOf(one(worn, ids[0])), tag).toMatchObject({ tie: style, tieAt: "neck", tieBand: true });
+        const worn = setTie(wearing(ids, neckline), ids[0], style, PLAIN_BLACK);
+        expect(choiceOf(one(worn, ids[0])), tag).toMatchObject({ tie: style, tieAt: "neck", tieUnder: true });
         const html = draw(body, worn);
-        const tie = shirtTie(style, body, c.meet, c.waist);
+        const tie = shirtTie(style, body, fitOf(body, body === "female" ? mid(SKIRT_BAND) : mid(HIS_TROUSERS_BAND)));
         const knot = html.indexOf(`d="${tie.knot}"`);
         expect(knot, tag).toBeGreaterThan(0);
         // the collar first, then the tie
         const [leaf] = leavesOf(body);
         expect(html.indexOf(`d="${leaf}"`), tag).toBeLessThan(knot);
-        // a necktie's knot under the leaves, laid again over it — only over the tie; a bow tie over them
+        // under the leaves, laid again over it — only over the tie: a necktie's knot, her bow; his bow tie over them
         const fall = html.indexOf(`-${ids[0]}-${collarOf(one(worn, ids[0]))!.id}-fall-`);
-        if (style === "necktie") {
+        if (style === "necktie" || body === "female") {
+          expect(tie.under, tag).toBe(true);
           expect(fall, tag).toBeGreaterThan(knot);
           expect(html.indexOf(`d="${leaf}"`, knot), tag).toBeGreaterThan(knot);
         } else expect(fall, tag).toBe(-1);
@@ -181,19 +260,32 @@ describe("a necktie and a bow tie, on a shirt collar", () => {
         expect(html.includes(button), tag).toBe(false);
         expect(draw(body, wearing(ids, neckline)).includes(button), `${tag}, untied`).toBe(true);
       }
-    // the order the stage keeps: the placket's buttons, then the tie, then the leaves over it
+    // her bow under a Peter Pan: drawn by the collar, its halves laid again over it
+    for (const [ids, neckline, cut] of [[["female-blouse", "female-skirt"], undefined, undefined], [["female-dress"], "female-round-neckline", "round"]] as const) {
+      const id = ids[0];
+      const worn = setTie(setCollar(wearing([...ids], neckline), id, "female-peter-pan-collar"), id, "bowtie", PLAIN_BLACK);
+      expect(choiceOf(one(worn, id)), id).toMatchObject({ tie: "bowtie", tieAt: "neck", tieUnder: true });
+      const html = draw("female", worn);
+      const { meet, bow } = ppOf(cut);
+      const knot = html.indexOf(`d="${shirtTie("bowtie", "female", { meet, to: 0, bow }).knot}"`);
+      expect(knot, id).toBeGreaterThan(0);
+      expect(html.indexOf(`-${id}-female-peter-pan-collar-fall-`), id).toBeGreaterThan(knot);
+      // and the dress draws no knot of its own there
+      expect((html.match(/-tie-/g) ?? []).length, id).toBeGreaterThan(0);
+    }
+    // the order the stage keeps: the placket's buttons, then the tie, then the collar over it
     expect(GARMENT_LAYERS.indexOf("trim")).toBeLessThan(GARMENT_LAYERS.indexOf("tie"));
     expect(GARMENT_LAYERS.indexOf("tie")).toBeLessThan(GARMENT_LAYERS.indexOf("fall"));
     expect(GARMENT_LAYERS.indexOf("belt")).toBeLessThan(GARMENT_LAYERS.indexOf("tie"));
-  });
+  }, 60_000);
 
   it("closes the collar at the top: the knot snug where the leaves meet, its sides under them, its band never showing", () => {
     for (const body of ["female", "male"] as const) {
       const c = COLLARS[body];
-      const leaves = leavesOf(body).map(ringsOf);
+      const leaves = leafRings(body);
       // the leaves still meet: each runs to the point where they meet
       for (const ring of leaves) expect(Math.min(...ring.flat().map(([x, y]) => Math.hypot(x - c.meet[0], y - c.meet[1]))), body).toBeLessThan(0.5);
-      const tie = shirtTie("necktie", body, c.meet, c.waist);
+      const tie = shirtTie("necktie", body, fitOf(body));
       const knot = box([tie.knot]);
       const [kt, kb, kh] = NECKTIE[body].knot;
       expect(knot.y0, body).toBeCloseTo(c.meet[1] + KNOT_DROP, 6);
@@ -206,29 +298,30 @@ describe("a necktie and a bow tie, on a shirt collar", () => {
       for (const side of [-1, 1]) expect(leaves.some((ring) => insideRings(ring, [c.meet[0] + (side * kt) / 2 - side, c.meet[1] + KNOT_DROP + 1])), `${body} ${side}`).toBe(true);
       // nothing of any tie above the roll line — no band round the neck
       for (const style of ["necktie", "bowtie"] as const)
-        for (const [x, y] of shirtTie(style, body, c.meet, c.waist).pieces.flatMap(points)) expect(y, `${body} ${style} at ${x.toFixed(1)}`).toBeGreaterThan(rollAt(body, x));
+        for (const [x, y] of shirtTie(style, body, fitOf(body)).pieces.flatMap(points)) expect(y, `${body} ${style} at ${x.toFixed(1)}`).toBeGreaterThan(rollAt(body, x));
       expect(kb, body).toBeLessThan(kt);
     }
   });
 
-  it("hangs the necktie straight down the middle, widening gently, to a point at the waist", () => {
+  it("hangs the necktie straight down the middle, widening gently, to a point", () => {
     for (const body of ["female", "male"] as const) {
       const c = COLLARS[body];
-      const tie = shirtTie("necktie", body, c.meet, c.waist);
+      const to = necktieTo(body, {});
+      const tie = shirtTie("necktie", body, fitOf(body, to));
       const blade = tie.parts.find((p) => p.id === "blade")!.pieces[0];
       const ring = ringsOf(blade);
       const pts = ring.flat();
-      // ends in a point at the waist, on the middle
+      // ends in a point on the middle
       const tip = pts.reduce((a, b) => (b[1] > a[1] ? b : a));
       /* the path is written to a tenth of a unit */
-      expect(Math.abs(tip[1] - c.waist), body).toBeLessThan(0.1);
+      expect(Math.abs(tip[1] - to), body).toBeLessThan(0.1);
       expect(Math.abs(tip[0] - c.meet[0]), body).toBeLessThan(0.1);
-      expect(tie.tip, body).toEqual([c.meet[0], c.waist]);
+      expect(tie.tip, body).toEqual([c.meet[0], to]);
       // straight down the middle: as wide either side of it at every row, and widening down to above the point
       const [, widest] = NECKTIE[body].blade;
       const knotFoot = box([tie.knot]).y1;
       let last = 0;
-      for (let y = knotFoot + 1; y < c.waist - widest / 2 - 1; y += 2) {
+      for (let y = knotFoot + 1; y < to - widest / 2 - 1; y += 2) {
         const xs: number[] = [];
         for (const r of ring)
           for (let i = 0; i < r.length; i++) {
@@ -240,63 +333,124 @@ describe("a necktie and a bow tie, on a shirt collar", () => {
         expect(rr - l, `${body} at ${y}`).toBeGreaterThanOrEqual(last - 0.05);
         last = rr - l;
       }
-      // gently: from about 2 cm under the knot to 5.5 cm for her, 7.4 for him — under 6° a side
+      // as wide as it was — 5.5 cm for her, 7.4 for him — and gently: under 6° a side
       expect(widest * CM, body).toBeGreaterThan(body === "female" ? 5 : 7);
       expect(widest * CM, body).toBeLessThan(body === "female" ? 6 : 8);
       const [under] = NECKTIE[body].blade;
-      expect((Math.atan2((widest - under) / 2, c.waist - widest / 2 - knotFoot) * 180) / Math.PI, body).toBeLessThan(6);
+      expect((Math.atan2((widest - under) / 2, to - widest / 2 - knotFoot) * 180) / Math.PI, body).toBeLessThan(6);
     }
   });
 
-  it("ties her bow tie as the round 24 bow, smaller: right under where the points meet, loops flat sideways, tails 15–20 cm in a slight upside-down V, cut on a slant", () => {
-    const c = COLLARS.female;
-    const tie = shirtTie("bowtie", "female", c.meet, c.waist);
-    const knot = box([tie.knot]);
-    expect(knot.y0 - c.meet[1], "right under where the points meet").toBeGreaterThanOrEqual(0);
-    expect(knot.y0 - c.meet[1]).toBeLessThan(3);
-    expect((knot.x0 + knot.x1) / 2).toBeCloseTo(c.meet[0], 3);
-    // a small knot, about 1.8 cm
-    expect((knot.x1 - knot.x0) * CM).toBeLessThan(2.2);
-    // two loops, flat and sideways: each far wider than it is tall, reaching about 6 cm
-    const loops = tie.parts.find((p) => p.id === "loops")!.pieces.map((d) => box([d]));
-    for (const l of loops) expect(l.x1 - l.x0).toBeGreaterThan(1.75 * (l.y1 - l.y0));
-    expect(tie.reach! * CM).toBeGreaterThan(5.5);
-    expect(tie.reach! * CM).toBeLessThan(6.5);
-    // two tails, 15–20 cm along them, falling in a slight upside-down V: one each side, 5–15° from upright
-    const lines = tie.tailLines!;
-    expect(lines.length).toBe(2);
-    const sides = new Set<number>();
-    for (const line of lines) {
-      let length = 0;
-      for (let i = 1; i < line.length; i++) length += Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1]);
-      expect(length * CM).toBeGreaterThan(15);
-      expect(length * CM).toBeLessThan(20);
-      const [a, b] = [line[0], line[line.length - 1]];
-      const angle = (Math.atan2(Math.abs(b[0] - a[0]), b[1] - a[1]) * 180) / Math.PI;
-      expect(angle).toBeGreaterThan(5);
-      expect(angle).toBeLessThan(15);
-      sides.add(Math.sign(b[0] - c.meet[0]));
+  it("ends the necktie at the middle of the waistband it is worn over — the skirt's, the trousers' — or of the dress's belt, or at its waist seam", () => {
+    // the waistbands, as each is drawn: its band's own top and bottom rows
+    const rows = (d: string) => [box([d]).y0, box([d]).y1];
+    for (const [band, drawn] of [[SKIRT_BAND, skirtFor().band], [HER_TROUSERS_BAND, herLegs().band], [HIS_TROUSERS_BAND, hisLegs().band]] as const)
+      rows(drawn).forEach((y, i) => expect(Math.abs(y - band[i]), `${band} drawn ${rows(drawn)}`).toBeLessThan(0.6));
+    const waist = draft("female").waistY;
+    const cases: [string, BodyType, string[], (w: WornGarment[]) => WornGarment[], number, string?][] = [
+      ["blouse over a skirt", "female", ["female-blouse", "female-skirt"], (w) => w, mid(SKIRT_BAND)],
+      ["blouse over trousers", "female", ["female-blouse", "female-trousers"], (w) => w, mid(HER_TROUSERS_BAND)],
+      ["blouse alone", "female", ["female-blouse"], (w) => w, mid(SKIRT_BAND)],
+      ["shirt over trousers", "male", ["male-shirt", "male-trousers"], (w) => w, mid(HIS_TROUSERS_BAND)],
+      ["shirt alone", "male", ["male-shirt"], (w) => w, mid(HIS_TROUSERS_BAND)],
+      ["shirt-dress", "female", ["female-dress"], (w) => w, waist, "female-collared-neckline"],
+      ["shirt-dress, belted", "female", ["female-dress"], (w) => setBelt(w, "female-dress", "self"), waist - 6, "female-collared-neckline"],
+      ["shirt-dress, dropped, leather belt", "female", ["female-dress"], (w) => setBelt(setSkirt(w, "female-dress", { shape: "flared", length: "midi", waist: "dropped" }), "female-dress", "brown"), waist + 70 - 6, "female-collared-neckline"],
+      ["shirt-dress, empire", "female", ["female-dress"], (w) => setSkirt(w, "female-dress", { shape: "flared", length: "midi", waist: "empire" }), waist - 36, "female-collared-neckline"],
+    ];
+    for (const [tag, body, ids, dress, to, neckline] of cases) {
+      const worn = setTie(dress(wearing(ids, neckline)), ids[0], "necktie", PLAIN_BLACK);
+      const tie = shirtTie("necktie", body, fitOf(body, to));
+      const blade = tie.parts.find((p) => p.id === "blade")!.pieces[0];
+      expect(draw(body, worn).includes(`d="${blade}"`), `${tag}: its point at ${to}`).toBe(true);
+      // lower than the waist it used to stop at, over a skirt or trousers
+      if (ids.length > 1) expect(to, tag).toBeGreaterThan(draft(body).waistY + 15);
     }
-    expect([...sides].sort()).toEqual([-1, 1]);
-    // cut on a slant — each tail's lowest point on its outer side
-    expect(RIBBON_BOW.ends).toBe("slant");
-    tie.parts
-      .filter((p) => p.id.startsWith("tail"))
-      .forEach((p, i) => {
-        const pts = points(p.pieces[0]);
-        const low = pts.reduce((a, b) => (b[1] > a[1] ? b : a));
-        const end = lines[i][lines[i].length - 1];
-        expect(Math.sign(low[0] - end[0]), `tail ${i}`).toBe(Math.sign(end[0] - c.meet[0]));
+  }, 60_000);
+
+  it("ties her bow under the collar, just below where its edges meet: both points over its full round loops, its tails straight down side by side — on the blouse, the shirt-dress and her Peter Pan", () => {
+    const shirt = { meet: COLLARS.female.meet, rings: leafRings("female"), bow: fitOf("female").bow, tag: "shirt collar" };
+    const pps = (["top", "round", "scoop", "boat"] as const).map((cut) => ({ ...ppOf(cut === "top" ? undefined : cut), tag: `Peter Pan ${cut}` }));
+    for (const { meet, rings, bow, tag } of [shirt, ...pps]) {
+      const tie = shirtTie("bowtie", "female", { meet, to: 0, bow });
+      const knot = box([tie.knot]);
+      const loops = tie.parts.find((p) => p.id === "loops")!.pieces;
+      // under the collar, its knot on the middle just below where its edges meet, above where the collar ends below it
+      expect(tie.under, tag).toBe(true);
+      /* the path is written to a tenth of a unit */
+      expect(Math.abs((knot.x0 + knot.x1) / 2 - meet[0]), tag).toBeLessThan(0.15);
+      expect(knot.y0, tag).toBeGreaterThan(meet[1] + KNOT_DROP);
+      const lowest = (ring: Pt[][]) => Math.max(...ring.flat().filter(([x]) => Math.abs(x - meet[0]) < RIBBON_BOW.span / 2).map(([, y]) => y));
+      for (const ring of rings) expect(knot.y0, tag).toBeLessThan(lowest(ring));
+      // both points over the loops: each loop partly under the collar — and most of the loops showing, four fifths
+      for (const d of loops) expect(showing([d], rings), tag).toBeLessThan(0.97);
+      expect(showing(loops, rings), tag).toBeGreaterThan(0.78);
+      // the loops: 10–12 cm across, each 4–5 cm tall and about as long as it is tall — full and round, not a flat strip
+      const all = box(loops);
+      expect((all.x1 - all.x0) * CM, tag).toBeGreaterThan(10);
+      expect((all.x1 - all.x0) * CM, tag).toBeLessThan(12);
+      for (const d of loops) {
+        const b = box([d]);
+        expect((b.y1 - b.y0) * CM, tag).toBeGreaterThan(4);
+        expect((b.y1 - b.y0) * CM, tag).toBeLessThan(5);
+        expect(b.y1 - b.y0, tag).toBeGreaterThan(0.75 * (b.x1 - b.x0));
+      }
+      // the knot small, a little narrower than the ribbon
+      expect(knot.x1 - knot.x0, tag).toBeLessThan(RIBBON_BOW.width);
+      expect(knot.x1 - knot.x0, tag).toBeGreaterThan(0.75 * RIBBON_BOW.width);
+      // two tails, one each side, never crossing; straight down, under 3°; slightly apart, 0.5–2 cm; 15–20 cm; the ribbon's width, 2.5–3 cm; cut on a slant
+      const lines = tie.tailLines!;
+      expect(lines.length, tag).toBe(2);
+      const tails = tie.parts.filter((p) => p.id.startsWith("tail")).map((p) => p.pieces[0]);
+      const [left, right] = tails.map((d) => box([d]));
+      expect(left.x1, tag).toBeLessThan(meet[0]);
+      expect(right.x0, tag).toBeGreaterThan(meet[0]);
+      expect((right.x0 - left.x1) * CM, tag).toBeGreaterThan(0.5);
+      expect((right.x0 - left.x1) * CM, tag).toBeLessThan(2);
+      lines.forEach((line, i) => {
+        const [a, b] = [line[0], line[line.length - 1]];
+        expect((Math.atan2(Math.abs(b[0] - a[0]), b[1] - a[1]) * 180) / Math.PI, `${tag} tail ${i}`).toBeLessThan(3);
+        expect(lengthOf(line) * CM, `${tag} tail ${i}`).toBeGreaterThan(15);
+        expect(lengthOf(line) * CM, `${tag} tail ${i}`).toBeLessThan(20);
+        // across it halfway down: its two edges where the row through its middle crosses it
+        const [mx, my] = line[Math.floor(line.length / 2)];
+        const xs = ringsOf(tails[i]).flatMap((r) =>
+          r.flatMap((p, k) => {
+            const q = r[(k + 1) % r.length];
+            return (p[1] - my) * (q[1] - my) <= 0 && p[1] !== q[1] ? [p[0] + ((my - p[1]) * (q[0] - p[0])) / (q[1] - p[1])] : [];
+          })
+        );
+        const across = Math.max(...xs) - Math.min(...xs);
+        expect(Math.abs((Math.max(...xs) + Math.min(...xs)) / 2 - mx), `${tag} tail ${i}`).toBeLessThan(0.5);
+        expect(across * CM, `${tag} tail ${i}`).toBeGreaterThan(2.5);
+        expect(across * CM, `${tag} tail ${i}`).toBeLessThan(3);
+        // cut on a slant: its lowest point on its outer side, a fifth of the ribbon's width below its inner corner
+        const low = points(tails[i]).reduce((p, q) => (q[1] > p[1] ? q : p));
+        expect(Math.sign(low[0] - b[0]), `${tag} tail ${i}`).toBe(Math.sign(b[0] - meet[0]));
+        /* its inner corner, read well inside its inner half — the cut's own middle sits on the line */
+        const innerLow = Math.max(...points(tails[i]).filter(([x]) => -Math.sign(b[0] - meet[0]) * (x - b[0]) > 0.3 * RIBBON_BOW.width).map(([, y]) => y));
+        expect(low[1] - innerLow, `${tag} tail ${i}`).toBeGreaterThan(0.2 * RIBBON_BOW.width);
       });
+      // nothing of it above where the collar's edges meet
+      for (const [, y] of tie.pieces.flatMap(points)) expect(y, tag).toBeGreaterThan(meet[1]);
+    }
+    // on the shirt collar its leaves' points lie over its loops
+    const tie = shirtTie("bowtie", "female", fitOf("female"));
+    const loops = tie.parts.find((p) => p.id === "loops")!.pieces;
+    for (const ring of leafRings("female")) {
+      const tip = ring.flat().reduce((a, b) => (b[1] > a[1] ? b : a));
+      expect(loops.some((d) => insideRings(ringsOf(d), [tip[0], tip[1] - 0.5])), `point ${tip}`).toBe(true);
+    }
   });
 
   it("ties his bow tie as a classic small butterfly with no tails, right under where the points meet", () => {
     const c = COLLARS.male;
-    const tie = shirtTie("bowtie", "male", c.meet, c.waist);
+    const tie = shirtTie("bowtie", "male", fitOf("male"));
     const all = box(tie.pieces);
     // no tails: nothing below its wings
     expect(all.y1).toBeLessThanOrEqual(tie.at[1] + BUTTERFLY.wing + 0.5);
     expect(tie.tailLines).toBeUndefined();
+    expect(tie.under).toBe(false);
     // about 11 cm across and 5 cm deep
     expect((all.x1 - all.x0) * CM).toBeGreaterThan(10.5);
     expect((all.x1 - all.x0) * CM).toBeLessThan(11.6);
@@ -311,31 +465,38 @@ describe("a necktie and a bow tie, on a shirt collar", () => {
 
   it("lights each tie flat and crisp, as the round 24 bows — one flat tone, crisp edges, a narrow sharp shadow, no blur, no relief — in a cloth of its own", () => {
     const uid = (name: string) => `u-${name}`;
-    for (const body of ["female", "male"] as const)
-      for (const style of ["necktie", "bowtie"] as ShirtTieStyle[]) {
-        const tag = `${body} ${style}`;
-        const art = collarArt(COLLARS[body].asset)!.cut!({ ...TIED, tie: style }).tie!;
-        expect(art.shadow, tag).toEqual(BOW_SHADOW);
-        expect(art.surface, tag).toBeUndefined();
-        const html = renderToStaticMarkup(
-          <svg>
-            {art.defs!(uid)}
-            {art.shading!(uid)}
-            {art.light!(uid)}
-          </svg>
-        );
-        expect(html, tag).toContain(`fill="${FLAT_LIT}"`);
-        // every blur it is drawn through — its folds' and its edge light's: none softer than a fold's soft turn, 2 units
-        const used = new Set([...html.matchAll(/filter="url\(#([^)]+)\)"/g)].map((m) => m[1]));
-        expect(used.size, tag).toBeGreaterThan(0);
-        for (const id of used) {
-          const def = new RegExp(`<filter id="${id}"[^>]*>[\\s\\S]*?stdDeviation="([\\d.]+)"`).exec(html);
-          expect(def, `${tag} ${id}`).not.toBeNull();
-          expect(Number(def![1]), `${tag} ${id}`).toBeLessThanOrEqual(2);
-        }
+    const arts = [
+      ...(["female", "male"] as const).flatMap((body) =>
+        (["necktie", "bowtie"] as ShirtTieStyle[]).map((style) => ({ tag: `${body} ${style}`, art: collarArt(COLLARS[body].asset)!.cut!({ ...TIED, tie: style }).tie! }))
+      ),
+      ...([undefined, "female-round-neckline"] as const).map((neckline) => ({
+        tag: `her bow under a Peter Pan ${neckline ?? ""}`,
+        art: collarArt("female-peter-pan-collar-front")!.cut!({ ...TIED, tie: "bowtie", ...(neckline ? { neckline: neckline.replace(/^female-|-neckline$/g, "") } : {}) }).tie!,
+      })),
+    ];
+    for (const { tag, art } of arts) {
+      expect(art, tag).toBeDefined();
+      expect(art.shadow, tag).toEqual(BOW_SHADOW);
+      expect(art.surface, tag).toBeUndefined();
+      const html = renderToStaticMarkup(
+        <svg>
+          {art.defs!(uid)}
+          {art.shading!(uid)}
+          {art.light!(uid)}
+        </svg>
+      );
+      expect(html, tag).toContain(`fill="${FLAT_LIT}"`);
+      // every blur it is drawn through — its folds' and its edge light's: none softer than a fold's soft turn, 2 units
+      const used = new Set([...html.matchAll(/filter="url\(#([^)]+)\)"/g)].map((m) => m[1]));
+      expect(used.size, tag).toBeGreaterThan(0);
+      for (const id of used) {
+        const def = new RegExp(`<filter id="${id}"[^>]*>[\\s\\S]*?stdDeviation="([\\d.]+)"`).exec(html);
+        expect(def, `${tag} ${id}`).not.toBeNull();
+        expect(Number(def![1]), `${tag} ${id}`).toBeLessThanOrEqual(2);
       }
+    }
     // its own cloth: a region of the garment, drawn in whatever is chosen for it
-    const worn = setTie(wearing(["male-shirt", "male-trousers"]), "male-shirt", "necktie");
+    const worn = setTie(wearing(["male-shirt", "male-trousers"]), "male-shirt", "necktie", PLAIN_BLACK);
     expect(regionsOf(garmentById("male-shirt")!, one(worn, "male-shirt"))).toContain("tie");
     expect(draw("male", worn)).toContain(`-male-shirt-male-shirt-collar-tie-`);
   });
@@ -345,10 +506,9 @@ describe("a necktie and a bow tie, on a shirt collar", () => {
       ["male", ["male-shirt", "male-trousers", "male-jacket"]],
       ["female", ["female-blouse", "female-skirt", "female-jacket"]],
     ] as const) {
-      const c = COLLARS[body];
-      const worn = setTie(wearing([...ids]), ids[0], "necktie");
+      const worn = setTie(wearing([...ids]), ids[0], "necktie", PLAIN_BLACK);
       const html = draw(body, worn);
-      const knot = html.indexOf(`d="${shirtTie("necktie", body, c.meet, c.waist).knot}"`);
+      const knot = html.indexOf(`d="${shirtTie("necktie", body, fitOf(body)).knot}"`);
       expect(knot, body).toBeGreaterThan(0);
       // inside the group the jacket's mask holds, still open where the tie is drawn
       const held = html.search(new RegExp(`<g mask="url\\(#[^)"]*-inside-${ids[2]}\\)">`));
@@ -359,5 +519,5 @@ describe("a necktie and a bow tie, on a shirt collar", () => {
       // and the jacket's own cloth after it, over it
       expect(html.indexOf(`-${ids[2]}-`, knot), body).toBeGreaterThan(knot);
     }
-  });
+  }, 60_000);
 });

@@ -1884,11 +1884,12 @@ export function dressPoints(choice: GarmentChoice): EdgePoint[] {
 
 /**
  * Where a choice's tie is knotted, if it wears one the dress draws: at its
- * neck, or on its belt — see `dressPoints`. None for a tie round a shirt
- * collar's band, which the collar draws: see `GarmentChoice.tieBand`.
+ * neck, or on its belt — see `dressPoints`. None for a tie knotted under
+ * its collar — round a shirt collar's band, her bow under a Peter Pan —
+ * which the collar draws: see `GarmentChoice.tieUnder`.
  */
 export function tiePoint(choice: GarmentChoice): Pt | null {
-  if (!choice.tie || choice.tieBand) return null;
+  if (!choice.tie || choice.tieUnder) return null;
   const kind = choice.tieAt ?? "neck";
   return dressPoints(choice).find((p) => p.kind === kind)?.at ?? null;
 }

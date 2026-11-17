@@ -35,7 +35,7 @@ import {
   sleeveTypeName,
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
-import { contrastingPlain, fabrics, fabricById } from "@/lib/data/fabrics";
+import { PLAIN_BLACK, contrastingPlain, fabrics, fabricById } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE, skinToneById, skinTones } from "@/lib/data/skinTones";
 import { regionLabel } from "@/lib/data/fabricRegions";
 import { BODY_CANVAS, bodyTypes } from "@/lib/mannequin/bodies";
@@ -469,14 +469,15 @@ export function FabricVisualizer() {
   };
 
   /**
-   * Tie the garment being cut, or untie it. The tie arrives in the stripes'
-   * cloth when it wears stripes, otherwise in the cloth of what it is knotted
-   * on — see `setTie` — and the picker moves to it, to cut it from another if
-   * wanted.
+   * Tie the garment being cut, or untie it. A new necktie or bow tie arrives
+   * in plain black — in the shirt's own cloth it was white on white; any
+   * other tie in the stripes' cloth when it wears stripes, otherwise in the
+   * cloth of what it is knotted on — see `setTie` — and the picker moves to
+   * it, to cut it from another if wanted.
    */
   const chooseTie = (tie: TieId) => {
     if (!cuttingGarment || !cuttingEntry) return;
-    setOutfit((o) => ({ ...o, worn: setTie(o.worn, cuttingGarment.id, tie) }));
+    setOutfit((o) => ({ ...o, worn: setTie(o.worn, cuttingGarment.id, tie, PLAIN_BLACK) }));
     if (tie === "none") {
       if (cutting.region === "tie") setCutting({ garmentId: cuttingGarment.id, region: collarOf(cuttingEntry.worn) ? "collar" : cuttingGarment.fabricRegions[0] });
     } else setCutting({ garmentId: cuttingGarment.id, region: "tie" });
@@ -889,7 +890,7 @@ export function FabricVisualizer() {
   const stripeChoices = stripeEdges.length > 0 ? stripesFor(cuttingGarment?.stripes) : [];
   const wornStripes = cuttingEntry ? stripesOf(cuttingEntry.worn) : undefined;
   const wornStripesOn = cuttingEntry ? stripesOnOf(cuttingEntry.worn) : [];
-  const tieChoices = cuttingEntry ? tiesFor(tiesOffered(cuttingEntry.worn)) : [];
+  const tieChoices = cuttingEntry && cuttingGarment ? tiesFor(tiesOffered(cuttingEntry.worn), cuttingGarment.gender) : [];
   const wornTie = cuttingEntry ? tieOf(cuttingEntry.worn) : undefined;
   const tiePlaces = cuttingEntry && wornTie && wornTie !== "none" ? tiePlacesFor(tiePlacesOf(cuttingEntry.worn, wornTie)) : [];
   const wornTieAt = cuttingEntry ? tieAtOf(cuttingEntry.worn) : undefined;

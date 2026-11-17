@@ -202,11 +202,17 @@ export interface GarmentChoice {
   tie?: Exclude<TieId, "none">;
   tieAt?: TieAtId;
   /**
-   * Its tie is knotted round its collar's band, under the leaves — a shirt
-   * collar's necktie or bow tie — and so the collar draws it, from where its
-   * leaves meet: see `Collar.ties`.
+   * Its tie is knotted under its collar — round a shirt collar's band, under
+   * the leaves: its necktie or bow tie; or her ribbon bow under a Peter Pan —
+   * and so the collar draws it, from where its edges meet: see `Collar.ties`.
    */
-  tieBand?: true;
+  tieUnder?: true;
+  /**
+   * The waistband of what it is worn over, top row and bottom — a skirt's,
+   * trousers' — where a necktie worn with it reaches: the stage's to add,
+   * from the garment under it. See `necktieTo`.
+   */
+  waistband?: readonly [top: number, bottom: number];
   /**
    * The hem of a jacket it is worn under, if it is: it comes out from under it
    * no wider than the jacket — see `tucked` in `garments/fit.ts`.
@@ -306,6 +312,11 @@ export interface GarmentArt {
    * `coverOf` and `GarmentChoice.underTop`.
    */
   cover?: (choice: GarmentChoice) => Tuck;
+  /**
+   * For a bottom: its waistband, top row and bottom — where a necktie worn
+   * over it reaches: see `GarmentChoice.waistband`.
+   */
+  waistband?: readonly [top: number, bottom: number];
   /**
    * How many buttons close a collar's band on this garment, where the band
    * shows: two on a thobe, one on a shirt. The collar is shared between

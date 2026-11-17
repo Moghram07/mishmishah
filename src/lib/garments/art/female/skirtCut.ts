@@ -30,6 +30,16 @@ export const FINISH: SkirtFinish = {
   wave: { at: FOLD_AT, depth: 2.2 },
 };
 
+/**
+ * Its waistband, top row and bottom: the band cut from its own edge, from its
+ * top down — the same in every style. Where a necktie worn over it reaches:
+ * see `necktieTo`.
+ */
+export const WAISTBAND: readonly [top: number, bottom: number] = [
+  draft("female").waistY + FINISH.rise,
+  draft("female").waistY + FINISH.rise + (FINISH.band ?? 0),
+];
+
 /** The skirt it arrives as. Kept in step with its record by a test. */
 export const DEFAULT_SKIRT: SkirtChoice = { shape: "flared", length: "midi" };
 

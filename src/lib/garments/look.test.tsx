@@ -3,7 +3,9 @@ import { describe, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
-import { contrastingPlain, fabrics } from "@/lib/data/fabrics";
+import { PLAIN_BLACK, contrastingPlain, fabrics } from "@/lib/data/fabrics";
+import { WAISTBAND as SKIRT_BAND } from "@/lib/garments/art/female/skirtCut";
+import { WAISTBAND as HIS_TROUSERS_BAND } from "@/lib/garments/art/male/trousersCut";
 import { garmentById } from "@/lib/data/garments";
 import { collarOf, collarsFitting, cutFrom, setBelt, setBowAt, setButtons, setCollar, setFront, setLeg, setNeckline, setSkirt, setSleeve, setStripeEdges, setStripes, setTie, setTieAt, setButtonRows, regionsOf, skirtOf, wear } from "@/lib/garments/outfit";
 import { ROBE_TYPES, SLEEVE_KINDS, SLEEVE_TYPES } from "@/lib/garments/sleeves";
@@ -5170,6 +5172,111 @@ describe("a necktie and a bow tie on a shirt collar, light and dark", () => {
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
       writeFileSync(`.preview/wardrobe/shirtties-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    }, 120_000);
+  }
+});
+
+describe("her bow under the collar, and the necktie to the waistband, light and dark", () => {
+  /*
+    Round 25's third fix (the user's photos WomenRibbon and femaleBowtieMenTie):
+    her bow under the collar, just below where its edges meet, both points
+    over its full round loops, its tails straight down side by side — on the
+    blouse, the shirt-dress and the Peter Pan; and a necktie on his shirt and
+    her blouse reaching the middle of the waistband under it, which the shirt
+    hides — drawn on the sheet as two dashed lines, the band's top and bottom
+    rows. Each at 1× and 2.5×; a new tie starts in plain black.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Look = { caption: string; body: BodyType; wear: { id: string; cloth: string }[]; neckline?: string; collar?: string; tie: TieId; band?: readonly [number, number]; zoom: number; focus: [number, number] };
+  const stage = (look: Look) => {
+    let worn: WornGarment[] = [];
+    for (const { id, cloth } of look.wear) worn = wear(worn, cutFrom(garmentById(id)!, cloth));
+    const main = look.wear[0].id;
+    if (look.neckline) worn = setNeckline(worn, main, look.neckline);
+    if (look.collar) worn = setCollar(worn, main, look.collar);
+    worn = setTie(worn, main, look.tie, PLAIN_BLACK);
+    const cloths: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const w of worn) {
+      const g = garmentById(w.garmentId)!;
+      const cloth = look.wear.find((x) => x.id === w.garmentId)!.cloth;
+      const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+      for (const r of regionsOf(g, w)) regions[r] = f(r === "tie" ? (w.fabrics.tie ?? PLAIN_BLACK) : cloth);
+      cloths[g.id] = regions;
+    }
+    const outfit: Outfit = { bodyType: look.body, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={cloths} zoom={look.zoom} focus={look.focus} />;
+  };
+  /* the waistband under the shirt, for the sheet only: its top and bottom rows, dashed across the waist */
+  const guide = (look: Look) =>
+    look.band
+      ? `<g fill="none" stroke="#ff6a2c" stroke-width="${1.1 / look.zoom}" stroke-dasharray="${4 / look.zoom} ${3 / look.zoom}">` +
+        look.band.map((y) => `<line x1="236" x2="364" y1="${y}" y2="${y}"/>`).join("") +
+        "</g>"
+      : "";
+  const WHITE = "fb-white";
+  const BLACK = "fb-black-crepe";
+  const BLOUSE = [{ id: "female-blouse", cloth: WHITE }, { id: "female-skirt", cloth: BLACK }];
+  const DRESS = [{ id: "female-dress", cloth: WHITE }];
+  const SHIRT = [{ id: "male-shirt", cloth: WHITE }, { id: "male-trousers", cloth: BLACK }];
+  const pair = (caption: string, look: Omit<Look, "caption" | "zoom" | "focus">, near: [number, number]): Look[] => [
+    { caption: `${caption}, 1×`, ...look, zoom: 1, focus: [300, 500] },
+    { caption: `${caption}, 2.5×`, ...look, zoom: 2.5, focus: near },
+  ];
+  const SHEETS: Record<string, Look[][]> = {
+    /* her bow, black on white: on the blouse and the shirt-dress, under the shirt collar; on the dress, under a Peter Pan */
+    bow: [
+      [
+        ...pair("blouse, black bow", { body: "female", wear: BLOUSE, tie: "bowtie" }, [298, 232]),
+        ...pair("shirt-dress, black bow", { body: "female", wear: DRESS, neckline: "female-collared-neckline", tie: "bowtie" }, [298, 232]),
+      ],
+      [...pair("Peter Pan, black bow", { body: "female", wear: DRESS, neckline: "female-round-neckline", collar: "female-peter-pan-collar", tie: "bowtie" }, [298, 262])],
+    ],
+    /* a necktie to the middle of the waistband under the shirt — dashed: the band's top and bottom rows */
+    necktie: [
+      [
+        ...pair("his shirt, necktie — dashed: the trousers' waistband", { body: "male", wear: SHIRT, tie: "necktie", band: HIS_TROUSERS_BAND }, [301, 300]),
+        ...pair("her blouse, necktie — dashed: the skirt's waistband", { body: "female", wear: BLOUSE, tie: "necktie", band: SKIRT_BAND }, [298, 282]),
+      ],
+    ],
+  };
+  for (const [name, rows] of Object.entries(SHEETS)) {
+    it.each(["light", "dark"] as const)(`writes .preview/wardrobe/bowtie-${name}-%s.html`, (theme) => {
+      const t = THEMES[theme];
+      /* every stage in one pass, so no two share an id; then each one's guide laid in, last, inside its own drawing */
+      const drawn = renderToStaticMarkup(
+        <>
+          {rows.map((row, r) => (
+            <div key={r} className="row">
+              {row.map((look) => (
+                <figure key={look.caption}>
+                  {stage(look)}
+                  <figcaption>{look.caption}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ))}
+        </>
+      );
+      const looks = rows.flat();
+      const parts = drawn.split("<figure>");
+      const html =
+        parts[0] +
+        parts
+          .slice(1)
+          .map((fig, i) => {
+            const at = fig.lastIndexOf("</svg>");
+            return "<figure>" + fig.slice(0, at) + guide(looks[i]) + fig.slice(at);
+          })
+          .join("");
+      const css =
+        `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+        `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+        `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+        `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+      writeFileSync(`.preview/wardrobe/bowtie-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });

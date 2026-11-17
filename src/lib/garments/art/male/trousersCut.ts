@@ -43,6 +43,12 @@ export const SPEC: LegsSpec = {
   pocket: 16,
 };
 
+/** Their waistband, top row and bottom — the same in every leg. Where a necktie worn over them reaches: see `necktieTo`. */
+export const WAISTBAND: readonly [top: number, bottom: number] = [
+  draft("male").waistY + SPEC.rise,
+  draft("male").waistY + SPEC.rise + SPEC.band,
+];
+
 /** The leg they arrive in. Kept in step with their record by a test. */
 export const DEFAULT_LEG: LegId = "straight";
 
