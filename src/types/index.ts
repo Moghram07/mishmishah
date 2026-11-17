@@ -765,6 +765,13 @@ export interface Collar {
    * is its own tie, and a standing collar covers the neck.
    */
   ties?: { offered: Exclude<TieId, "none">[]; under?: Exclude<TieId, "none">[] };
+  /**
+   * The garments a shirt collar wraps the neck on, in a V — her blouse and
+   * the shirt-dress, his shirt; on any other garment it is worn on (his thobe,
+   * his polo, her t-shirt) it lies as it always has, its fold level across the
+   * throat: the user's call. See `GarmentChoice.wraps`.
+   */
+  wrapsOn?: readonly string[];
 }
 
 /**

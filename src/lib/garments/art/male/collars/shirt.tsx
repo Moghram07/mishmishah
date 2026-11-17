@@ -1,8 +1,8 @@
 import { arc, foldBack, foldRoll, roundedBack, type Point } from "@/lib/garments/collar";
-import { line, outline, reverse, type Pt } from "@/lib/garments/fit";
+import { line, outline, reverse, run, type Pt } from "@/lib/garments/fit";
 import { foldDefs, foldLights, foldShadows, type Fold } from "@/lib/garments/folds";
 import { collarFold, collarTone } from "../../collarLight";
-import { COLLAR_AXIS, reflect, standBehindEdges, standFrontEdges } from "../yoke";
+import { COLLAR_AXIS, NECK_BASE_SEAM, reflect, standBehind, standBehindEdges, standFront, standFrontEdges } from "../yoke";
 import { behindBandArt } from "../../behindBand";
 import { litButtons } from "../../buttons";
 import { seamFolds, sleeveFoldDefs } from "../../sleeveFolds";
@@ -93,57 +93,101 @@ const BAND_SEAM = seamFolds([BAND_FOOT]);
 /** Buttons on the band, one above the other in the V between the points, from just below where the halves meet. */
 const BUTTON_ROWS: Record<number, number[]> = { 1: [4], 2: [2.4, 7.6] };
 
-/** The collar: its band, and its two leaves over it. */
-const COLLAR: RegionArt = {
-  focus: [300, 182],
-  outline: "soft",
-  /**
-   * Cut from further along the roll than the shirt it is sewn to, so a
-   * stripe stays upright but does not line up across the seam.
-   */
-  grain: { shift: [0, 14] },
-  shape: (fill) => (
-    <>
-      <path d={BAND_PATH} fill={fill} />
-      <path d={LEAF_LEFT_PATH} fill={fill} />
-      <path d={LEAF_RIGHT_PATH} fill={fill} />
-    </>
-  ),
-  /* the leaves outlined all round; the band nowhere — under the leaves but for its seam */
-  edge: () => (
-    <>
-      <path d="" />
-      <path d={LEAF_LEFT_PATH} />
-      <path d={LEAF_RIGHT_PATH} />
-    </>
-  ),
-  defs: (uid) => (
-    <>
-      {foldDefs(uid)}
-      {sleeveFoldDefs(uid)}
-      {/* the band's seam is lit only where the band shows: its light is drawn after the leaves */}
-      <mask id={uid("band-seam")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
-        <path d={BAND_PATH} fill="#fff" />
-        <path d={LEAF_LEFT_PATH} fill="#000" />
-        <path d={LEAF_RIGHT_PATH} fill="#000" />
-      </mask>
-    </>
-  ),
-  shading: (uid) => (
-    <>
-      {/* the garment's light; the band's seam and the roll, soft folds; the leaves' soft shadow on the band is their outline's */}
-      {collarTone()}
-      {foldShadows(uid, BAND_SEAM)}
-      {foldShadows(uid, [ROLL_FOLD])}
-    </>
-  ),
-  light: (uid) => (
-    <>
-      {foldLights(uid, [ROLL_FOLD])}
-      <g mask={`url(#${uid("band-seam")})`}>{foldLights(uid, BAND_SEAM)}</g>
-    </>
-  ),
-};
+/*
+  The collar as it always was — on any garment it does not wrap in a V, his
+  thobe and his polo: the user's call. Its band rises 20 units at the side of
+  his neck to a roll line level across the throat, the leaves hanging from it
+  to points about 8 cm long on the upper chest; its buttons 20 below where
+  they meet, or 14 and 24 for two, a thobe's. Exactly the drawing from before
+  the V, numbers and all.
+*/
+const LEVEL_RISE = 20;
+const LEVEL_BELOW_SEAM = 5;
+const LEVEL_SPREAD = 12;
+const LEVEL_POINT_LENGTH = 42;
+const LEVEL_POINT_ANGLE = (22 * Math.PI) / 180;
+const LEVEL_BAND = standFront(LEVEL_RISE);
+const LEVEL_BEHIND = standBehind(LEVEL_RISE);
+const LEVEL_ROLL: Pt[] = standFrontEdges(LEVEL_RISE).top;
+const LEVEL_MID = (LEVEL_ROLL.length - 1) / 2;
+const LEVEL_MEET: Point = [COLLAR_AXIS(LEVEL_ROLL[LEVEL_MID][1]), LEVEL_ROLL[LEVEL_MID][1]];
+const LEVEL_SIDE: Point = LEVEL_ROLL[0];
+const LEVEL_OUTER: Point = [LEVEL_SIDE[0] - LEVEL_SPREAD, NECK_BASE_SEAM + LEVEL_BELOW_SEAM];
+const LEVEL_TIP: Point = [
+  LEVEL_MEET[0] - LEVEL_POINT_LENGTH * Math.sin(LEVEL_POINT_ANGLE),
+  LEVEL_MEET[1] + LEVEL_POINT_LENGTH * Math.cos(LEVEL_POINT_ANGLE),
+];
+const LEVEL_ROLL_LEFT: Pt[] = [[LEVEL_MEET[0], LEVEL_MEET[1]], ...LEVEL_ROLL.slice(0, LEVEL_MID).reverse()];
+const LEVEL_LEAF_LEFT =
+  `M${LEVEL_MEET[0]} ${LEVEL_MEET[1]} ${run(LEVEL_ROLL_LEFT.slice(1))} ` +
+  `${arc(LEVEL_SIDE, LEVEL_OUTER, 2)} ${arc(LEVEL_OUTER, LEVEL_TIP, 1.5)} ${arc(LEVEL_TIP, LEVEL_MEET, -1)} Z`;
+const LEVEL_LEAF_RIGHT = reflect(LEVEL_LEAF_LEFT);
+const LEVEL_ROLL_FOLD: Fold = collarFold(LEVEL_ROLL.map(([x, y]) => [x, y + 2.2] as Pt), 2.2);
+const LEVEL_BUTTON_ROWS: Record<number, number[]> = { 1: [20], 2: [14, 24] };
+
+/**
+ * The collar, as a region: its band, and its two leaves over it — the one
+ * drawing for both of its shapes, the V and the level fold, given each one's
+ * band, leaves, seam and fold.
+ */
+function collarRegion(band: string, leafLeft: string, leafRight: string, bandSeam: Fold[], rollFold: Fold): RegionArt {
+  return {
+    focus: [300, 182],
+    outline: "soft",
+    /**
+     * Cut from further along the roll than the shirt it is sewn to, so a
+     * stripe stays upright but does not line up across the seam.
+     */
+    grain: { shift: [0, 14] },
+    shape: (fill) => (
+      <>
+        <path d={band} fill={fill} />
+        <path d={leafLeft} fill={fill} />
+        <path d={leafRight} fill={fill} />
+      </>
+    ),
+    /* the leaves outlined all round; the band nowhere — under the leaves but for its seam */
+    edge: () => (
+      <>
+        <path d="" />
+        <path d={leafLeft} />
+        <path d={leafRight} />
+      </>
+    ),
+    defs: (uid) => (
+      <>
+        {foldDefs(uid)}
+        {sleeveFoldDefs(uid)}
+        {/* the band's seam is lit only where the band shows: its light is drawn after the leaves */}
+        <mask id={uid("band-seam")} maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="1000">
+          <path d={band} fill="#fff" />
+          <path d={leafLeft} fill="#000" />
+          <path d={leafRight} fill="#000" />
+        </mask>
+      </>
+    ),
+    shading: (uid) => (
+      <>
+        {/* the garment's light; the band's seam and the roll, soft folds; the leaves' soft shadow on the band is their outline's */}
+        {collarTone()}
+        {foldShadows(uid, bandSeam)}
+        {foldShadows(uid, [rollFold])}
+      </>
+    ),
+    light: (uid) => (
+      <>
+        {foldLights(uid, [rollFold])}
+        <g mask={`url(#${uid("band-seam")})`}>{foldLights(uid, bandSeam)}</g>
+      </>
+    ),
+  };
+}
+
+/** The collar wrapping the neck in a V — on the garments it is worn that way on: see `Collar.wrapsOn`. */
+const COLLAR: RegionArt = collarRegion(BAND_PATH, LEAF_LEFT_PATH, LEAF_RIGHT_PATH, BAND_SEAM, ROLL_FOLD);
+
+/** The collar as it always was, its fold level across the throat — on any other garment: see `LEVEL_RISE`. */
+const LEVEL_COLLAR: RegionArt = collarRegion(LEVEL_BAND, LEVEL_LEAF_LEFT, LEVEL_LEAF_RIGHT, BAND_SEAM, LEVEL_ROLL_FOLD);
 
 /**
  * Its leaves alone, drawn as `COLLAR` draws them: laid again over a
@@ -187,6 +231,8 @@ export const maleShirtCollarFront: GarmentArt = {
     Its halves still meet: the collar is closed.
   */
   cut: (choice) => {
+    /* on a garment it does not wrap — his thobe, his polo — as it always was, and never with a tie: none is offered there */
+    if (!choice.wraps) return { collar: LEVEL_COLLAR };
     const style = choice.tieUnder ? choice.tie : undefined;
     if (style !== "necktie" && style !== "bowtie") return {};
     const fit = fitFor(choice);
@@ -194,11 +240,20 @@ export const maleShirtCollarFront: GarmentArt = {
     /* a necktie's knot lies under the leaves, a bow tie on them — as its pieces say: see `ShirtTie.under` */
     return shirtTie(style, "male", fit).under ? { collar: UNDER_TIE, tie } : { tie };
   },
-  bandButtons: (count) =>
-    litButtons((BUTTON_ROWS[count] ?? BUTTON_ROWS[1]).map((dy) => [COLLAR_AXIS(MEET[1] + dy), MEET[1] + dy] as const), 2.2),
+  /* under the V; or, where it does not wrap — a thobe's two — under the level fold, as they always were */
+  bandButtons: (count, choice) =>
+    choice && !choice.wraps
+      ? litButtons((LEVEL_BUTTON_ROWS[count] ?? LEVEL_BUTTON_ROWS[1]).map((dy) => [COLLAR_AXIS(LEVEL_MEET[1] + dy), LEVEL_MEET[1] + dy] as const), 2.2)
+      : litButtons((BUTTON_ROWS[count] ?? BUTTON_ROWS[1]).map((dy) => [COLLAR_AXIS(MEET[1] + dy), MEET[1] + dy] as const), 2.2),
 };
 
-export const maleShirtCollarBehind = behindBandArt(STAND_BEHIND_PATH);
+/** Its back as it always was — the plain band behind the neck — on a garment it does not wrap: see `LEVEL_COLLAR`. */
+const LEVEL_BACK = behindBandArt(LEVEL_BEHIND).regions.collar!;
+
+export const maleShirtCollarBehind: GarmentArt = {
+  ...behindBandArt(STAND_BEHIND_PATH),
+  cut: (choice) => (choice.wraps ? {} : { collar: LEVEL_BACK }),
+};
 
 /** For the record and the checker: the collar's own measurements. */
 export const MALE_SHIRT_COLLAR = { stand: BAND_RISE, depth: V_DEPTH, meet: MEET, side: SIDE, outer: OUTER, tip: TIP, roll: ROLL };

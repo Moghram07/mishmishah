@@ -608,6 +608,8 @@ export function choiceOf(w: WornGarment): GarmentChoice {
   const tieAt = tieAtOf(w);
   /* a tie at the neck its collar is tied under — a shirt collar's necktie or bow tie, her bow under a Peter Pan — the collar draws */
   const tieUnder = Boolean(tie && tie !== "none" && tieAt === "neck" && collarOf(w)?.ties?.under?.includes(tie));
+  /* a shirt collar wraps the neck in a V on the garments it says, and lies as it always has on any other */
+  const wraps = Boolean(collarOf(w)?.wrapsOn?.includes(w.garmentId));
   const rows = buttonRowsOf(w);
   /* a sash, and where it is tied */
   const bowAt = bowAtOf(w);
@@ -625,6 +627,7 @@ export function choiceOf(w: WornGarment): GarmentChoice {
     ...(stripes ? { stripes } : {}),
     ...(tie && tie !== "none" && tieAt ? { tie, tieAt } : {}),
     ...(tieUnder ? { tieUnder: true as const } : {}),
+    ...(wraps ? { wraps: true as const } : {}),
   };
 }
 
@@ -666,28 +669,29 @@ export function setStripeEdges(worn: WornGarment[], garmentId: string, edges: St
 }
 
 /**
- * The ties that arrive in black, where a black is given — see `setTie`: a
- * necktie and a bow tie, the user's call. In the shirt's own cloth, the one
- * they were cut from before, they were white on white and hid.
+ * The ties that arrive in a plain cloth of their own, where one is given —
+ * see `setTie`: a necktie and a bow tie, the user's call — black on a light
+ * shirt, white on a dark one: see `tieStartOn`. In the shirt's own cloth, the
+ * one they were cut from before, they were white on white and hid.
  */
-export const TIES_IN_BLACK: readonly TieId[] = ["necktie", "bowtie"];
+export const TIES_IN_CONTRAST: readonly TieId[] = ["necktie", "bowtie"];
 
 /**
  * Tie a worn garment's collar, or untie it. A new necktie or bow tie arrives
- * in `black`, where it is given — a plain black from the library: see
- * `TIES_IN_BLACK` — while one already on keeps its cloth. Any other tie
+ * in `start`, where it is given — black or white, whichever shows on the
+ * shirt: see `TIES_IN_CONTRAST` — while one already on keeps its cloth. Any other tie
  * arrives in its stripes' cloth when the garment wears stripes — the
  * collar's own lost the knot on a busy print — and in the collar's when it
  * wears none, unless it already has one of its own. Untied, its cloth and
  * thread go with it.
  */
-export function setTie(worn: WornGarment[], garmentId: string, tie: TieId, black?: string): WornGarment[] {
+export function setTie(worn: WornGarment[], garmentId: string, tie: TieId, start?: string): WornGarment[] {
   return worn.map((w) => {
     if (w.garmentId !== garmentId) return w;
     if (tie === "none") return { ...untied(w), tie };
-    /* a necktie or a bow tie where there was neither: new, and in black */
+    /* a necktie or a bow tie where there was neither: new, and in the plain cloth that shows on the shirt */
     const was = tieOf(w);
-    const fresh = TIES_IN_BLACK.includes(tie) && !(was && TIES_IN_BLACK.includes(was)) ? black : undefined;
+    const fresh = TIES_IN_CONTRAST.includes(tie) && !(was && TIES_IN_CONTRAST.includes(was)) ? start : undefined;
     const stripes = stripesOnOf(w).length > 0 ? w.fabrics.trim : undefined;
     /* where it will be knotted: on a belt, in the belt's cloth; at the neck, the collar's, or the bodice's */
     const at = tieAtOf({ ...w, tie });

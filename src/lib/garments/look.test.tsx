@@ -5390,3 +5390,66 @@ describe("the shirt collar round the neck, and every tie at the bottom of its V,
     }, 120_000);
   }
 });
+
+describe("the shirt collar on a garment it does not wrap, light and dark", () => {
+  /*
+    The user's answer after round 25: the V is for her blouse, the shirt-dress
+    and his shirt only. His thobe, his polo and her t-shirt in a shirt collar
+    keep it as it was before the V — collar, band, back and buttons: the
+    markup of these looks is byte for byte the one from before it. Written as
+    `thobe-collar-<theme>`.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Look = { caption: string; body: BodyType; wear: { id: string; cloth: string }[]; collar: string; zoom: number; focus: [number, number] };
+  const stage = (look: Look) => {
+    let worn: WornGarment[] = [];
+    for (const { id, cloth } of look.wear) worn = wear(worn, cutFrom(garmentById(id)!, cloth));
+    worn = setCollar(worn, look.wear[0].id, look.collar);
+    const cloths: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const w of worn) {
+      const g = garmentById(w.garmentId)!;
+      const cloth = look.wear.find((x) => x.id === w.garmentId)!.cloth;
+      const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+      for (const r of regionsOf(g, w)) regions[r] = f(cloth);
+      cloths[g.id] = regions;
+    }
+    const outfit: Outfit = { bodyType: look.body, skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={cloths} zoom={look.zoom} focus={look.focus} />;
+  };
+  const WHITE = "fb-white";
+  const BLACK = "fb-black-crepe";
+  const rows: Look[][] = [
+    [
+      { caption: "his thobe in his shirt collar, 2.5×", body: "male", wear: [{ id: "male-thobe", cloth: WHITE }], collar: "male-shirt-collar", zoom: 2.5, focus: [301, 225] },
+      { caption: "his thobe in his shirt collar, 6×", body: "male", wear: [{ id: "male-thobe", cloth: WHITE }], collar: "male-shirt-collar", zoom: 6, focus: [301, 182] },
+      { caption: "his polo in his shirt collar, 2.5×", body: "male", wear: [{ id: "male-polo", cloth: WHITE }, { id: "male-trousers", cloth: BLACK }], collar: "male-shirt-collar", zoom: 2.5, focus: [301, 225] },
+      { caption: "her t-shirt in her shirt collar, 2.5×", body: "female", wear: [{ id: "female-t-shirt", cloth: WHITE }, { id: "female-skirt", cloth: BLACK }], collar: "female-shirt-collar", zoom: 2.5, focus: [298, 225] },
+    ],
+  ];
+  it.each(["light", "dark"] as const)("writes .preview/wardrobe/thobe-collar-%s.html", (theme) => {
+    const t = THEMES[theme];
+    const html = renderToStaticMarkup(
+      <>
+        {rows.map((row, r) => (
+          <div key={r} className="row">
+            {row.map((look) => (
+              <figure key={look.caption}>
+                {stage(look)}
+                <figcaption>{look.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+    const css =
+      `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+      `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
+      `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+      `figcaption{margin-top:5px;color:${t.caption}}</style>`;
+    writeFileSync(`.preview/wardrobe/thobe-collar-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+  }, 120_000);
+});

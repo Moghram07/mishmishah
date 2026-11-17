@@ -5,7 +5,7 @@ import { historyReducer, type History } from "@/components/visualizer/history";
 import { garmentById, garments } from "@/lib/data/garments";
 import { collarsForGarment, tiesFor } from "@/lib/data/collars";
 import { necklinesForGarment } from "@/lib/data/necklines";
-import { PLAIN_BLACK, fabricById } from "@/lib/data/fabrics";
+import { PLAIN_BLACK, PLAIN_WHITE, fabricById, fabrics as library, tieStartOn } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { collarArt, type GarmentChoice } from "./art";
 import { SHIRT_COLLAR } from "./art/female/collars/shirt";
@@ -81,7 +81,7 @@ const COLLARS = {
   female: { asset: "female-shirt-collar-front", meet: [SHIRT_COLLAR.meet[0], SHIRT_COLLAR.meet[1]] as Pt, side: [SHIRT_COLLAR.side[0], SHIRT_COLLAR.side[1]] as Pt, roll: SHIRT_COLLAR.roll, tip: [SHIRT_COLLAR.tip[0], SHIRT_COLLAR.tip[1]] as Pt, seam: HER_SEAM, band: 4, bandR: 2 },
   male: { asset: "male-shirt-collar-front", meet: [MALE_SHIRT_COLLAR.meet[0], MALE_SHIRT_COLLAR.meet[1]] as Pt, side: [MALE_SHIRT_COLLAR.side[0], MALE_SHIRT_COLLAR.side[1]] as Pt, roll: MALE_SHIRT_COLLAR.roll, tip: [MALE_SHIRT_COLLAR.tip[0], MALE_SHIRT_COLLAR.tip[1]] as Pt, seam: HIS_SEAM, band: 4, bandR: 2.2 },
 } as const;
-const TIED: GarmentChoice = { tieAt: "neck", tieUnder: true };
+const TIED: GarmentChoice = { tieAt: "neck", tieUnder: true, wraps: true };
 /** The collar's leaves, as it lays them again over a tie knotted under them. */
 const leavesOf = (body: BodyType) => pathsOf(collarArt(COLLARS[body].asset)!.cut!({ ...TIED, tie: "necktie" }).collar!.over!.shape("#000"));
 const leafRings = (body: BodyType) => leavesOf(body).map(ringsOf);
@@ -207,9 +207,15 @@ describe("a necktie and a bow tie, knotted under a collar", () => {
     expect(blouse("necktie").tie).toBeUndefined();
   });
 
-  it("starts a new necktie or bow tie in plain black; one on keeps its cloth; the knot and the scarf as before", () => {
+  it("starts a new necktie or bow tie in black on a light shirt and in white on a dark one; one on keeps its cloth; the knot and the scarf as before", () => {
     const plain = fabricById(PLAIN_BLACK)!;
     expect([plain.motif, plain.colorName?.en]).toEqual(["solid", "Black"]);
+    expect([fabricById(PLAIN_WHITE)!.motif, fabricById(PLAIN_WHITE)!.colorName?.en]).toEqual(["solid", "White"]);
+    // black on light shirts, white on dark ones — navy, black, any dark colour — so a new tie always shows
+    for (const [shirt, start] of [["fb-white", PLAIN_BLACK], ["fb-off-white", PLAIN_BLACK], ["fb-navy", PLAIN_WHITE], ["fb-black-crepe", PLAIN_WHITE], ["fb-red", PLAIN_WHITE]] as const)
+      expect(tieStartOn(fabricById(shirt)!).id, shirt).toBe(start);
+    // every cloth in the library gets the one of the two that stands further from it in lightness
+    for (const f of library) expect([PLAIN_BLACK, PLAIN_WHITE], f.id).toContain(tieStartOn(f).id);
     for (const [ids, neckline] of [[["female-blouse", "female-skirt"]], [["female-dress"], "female-collared-neckline"], [["male-shirt", "male-trousers"]]] as const)
       for (const style of ["necktie", "bowtie"] as const) {
         const id = ids[0];
@@ -342,6 +348,39 @@ describe("a necktie and a bow tie, knotted under a collar", () => {
       for (const side of [-1, 1]) expect(leaves.some((ring) => insideRings(ring, [c.meet[0] + (side * kt) / 2 - side, c.meet[1] + KNOT_DROP + 1])), `${body} ${side}`).toBe(true);
     }
   });
+
+  it("keeps the shirt collar as it was on a garment it does not wrap — his thobe, his polo, her t-shirt: its fold level, its band and buttons where they were", () => {
+    /* the collar a choice draws: its cut's, else its own */
+    const pathOf = (asset: string, choice: GarmentChoice) => pathsOf((collarArt(asset)!.cut!(choice).collar ?? collarArt(asset)!.regions.collar!).shape("#000"));
+    for (const [body, ids, collar, rows] of [
+      ["male", ["male-thobe"], "male-shirt-collar", [14, 24]],
+      ["male", ["male-polo", "male-trousers"], "male-shirt-collar", [20]],
+      ["female", ["female-t-shirt", "female-skirt"], "female-shirt-collar", [15]],
+    ] as const) {
+      const id = ids[0];
+      const worn = setCollar(wearing([...ids]), id, collar);
+      const w = one(worn, id);
+      expect(collarOf(w)?.id, id).toBe(collar);
+      expect(choiceOf(w).wraps, id).toBeUndefined();
+      // its own shape: the level fold — where its leaves meet, on the band's top, within a few units of its sides' height (the V's is 23 and 25 below)
+      const level = pathOf(`${collar}-front`, choiceOf(w));
+      const v = pathOf(`${collar}-front`, { wraps: true });
+      expect(level, id).not.toEqual(v);
+      const [mx, my] = level[1].match(/^M([\d.]+) ([\d.]+)/)!.slice(1).map(Number);
+      const top = Math.min(...level.flatMap((d) => ringsOf(d).flat().map(([, y]) => y)));
+      expect(my - top, id).toBeLessThan(6);
+      // drawn so on the stage, not the V; its band's buttons where they were, under where the leaves meet
+      const html = draw(body, worn);
+      expect(html.includes(`d="${level[1]}"`), id).toBe(true);
+      expect(html.includes(`d="${v[1]}"`), id).toBe(false);
+      for (const dy of rows) expect(html.includes(`cy="${my + dy}"`), `${id} button ${dy}`).toBe(true);
+      // and no tie offered there
+      expect(tiesOffered(w), id).toEqual([]);
+      expect(mx, id).toBeGreaterThan(290);
+    }
+    // the three it wraps: her blouse, the shirt-dress, his shirt
+    for (const [ids, neckline] of [[["female-blouse"]], [["female-dress"], "female-collared-neckline"], [["male-shirt"]]] as const) expect(choiceOf(one(wearing([...ids], neckline), ids[0])).wraps, ids[0]).toBe(true);
+  }, 60_000);
 
   it("hangs the necktie straight down the middle, widening gently, to a point", () => {
     for (const body of ["female", "male"] as const) {

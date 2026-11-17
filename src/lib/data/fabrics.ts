@@ -243,8 +243,23 @@ assertMotifScale(fabrics);
 
 export const fabricById = (id: string) => fabrics.find((f) => f.id === id);
 
-/** The plain black in the library — the black crepe — which a new necktie or bow tie arrives in: see `setTie`. */
+/** The plain black in the library — the black crepe — which a new necktie or bow tie arrives in on a light shirt: see `tieStartOn`. */
 export const PLAIN_BLACK = "fb-black-crepe";
+/** The plain white — which a new necktie or bow tie arrives in on a dark shirt: see `tieStartOn`. */
+export const PLAIN_WHITE = "fb-white";
+
+/**
+ * The cloth a new necktie or bow tie arrives in on a shirt cut from `shirt`:
+ * black on a light shirt, white on a dark one — navy, black, any dark colour
+ * — so a new tie always shows (the user's rule). Whichever of the two stands
+ * further from the shirt in lightness (CIE L*, of each one's average colour).
+ */
+export function tieStartOn(shirt: Fabric): Fabric {
+  const lightness = (f: Fabric) => hexToLab(fabricAverageColor(f))[0];
+  const [black, white] = [fabricById(PLAIN_BLACK)!, fabricById(PLAIN_WHITE)!];
+  const own = lightness(shirt);
+  return Math.abs(lightness(white) - own) > Math.abs(lightness(black) - own) ? white : black;
+}
 
 /**
  * The plain cloth a collar's stripes arrive in, so they show from the first —

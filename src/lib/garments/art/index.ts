@@ -208,6 +208,12 @@ export interface GarmentChoice {
    */
   tieUnder?: true;
   /**
+   * Its shirt collar wraps the neck in a V — on her blouse, the shirt-dress,
+   * his shirt; on any other garment a shirt collar lies as it always has: see
+   * `Collar.wrapsOn`.
+   */
+  wraps?: true;
+  /**
    * The waistband of what it is worn over, top row and bottom — a skirt's,
    * trousers' — where a necktie worn with it reaches: the stage's to add,
    * from the garment under it. See `necktieTo`.
@@ -328,7 +334,7 @@ export interface GarmentArt {
    * For a collar: draws `count` buttons on its band, where the band shows
    * between the leaves.
    */
-  bandButtons?: (count: number) => ReactNode;
+  bandButtons?: (count: number, choice?: GarmentChoice) => ReactNode;
 }
 
 const ART: Record<string, GarmentArt> = {

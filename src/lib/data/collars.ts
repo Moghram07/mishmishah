@@ -79,6 +79,8 @@ export const collars: Collar[] = [
     asset: { front: "female-shirt-collar-front", behindBody: "female-shirt-collar-behind" },
     /** A necktie or a bow tie, knotted round its band under its leaves, where they meet — see `shirtTie`. */
     ties: { offered: ["necktie", "bowtie"], under: ["necktie", "bowtie"] },
+    /** Wrapping the neck in a V on her blouse and the shirt-dress; on her t-shirt it lies as it always has. */
+    wrapsOn: ["female-blouse", "female-dress"],
   },
   {
     id: "female-peter-pan-collar",
@@ -311,6 +313,8 @@ export const collars: Collar[] = [
      * and offer no tie — see `Garment.ties`.
      */
     ties: { offered: ["necktie", "bowtie"], under: ["necktie", "bowtie"] },
+    /** Wrapping the neck in a V on his shirt; on his thobe and his polo it lies as it always has — the user's call. */
+    wrapsOn: ["male-shirt"],
   },
   {
     id: "male-polo-collar",

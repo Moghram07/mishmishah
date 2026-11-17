@@ -3763,6 +3763,12 @@ function checkShirtTies(bodyKey, body, wardrobe, rows) {
   for (const c of collars)
     if (c.ties?.offered.includes("bowtie") && !c.ties.under?.includes("bowtie")) bad.offer.push(`${c.id}: offers a bow tie it does not draw itself — no garment draws one of its own`);
   const fits = (c, cut) => cut === undefined || (c.necklines ? c.necklines.includes(cut) : NECKLINE_OPENING[cut] != null && (c.cuts ?? [c.opening]).includes(NECKLINE_OPENING[cut]));
+  /* the V only where the user asked for it: a shirt collar wraps the neck on her blouse, the shirt-dress and his shirt — on his thobe, his polo, her t-shirt it lies as it always has */
+  for (const c of collars.filter((c) => c.gender === bodyKey && isShirtCollar(c)))
+    for (const garment of wardrobe.filter((g) => collarsForGarment(g).includes(c))) {
+      const wraps = (c.wrapsOn ?? []).includes(garment.id);
+      if (wraps !== SHIRTED.includes(garment.id)) bad.v.push(`${c.id} on ${garment.id}: ${wraps ? "wraps the neck in a V" : "lies level"} — the V is for her blouse, the shirt-dress and his shirt only`);
+    }
   for (const garment of wardrobe) {
     const offered = garment.ties?.offered ?? [];
     const cuts = garment.acceptsNeckline ? cutsOf(garment.asset.front) : [undefined];

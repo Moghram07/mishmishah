@@ -455,7 +455,8 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
                 garment.id,
                 worn,
                 "collar",
-                behind.regions.collar,
+                /* its back as worn on this garment — a shirt collar's on a garment it does not wrap is its level fold's: see `Collar.wrapsOn` */
+                behind.cut?.(choiceOf(worn))?.collar ?? behind.regions.collar,
                 `${garment.id}-${collar!.id}-behind`,
                 undefined
               )}
@@ -562,7 +563,7 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
             cuffs: art.cuffTrim?.(choice),
             collarTrim: collarDrawing?.trim,
             /* the button closing a collar's band — under the knot of a tie round the band, so not drawn */
-            bandButtons: choice.tieUnder ? null : collarDrawing?.bandButtons?.(art.collarButtons ?? 1),
+            bandButtons: choice.tieUnder ? null : collarDrawing?.bandButtons?.(art.collarButtons ?? 1, choice),
           };
           return (
             <g key={garment.id}>

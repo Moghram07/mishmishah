@@ -35,7 +35,7 @@ import {
   sleeveTypeName,
   sleeveTypesFor,
 } from "@/lib/data/sleeves";
-import { PLAIN_BLACK, contrastingPlain, fabrics, fabricById } from "@/lib/data/fabrics";
+import { contrastingPlain, fabrics, fabricById, tieStartOn } from "@/lib/data/fabrics";
 import { DEFAULT_SKIN_TONE, skinToneById, skinTones } from "@/lib/data/skinTones";
 import { regionLabel } from "@/lib/data/fabricRegions";
 import { BODY_CANVAS, bodyTypes } from "@/lib/mannequin/bodies";
@@ -470,14 +470,16 @@ export function FabricVisualizer() {
 
   /**
    * Tie the garment being cut, or untie it. A new necktie or bow tie arrives
-   * in plain black — in the shirt's own cloth it was white on white; any
-   * other tie in the stripes' cloth when it wears stripes, otherwise in the
-   * cloth of what it is knotted on — see `setTie` — and the picker moves to
-   * it, to cut it from another if wanted.
+   * in plain black on a light shirt and plain white on a dark one, so it
+   * always shows — see `tieStartOn`; any other tie in the stripes' cloth when
+   * it wears stripes, otherwise in the cloth of what it is knotted on — see
+   * `setTie` — and the picker moves to it, to cut it from another if wanted.
    */
   const chooseTie = (tie: TieId) => {
     if (!cuttingGarment || !cuttingEntry) return;
-    setOutfit((o) => ({ ...o, worn: setTie(o.worn, cuttingGarment.id, tie, PLAIN_BLACK) }));
+    const w = cuttingEntry.worn;
+    const shirt = fabricById(w.fabrics.collar ?? w.fabrics[cuttingGarment.fabricRegions[0]] ?? "") ?? fabric;
+    setOutfit((o) => ({ ...o, worn: setTie(o.worn, cuttingGarment.id, tie, tieStartOn(shirt).id) }));
     if (tie === "none") {
       if (cutting.region === "tie") setCutting({ garmentId: cuttingGarment.id, region: collarOf(cuttingEntry.worn) ? "collar" : cuttingGarment.fabricRegions[0] });
     } else setCutting({ garmentId: cuttingGarment.id, region: "tie" });
