@@ -1,9 +1,11 @@
-import type { ReactNode } from "react";
+import { Fragment, useContext, type ReactNode } from "react";
 import type { Pt } from "./fit";
 import { pleatsBeside } from "./fit";
 import type { Uid } from "./shading";
 import type { PuffShape } from "./sleeves";
 import { BODY_CANVAS } from "@/lib/mannequin/bodies";
+import { SheenContext, alongGrain } from "./sheen";
+import type { SheenLook } from "@/lib/fabrics/sheen";
 
 /**
  * Folds: the one way every garment here draws drape, gathers and darts.
@@ -1054,5 +1056,87 @@ function drawFlanks(uid: Uid, folds: Fold[], lit: boolean): ReactNode {
 /** The folds' shadowed flanks — for a region's `shading`, which multiplies. */
 export const foldShadows = (uid: Uid, folds: Fold[]): ReactNode => drawFlanks(uid, folds, false);
 
-/** The folds' lit flanks — for a region's `light`, which screens. */
-export const foldLights = (uid: Uid, folds: Fold[]): ReactNode => drawFlanks(uid, folds, true);
+/**
+ * Where on a fold's lit flank a smooth cloth's highlight lies, as shares of
+ * the flank's width from the ridge out: just off the crest, toward the light,
+ * where the cloth turns its face to the lamp — see `crest`.
+ */
+export const CREST: readonly [from: number, to: number] = [0.1, 0.42];
+
+/** The ridge's normal at each point, turned toward the light — the side a fold's lit flank lies on. */
+function litNormals(fold: Fold): Pt[] {
+  const { ridge } = fold;
+  const n = ridge.length;
+  return ridge.map((_, i) => {
+    const [px, py] = ridge[Math.max(0, i - 1)];
+    const [qx, qy] = ridge[Math.min(n - 1, i + 1)];
+    const len = Math.hypot(qx - px, qy - py) || 1;
+    let nx = -(qy - py) / len;
+    let ny = (qx - px) / len;
+    if (nx * LIGHT[0] + ny * LIGHT[1] <= 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    return [nx, ny];
+  });
+}
+
+/**
+ * The band along a fold's crest a smooth cloth shines in: from `CREST[0]` to
+ * `CREST[1]` of the lit flank's width out from the ridge, the way the flank
+ * itself widens along it.
+ */
+export function crest(fold: Fold): string {
+  const { ridge, width } = fold;
+  const n = ridge.length;
+  const normals = litNormals(fold);
+  const at = (share: number) =>
+    ridge.map(([x, y], i): Pt => {
+      const w = lerp(width[0], width[1], n === 1 ? 0 : i / (n - 1)) * share;
+      return [x + normals[i][0] * w, y + normals[i][1] * w];
+    });
+  const pts = [...at(CREST[0]), ...at(CREST[1]).reverse()];
+  return `M${pts.map(([x, y]) => `${r1(x)} ${r1(y)}`).join(" L")} Z`;
+}
+
+/** How bright a fold's crest shines, for a look: with the fold's own light, up to the look's most. */
+export const crestOpacity = (fold: Fold, look: SheenLook): number =>
+  Math.round(Math.min(look.crestMax, (look.crest * fold.light) / 0.3) * 100) / 100;
+
+/**
+ * The highlight along each fold's crest, on a cloth with a sheen — the
+ * region's, from `SheenContext`; on a matte cloth, nothing. Only a fold that
+ * catches the light shines: a shadow thrown on the cloth (`shadowToward`) is
+ * no crest. Drawn out along the grain (`alongGrain`), each softness level
+ * through its own blur, as the folds' flanks are.
+ */
+export function FoldSheen({ uid, folds }: { uid: Uid; folds: Fold[] }) {
+  const sheen = useContext(SheenContext);
+  if (!sheen) return null;
+  const lit = folds.filter((f) => f.light > 0 && !f.shadowToward);
+  return (
+    <>
+      {SOFTNESS.map((s) => {
+        const at = lit.filter((f) => level(f.soft) === s);
+        if (at.length === 0) return null;
+        return (
+          <Fragment key={s}>
+            {alongGrain(
+              sheen,
+              `url(#${uid(`sheen-crest-${s}`)})`,
+              at.map((f, i) => <path key={i} d={crest(f)} fill={sheen.tint} fillOpacity={crestOpacity(f, sheen.look)} />)
+            )}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+/** The folds' lit flanks — for a region's `light`, which screens — and, on a cloth with a sheen, the highlight along their crests. */
+export const foldLights = (uid: Uid, folds: Fold[]): ReactNode => (
+  <>
+    {drawFlanks(uid, folds, true)}
+    <FoldSheen uid={uid} folds={folds} />
+  </>
+);

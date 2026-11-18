@@ -6,7 +6,7 @@ import { BODY_CANVAS } from "@/lib/mannequin/bodies";
 import { fabrics } from "@/lib/data/fabrics";
 import { garments } from "@/lib/data/garments";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
-import { fabricRepeatCm } from "@/lib/fabrics/patterns";
+import { fabricRepeatCm, fabricSurface } from "@/lib/fabrics/patterns";
 import { printKeep } from "@/lib/fabrics/printScale";
 import { PRODUCT_CANVAS, products } from "@/lib/products/registry";
 import { cutFrom } from "@/lib/garments/outfit";
@@ -29,11 +29,16 @@ const ZOOMS = Array.from({ length: 15 }, (_, i) => 1 + i / 2);
 /** What a stage measures before it can — see `useRenderedWidth`. */
 const RENDER_PX = 440;
 
-/** Every print tile a markup draws: the pattern's size, and the drawing inside it. */
-function tilesOf(html: string) {
+/**
+ * Every tile a markup draws: the pattern's size, and the drawing inside it —
+ * the prints' (`surface` false), or the surfaces' laid over them (`surface`
+ * true): a denim's streaks, a knit's columns, a wool's flecks, each at its
+ * own true size.
+ */
+function tilesOf(html: string, surface = false) {
   return [
     ...html.matchAll(/<pattern id="([^"]*-pattern)"[^>]*? width="([^"]+)" height="([^"]+)"[^>]*>(.*?)<\/pattern>/g),
-  ].map(([, id, w, h, inner]) => {
+  ].filter(([, id]) => id.endsWith("-surface-pattern") === surface).map(([, id, w, h, inner]) => {
     const images = [...inner.matchAll(/<image href="([^"]*)" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g)];
     return {
       id,
@@ -65,8 +70,43 @@ function spanOf(html: string): [number, number] {
   return [Math.min(...xs), Math.max(...xs)];
 }
 
-/** One fabric of each repeat size the catalogue has. */
-const byRepeat = [...new Map(fabrics.map((f) => [fabricRepeatCm(f), f])).values()];
+/** One fabric of each repeat size the catalogue has, and of each surface. */
+const byRepeat = [...new Map(fabrics.map((f) => [`${fabricRepeatCm(f)}|${f.source === "procedural" ? f.material : ""}`, f])).values()].filter(
+  (f, i, all) => all.findIndex((g) => fabricRepeatCm(g) === fabricRepeatCm(f)) === i || fabricSurface(f)
+);
+
+/**
+ * A fabric's surface, if it has one: drawn at its own true size, never
+ * blurred, faded in exactly as far as its detail on screen allows — and not
+ * drawn at all while none of it can show (see `surfaceArtwork`).
+ */
+function expectTrueSurface(html: string, fabric: Fabric, cmPerUnit: number, screenPxPerUnit: number, label: string) {
+  const surface = fabricSurface(fabric);
+  const tiles = tilesOf(html, true);
+  const fades = [...html.matchAll(/<g style="mix-blend-mode:soft-light"(?: opacity="([\d.]+)")?>/g)].map(([, o]) => (o === undefined ? 1 : Number(o)));
+  if (!surface) {
+    expect([tiles.length, fades.length], `${label}: a surface on a cloth with none`).toEqual([0, 0]);
+    return;
+  }
+  const keep = printKeep((surface.detailCm / cmPerUnit) * screenPxPerUnit);
+  if (keep <= 0) {
+    expect([tiles.length, fades.length], `${label}: its surface drawn where none of it can show`).toEqual([0, 0]);
+    return;
+  }
+  expect(tiles.length, `${label}: no surface drawn`).toBeGreaterThan(0);
+  const repeat = surface.repeatCm / cmPerUnit;
+  for (const t of tiles) {
+    expect(t.w, `${label}: ${t.id} is ${t.w} units, the surface repeats at ${repeat}`).toBeCloseTo(repeat, 9);
+    expect(t.h, `${label}: ${t.id} height`).toBeCloseTo(repeat, 9);
+    expect(t.images.length, `${label}: ${t.id} lays ${t.images.length} drawings`).toBe(1);
+    expect(t.extra, `${label}: ${t.id} lays more than its drawing`).toBe(0);
+    const [img] = t.images;
+    expect([img.x, img.y, img.w, img.h], `${label}: ${t.id}'s drawing fills its tile`).toEqual([0, 0, t.w, t.h]);
+    expect(img.softened, `${label}: its surface blurred`).toBe(false);
+  }
+  expect(fades.length, `${label}: its surface laid over its pieces`).toBeGreaterThan(0);
+  for (const o of fades) expect(o, `${label}: its surface at ${((surface.detailCm / cmPerUnit) * screenPxPerUnit).toFixed(1)} px a detail`).toBeCloseTo(keep, 9);
+}
 
 function expectTrueTiles(html: string, repeat: number, screenPxPerUnit: number, label: string) {
   const tiles = tilesOf(html);
@@ -95,6 +135,7 @@ describe("every print at its true size", () => {
           const html = renderToStaticMarkup(<ProductTemplate kind={p.kind} fabrics={{ main: fabric }} zoom={zoom} />);
           const label = `${p.kind} in ${fabric.id} at ${zoom}×`;
           expectTrueTiles(html, repeat, RENDER_PX / (PRODUCT_CANVAS[0] / zoom), label);
+          expectTrueSurface(html, fabric, p.cmPerUnit, RENDER_PX / (PRODUCT_CANVAS[0] / zoom), label);
           /* repeats across the cloth: its drawn width over one tile, against its real width over one repeat */
           const across = (right - left) / tilesOf(html)[0].w;
           expect(across, `${label}: ${across.toFixed(2)} repeats across`).toBeCloseTo(p.widthCm / repeatCm, 1);
@@ -124,6 +165,7 @@ describe("every print at its true size", () => {
           /* the stage measures its frame against the width it is drawn at: the home frame at 1×, a zoom'th of it in */
           const frameW = Number(html.match(/<svg[^>]*viewBox="[^ ]+ [^ ]+ ([^ ]+) [^"]+"/)?.[1]);
           expectTrueTiles(html, repeat, RENDER_PX / frameW, `${garment.id} in ${fabric.id} at ${zoom}×`);
+          expectTrueSurface(html, fabric, BODY_CANVAS.cmPerUnit, RENDER_PX / frameW, `${garment.id} in ${fabric.id} at ${zoom}×`);
         }
       }
     }
@@ -155,6 +197,7 @@ describe("every print at its true size", () => {
           );
           const frameW = Number(html.match(/<svg[^>]*viewBox="[^ ]+ [^ ]+ ([^ ]+) [^"]+"/)?.[1]);
           expectTrueTiles(html, repeat, RENDER_PX / frameW, `${garment.id} in ${fabric.id} at ${zoom}×`);
+          expectTrueSurface(html, fabric, BODY_CANVAS.cmPerUnit, RENDER_PX / frameW, `${garment.id} in ${fabric.id} at ${zoom}×`);
         }
       }
     }

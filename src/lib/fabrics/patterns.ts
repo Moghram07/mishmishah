@@ -1,5 +1,6 @@
 import type {
   Fabric,
+  FabricMaterial,
   FabricMotif,
   FabricPalette,
   FabricSwatch,
@@ -142,26 +143,6 @@ function lens(x: number, y: number, len: number, th: number, deg: number): strin
   const [c, s] = [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
   const at = (u: number, v: number) => `${n(x + u * c - v * s)} ${n(y + u * s + v * c)}`;
   return `M${at(-len / 2, 0)} Q${at(0, -th)} ${at(len / 2, 0)} Q${at(0, th)} ${at(-len / 2, 0)}Z`;
-}
-
-/** A grain of fine pebbles, darker and lighter — a crepe's, a nida's, a wool's flecks. */
-function grain(
-  p: FabricPalette,
-  T: number,
-  o: { seed: number; count: number; size: [number, number]; dark: [number, number]; light: [number, number]; lightShare: number }
-): string {
-  const rand = seeded(o.seed);
-  let out = "";
-  for (let i = 0; i < o.count; i++) {
-    const r = o.size[0] + rand() * (o.size[1] - o.size[0]);
-    const light = rand() < o.lightShare;
-    const [lo, top] = light ? o.light : o.dark;
-    const a = n(lo + rand() * (top - lo));
-    const fill = light ? hi(p) : p.accent;
-    const [x, y] = [rand() * T, rand() * T];
-    out += around(T, x, y, r, (cx, cy) => `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(r)}" fill="${fill}" fill-opacity="${a}"/>`);
-  }
-  return out;
 }
 
 /** A large flower: five round petals, a pale heart, a stem with two leaves. */
@@ -421,7 +402,7 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
     averageColor: (p) => mix([[p.base, 64], [p.accent, 30], [hi(p), 6]]),
   },
 
-  /* ———— the surface of a plain cloth ———— */
+  /* ———— a linen's slubs ———— */
 
   slub: {
     /* the slubs run across the cloth, along the weft: turned, they stand up */
@@ -456,82 +437,6 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
       return out;
     },
     averageColor: (p) => mix([[p.base, 86], [p.accent, 7], [hi(p), 7]]),
-  },
-
-  crepe: {
-    directional: false,
-    repeatCm: 1.2, // the pebbled grain of twisted yarn: a few tenths of a millimetre a pebble
-    draw: (p, T) => grain(p, T, { seed: 23, count: 140, size: [0.6, 1.3], dark: [0.25, 0.5], light: [0.2, 0.4], lightShare: 0.4 }),
-    averageColor: (p) => mix([[p.base, 88], [p.accent, 7], [hi(p), 5]]),
-  },
-
-  nida: {
-    directional: false,
-    repeatCm: 1, // finer and flatter than a crepe: the matte grain an abaya's nida is known by
-    draw: (p, T) => grain(p, T, { seed: 31, count: 150, size: [0.45, 0.85], dark: [0.12, 0.28], light: [0.08, 0.16], lightShare: 0.25 }),
-    averageColor: (p) => mix([[p.base, 93], [p.accent, 5], [hi(p), 2]]),
-  },
-
-  twill: {
-    /* a denim's steep twill: its wales climb one way */
-    directional: true,
-    repeatCm: 1, // ten wales to the repeat — one a millimetre, as on a jean
-    draw: (p, T) => {
-      // wales on 2x − y = c, every P along c: periodic in x (2T is 20 P) and in y (T is 10 P)
-      const P = T / 10;
-      let out = "";
-      for (let k = -10; k <= 20; k++) {
-        const c = k * P;
-        const d = c + P / 2;
-        out += `<path d="M${n(c / 2)} 0 L${n((c + T) / 2)} ${T}" stroke="${p.accent}" stroke-opacity="0.55" stroke-width="${n(P * 0.24)}"/>`;
-        out += `<path d="M${n(d / 2)} 0 L${n((d + T) / 2)} ${T}" stroke="${hi(p)}" stroke-opacity="0.35" stroke-width="${n(P * 0.075)}"/>`;
-      }
-      return out;
-    },
-    averageColor: (p) => mix([[p.base, 65], [p.accent, 29], [hi(p), 6]]),
-  },
-
-  suiting: {
-    /* a worsted's fine twill, at 45°: turned, it runs the other way */
-    directional: true,
-    repeatCm: 1, // ten wales to the centimetre
-    draw: (p, T) => {
-      // wales on y = x + c, every P: periodic in x and y with T = 10 P
-      const P = T / 10;
-      let out = "";
-      for (let k = -10; k <= 10; k++) {
-        const c = k * P;
-        out += `<path d="M0 ${n(c)} L${T} ${n(c + T)}" stroke="${p.accent}" stroke-opacity="0.28" stroke-width="${n(P * 0.42)}"/>`;
-      }
-      // the mélange: a fleck of lighter fibre here and there
-      return out + grain(p, T, { seed: 47, count: 60, size: [0.6, 0.9], dark: [0, 0], light: [0.2, 0.3], lightShare: 1 });
-    },
-    averageColor: (p) => mix([[p.base, 82], [p.accent, 13], [hi(p), 5]]),
-  },
-
-  jersey: {
-    /* a knit's columns of loops run down the cloth */
-    directional: true,
-    repeatCm: 1, // six columns of loops to the centimetre and ten rows, a T-shirt's
-    draw: (p, T) => {
-      const cols = 6;
-      const rows = 10;
-      const w = T / cols;
-      const h = T / rows;
-      let out = "";
-      for (let c = 0; c < cols; c++) {
-        const cx = (c + 0.5) * w;
-        // the gap between two columns
-        out += `<path d="M${n(c * w)} 0 V${T}" stroke="${p.accent}" stroke-opacity="0.22" stroke-width="${n(w * 0.12)}"/>`;
-        for (let r = 0; r <= rows; r++) {
-          const top = (r - 0.5) * h;
-          // each loop a V: two legs meeting below
-          out += `<path d="M${n(cx - w * 0.36)} ${n(top)} L${n(cx)} ${n(top + h)} L${n(cx + w * 0.36)} ${n(top)}" fill="none" stroke="${hi(p)}" stroke-opacity="0.2" stroke-width="${n(w * 0.22)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-        }
-      }
-      return out;
-    },
-    averageColor: (p) => mix([[p.base, 84], [p.accent, 8], [hi(p), 8]]),
   },
 
   /* ———— patterns ———— */
@@ -672,6 +577,245 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
   },
 };
 
+/* ------------------------------------------------------------- surfaces */
+
+/**
+ * A cloth's surface: what its weave or knit looks like close up, laid over
+ * whatever its motif is — a denim's streaks of unevenly dyed indigo, a knit's
+ * columns of loops, a wool's flecks — and drawn only as far as a screen can
+ * show it.
+ *
+ * It belongs to the material, not to the motif, so every denim streaks and
+ * every wool flecks, a plain winter wool and a tartan alike. And it is its
+ * own tile, at its own true size: a denim's streaks a few millimetres wide and
+ * centimetres long, whatever the print on it repeats at.
+ *
+ * Colourless: a mid-grey tile with lighter and darker marks, laid over the
+ * cloth with `soft-light` — which leaves the cloth as it is wherever the tile
+ * is mid-grey. So the surface is the cloth's own colour, lighter and darker,
+ * and never a colour of its own; and softened past what a screen can show it
+ * fades into mid-grey and leaves the cloth exactly as it was — see
+ * `surfaceGround`, which balances each tile to average mid-grey.
+ *
+ * A crepe's pebbles and a nida's grain are a few tenths of a millimetre:
+ * under two pixels each even at 8× on a desktop. They are not drawn — a
+ * surface no screen can show is no surface at all.
+ */
+export interface SurfaceSpec {
+  /** One repeat of the surface's own tile, in centimetres: its true size, as a motif's. */
+  repeatCm: number;
+  /**
+   * The period of its finest detail, in centimetres — what a screen must
+   * resolve to show it. It decides how sharp the surface is drawn, as a
+   * repeat decides a print's (see `printScale.ts`): sharp from `SHARP_PX` a
+   * period, gone into the cloth's own colour by `EVEN_PX`.
+   */
+  detailCm: number;
+  /** Runs with the grain — a denim's streaks and a knit's columns down the warp. */
+  directional: boolean;
+  /** The marks, in a `T`×`T` tile: lighter or darker than the cloth, at low opacity. Must tile seamlessly. */
+  marks: (T: number) => SurfaceMark[];
+}
+
+/** One mark of a surface: its outline, lighter or darker, how strongly, and its area in tile pixels. */
+export interface SurfaceMark {
+  d: string;
+  light: boolean;
+  alpha: number;
+  area: number;
+}
+
+/**
+ * A lens-shaped mark `len` long and `th` thick, along `deg`, at (x, y) — and
+ * its copies a tile over wherever it crosses an edge, so the tile joins. Its
+ * area is counted once: the copies only finish what crosses an edge.
+ */
+function lensMarks(T: number, x: number, y: number, len: number, th: number, deg: number, light: boolean, alpha: number): SurfaceMark[] {
+  const marks: SurfaceMark[] = [];
+  let first = true;
+  around(T, x, y, len, (cx, cy) => {
+    marks.push({ d: lens(cx, cy, len, th, deg), light, alpha: n(alpha), area: first ? (2 * len * th) / 3 : 0 });
+    first = false;
+    return "";
+  });
+  return marks;
+}
+
+export const SURFACES: Partial<Record<FabricMaterial, SurfaceSpec>> = {
+  /*
+    Denim: rope-dyed indigo takes unevenly, so every warp yarn is a shade of
+    its own — streaks down the cloth, millimetres wide and centimetres long,
+    and here and there a slub, a short thick place that took less dye.
+  */
+  denim: {
+    repeatCm: 6,
+    detailCm: 0.5,
+    directional: true,
+    marks: (T) => {
+      const cm = T / 6;
+      const rand = seeded(101);
+      const out: SurfaceMark[] = [];
+      // yarn by yarn: thin streaks, lighter and darker, a centimetre to five long
+      for (let i = 0; i < 70; i++) {
+        const len = (1 + rand() * 4) * cm;
+        const th = (0.04 + rand() * 0.08) * cm;
+        const light = rand() < 0.5;
+        const alpha = 0.08 + rand() * 0.1;
+        out.push(...lensMarks(T, rand() * T, rand() * T, len, th, 90, light, alpha));
+      }
+      // wider bands of yarns dyed alike, two to four millimetres
+      for (let i = 0; i < 14; i++) {
+        const len = (1.5 + rand() * 2.5) * cm;
+        const th = (0.2 + rand() * 0.2) * cm;
+        const light = rand() < 0.6;
+        const alpha = 0.06 + rand() * 0.07;
+        out.push(...lensMarks(T, rand() * T, rand() * T, len, th, 90, light, alpha));
+      }
+      // slubs: short bright places in a yarn
+      for (let i = 0; i < 12; i++) {
+        const len = (0.4 + rand() * 0.8) * cm;
+        const th = (0.1 + rand() * 0.06) * cm;
+        out.push(...lensMarks(T, rand() * T, rand() * T, len, th, 90, true, 0.18 + rand() * 0.12));
+      }
+      return out;
+    },
+  },
+
+  /*
+    A knit: columns of loops down the cloth, six to the centimetre on a
+    jersey — each column's loops catching the light, the gap between two in
+    shadow — and the yarn a little uneven along them.
+  */
+  jersey: {
+    repeatCm: 2,
+    detailCm: 1 / 6,
+    directional: true,
+    marks: (T) => {
+      const cols = 12;
+      const rows = 18;
+      const w = T / cols;
+      const h = T / rows;
+      const out: SurfaceMark[] = [];
+      for (let c = 0; c < cols; c++) {
+        const cx = (c + 0.5) * w;
+        // the gap between this column and the next
+        out.push({ d: `M${n(c * w - w * 0.09)} 0 H${n(c * w + w * 0.09)} V${T} H${n(c * w - w * 0.09)} Z`, light: false, alpha: 0.2, area: w * 0.18 * T });
+        // each loop a V: two legs meeting below, catching the light
+        for (let r = 0; r < rows; r++) {
+          const top = r * h;
+          const leg = (x0: number) =>
+            `M${n(x0 - w * 0.11)} ${n(top)} L${n(cx - w * 0.06)} ${n(top + h)} L${n(cx + w * 0.06)} ${n(top + h)} L${n(x0 + w * 0.11)} ${n(top)} Z`;
+          out.push({ d: leg(cx - w * 0.3), light: true, alpha: 0.14, area: w * 0.22 * h });
+          out.push({ d: leg(cx + w * 0.3), light: true, alpha: 0.14, area: w * 0.22 * h });
+        }
+      }
+      // the yarn's own unevenness along the columns
+      const rand = seeded(203);
+      for (let i = 0; i < 26; i++) {
+        const len = (0.3 + rand() * 0.6) * (T / 2);
+        const th = (0.06 + rand() * 0.06) * (T / 2);
+        out.push(...lensMarks(T, rand() * T, rand() * T, len, th, 90, rand() < 0.5, 0.05 + rand() * 0.04));
+      }
+      return out;
+    },
+  },
+
+  /*
+    Wool: flecks of fibre lighter and darker than the yarn they are spun into
+    — a mélange — a millimetre or a few long, lying mostly down the warp. A
+    large tile, scattered evenly: on a smaller one, or with soft blotches
+    among the flecks, the repeat showed as a lattice at 4×.
+  */
+  wool: {
+    repeatCm: 8,
+    detailCm: 0.4,
+    directional: true,
+    marks: (T) => {
+      const cm = T / 8;
+      const rand = seeded(307);
+      const out: SurfaceMark[] = [];
+      for (let i = 0; i < 330; i++) {
+        const len = (0.15 + rand() * 0.25) * cm;
+        const th = (0.04 + rand() * 0.04) * cm;
+        const deg = 90 + (rand() - 0.5) * 60;
+        const light = rand() < 0.6;
+        const alpha = light ? 0.2 + rand() * 0.16 : 0.16 + rand() * 0.1;
+        out.push(...lensMarks(T, rand() * T, rand() * T, len, th, deg, light, alpha));
+      }
+      return out;
+    },
+  },
+};
+
+/** The surface laid over this fabric, if its material has one a screen can show. A photograph carries its own. */
+export function fabricSurface(fabric: Fabric): SurfaceSpec | undefined {
+  return fabric.source === "procedural" ? SURFACES[fabric.material] : undefined;
+}
+
+/**
+ * The grey a surface tile is laid on, so the whole tile averages mid-grey:
+ * each mark moves the tile's average by its opacity times its area, toward
+ * white or toward black, and the ground is set to take that back. Softened
+ * into an even blur, or faded out, the tile is then mid-grey everywhere, which
+ * `soft-light` leaves as it finds it — the cloth's own colour, exactly.
+ */
+export function surfaceGround(marks: SurfaceMark[], T: number): number {
+  const area = T * T;
+  const lighter = marks.filter((m) => m.light).reduce((sum, m) => sum + m.alpha * m.area, 0) / area;
+  const darker = marks.filter((m) => !m.light).reduce((sum, m) => sum + m.alpha * m.area, 0) / area;
+  return (0.5 - lighter) / (1 - lighter - darker);
+}
+
+/** How finely a mark's opacity is kept, so marks alike share one shape — see `surfaceTileSvg`. */
+const ALPHA_STEP = 0.02;
+
+/**
+ * One repeat of a surface: its marks over its balancing grey. Marks of the
+ * same tone and opacity are drawn as one shape, so a tile of hundreds of
+ * marks is a dozen paths — it is drawn again at every zoom, and on a phone
+ * every element of it costs.
+ */
+export function surfaceTileSvg(spec: SurfaceSpec, tile = TILE_PX): string {
+  const T = tile;
+  const marks = spec.marks(T).map((m) => ({ ...m, alpha: +(Math.round(m.alpha / ALPHA_STEP) * ALPHA_STEP).toFixed(2) }));
+  const g = Math.round(255 * surfaceGround(marks, T)).toString(16).padStart(2, "0");
+  const groups = new Map<string, string[]>();
+  for (const m of marks) {
+    const key = `${m.light ? "#ffffff" : "#000000"}|${m.alpha}`;
+    groups.set(key, [...(groups.get(key) ?? []), m.d]);
+  }
+  const drawn = [...groups.entries()]
+    .map(([key, ds]) => {
+      const [fill, alpha] = key.split("|");
+      return `<path d="${ds.join("")}" fill="${fill}" fill-opacity="${alpha}"/>`;
+    })
+    .join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${T}" height="${T}" viewBox="0 0 ${T} ${T}"><rect width="${T}" height="${T}" fill="#${g}${g}${g}"/>${drawn}</svg>`;
+}
+
+/**
+ * A surface drawn at its true size, as much of it as the screen can show:
+ * `keep` of it, see `printScale.ts` — read off its detail, not its tile, for
+ * the tile is a few centimetres but what has to be resolved is the streak,
+ * the column, the fleck. It fades in as its detail comes into view rather than
+ * being blurred into it: a print is softened inside its tile, but a tile of
+ * hundreds of marks, blurred as a block of nine, was drawn over again at every
+ * zoom on the phone's main thread — nearly half a second a zoom. Faded, it is
+ * the one drawing at every zoom; gone into the cloth's own colour while it
+ * cannot show at all (`keep` 0), as its balanced grey would be anyway.
+ */
+export function surfaceArtwork(spec: SurfaceSpec, keep: number): { url: string; repeatCm: number; opacity: number } | undefined {
+  if (keep <= 0) return undefined;
+  const kind = (Object.keys(SURFACES) as FabricMaterial[]).find((m) => SURFACES[m] === spec) ?? "surface";
+  const key = `surface|${kind}|${TILE_PX}`;
+  let url = uriCache.get(key);
+  if (!url) {
+    url = `data:image/svg+xml,${encodeURIComponent(surfaceTileSvg(spec, TILE_PX)).replace(/'/g, "%27").replace(/"/g, "%22")}`;
+    uriCache.set(key, url);
+  }
+  return { url, repeatCm: spec.repeatCm, opacity: Math.min(1, keep) };
+}
+
 /* ------------------------------------------------------------ resolution */
 
 /**
@@ -715,13 +859,16 @@ export function fabricRepeatCm(fabric: Fabric): number {
 }
 
 /**
- * Whether the fabric's pattern has a direction worth choosing — see
- * `MotifSpec.directional`. A photographed one says so on its record; one
- * that does not is taken to have none.
+ * Whether the fabric has a direction worth choosing — see
+ * `MotifSpec.directional`: its pattern's, or its surface's (a denim's
+ * streaks run down the warp), or its sheen's, which is drawn out along the
+ * grain. A photographed one says so on its record; one that does not is
+ * taken to have none.
  */
 export function fabricHasDirection(fabric: Fabric): boolean {
+  if (fabric.sheen) return true;
   if (fabric.source === "image") return fabric.directional ?? false;
-  return MOTIFS[fabric.motif].directional;
+  return MOTIFS[fabric.motif].directional || Boolean(fabricSurface(fabric)?.directional);
 }
 
 /** How this fabric reads once its repeat is too small to resolve on screen. */

@@ -11,9 +11,10 @@ export interface Localized {
 
 /**
  * What a procedural fabric is drawn from — each with its own true repeat (see
- * `MOTIFS` in `lib/fabrics/patterns.ts`). Two kinds: the surface of a plain
- * cloth (a plain weave, a linen's slubs, a crepe's grain, a twill, a knit) and
- * a pattern on it (stripes, checks, dots, flowers…).
+ * `MOTIFS` in `lib/fabrics/patterns.ts`): a plain cloth, a linen's slubs, or a
+ * pattern (stripes, checks, dots, flowers…). A denim's streaks, a knit's
+ * columns and a wool's flecks are not motifs but the cloth's `surface`, laid
+ * over whatever motif it has — see `SURFACES`.
  */
 export type FabricMotif =
   | "solid"
@@ -24,13 +25,8 @@ export type FabricMotif =
   | "floral"
   | "geometric"
   | "damask"
-  // the surface of a plain cloth
+  // a linen's slubs
   | "slub"
-  | "crepe"
-  | "nida"
-  | "twill"
-  | "suiting"
-  | "jersey"
   // patterns
   | "pinstripe"
   | "wideStripe"
@@ -52,7 +48,15 @@ export type FabricMaterial =
   | "crepe"
   | "leather"
   | "jersey"
-  | "nida";
+  | "nida"
+  | "satin";
+
+/**
+ * How much light a cloth throws back along its folds — see `SHEEN` in
+ * `lib/fabrics/sheen.ts`: `bright`, a satin's clear shine; `soft`, the soft
+ * sheen of an abaya black. A matte cloth has none.
+ */
+export type SheenLevel = "bright" | "soft";
 
 export type FabricTexture = "smooth" | "woven" | "pile" | "sheer" | "ribbed" | "knit";
 
@@ -128,6 +132,8 @@ interface FabricCommon {
   categories: CategoryKey[];
   /** The garments it suits, by id — what a shop would cut it for. */
   suits: readonly string[];
+  /** Its sheen, if it has one — never on a matte cloth (cotton, linen, crepe, wool, jersey, denim, nida). */
+  sheen?: SheenLevel;
   /**
    * Kept in the library but not offered — in no picker, card or list — until
    * it can be drawn as it is: a sheer chiffon until sheer cloth can be. A

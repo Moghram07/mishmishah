@@ -5558,3 +5558,95 @@ describe("every linen and every denim alike, close up", () => {
     writeFileSync(".preview/wardrobe/linen-denim.html", '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
   }, 120_000);
 });
+
+describe("satin's sheen and the surfaces a screen can show, light and dark", () => {
+  /*
+    Round 29: a satin dress in ivory, emerald and black, whole and at 2.5×;
+    an abaya in the soft-sheen black beside the nida; and close-ups at 4× of
+    a denim, a knit and a wool — each drawn at the stage's own width, so its
+    sharpness is what the app draws there.
+  */
+  const THEMES = {
+    light: { page: "#efeae4", stage: "#ffffff", text: "#1f1915", caption: "#555" },
+    dark: { page: "#1a1714", stage: "#141110", text: "#f5f1ea", caption: "#b9b2a8" },
+  } as const;
+  type Look = { caption: string; body: BodyType; wear: { id: string; cloth: string }[]; zoom: number; focus: [number, number]; direction?: number };
+  const stage = (look: Look) => {
+    let worn: WornGarment[] = [];
+    for (const { id, cloth } of look.wear) worn = wear(worn, cutFrom(garmentById(id)!, cloth));
+    const cloths: Record<string, Partial<Record<FabricRegionId, Fabric>>> = {};
+    for (const w of worn) {
+      const g = garmentById(w.garmentId)!;
+      const cloth = f(look.wear.find((x) => x.id === w.garmentId)!.cloth);
+      const regions: Partial<Record<FabricRegionId, Fabric>> = {};
+      for (const r of regionsOf(g, w)) regions[r] = cloth;
+      cloths[g.id] = regions;
+    }
+    const outfit: Outfit = { bodyType: look.body, skinTone: DEFAULT_SKIN_TONE, direction: look.direction ?? 0, worn };
+    return <MannequinStage outfit={outfit} fabrics={cloths} zoom={look.zoom} focus={look.focus} />;
+  };
+  const dress = (cloth: string, name: string, zoom: number): Look => ({
+    caption: `${name} — ${zoom}×`,
+    body: "female",
+    wear: [{ id: "female-dress", cloth }],
+    zoom,
+    focus: zoom > 1 ? [300, 470] : [300, 500],
+  });
+  const abaya = (cloth: string, name: string, zoom: number): Look => ({
+    caption: `${name} — ${zoom}×`,
+    body: "female",
+    wear: [{ id: "female-abaya", cloth }],
+    zoom,
+    focus: zoom > 1 ? [300, 420] : [300, 500],
+  });
+  const SHEETS: Record<string, Look[][]> = {
+    "satin-dress": [
+      [dress("fb-ivory-satin", "ساتان عاجي", 1), dress("fb-emerald-satin", "ساتان زمردي", 1), dress("fb-black-satin", "ساتان أسود", 1)],
+      [dress("fb-ivory-satin", "ساتان عاجي", 2.5), dress("fb-emerald-satin", "ساتان زمردي", 2.5), dress("fb-black-satin", "ساتان أسود", 2.5)],
+    ],
+    "abaya-sheen": [
+      [abaya("fb-soft-sheen-black", "أسود بلمعة خفيفة", 1), abaya("fb-black-nida", "ندى أسود", 1)],
+      [abaya("fb-soft-sheen-black", "أسود بلمعة خفيفة", 2.5), abaya("fb-black-nida", "ندى أسود", 2.5)],
+    ],
+    surfaces: [
+      [
+        { caption: "جينز نيلي — بنطلون، 4×", body: "male", wear: [{ id: "male-trousers", cloth: "fb-indigo-denim" }, { id: "male-t-shirt", cloth: "fb-white" }], zoom: 4, focus: [300, 640] },
+        { caption: "جينز سيلفدج — تنورة، 4×", body: "female", wear: [{ id: "female-skirt", cloth: "fb-denim-classic" }, { id: "female-t-shirt", cloth: "fb-white" }], zoom: 4, focus: [300, 600] },
+        { caption: "جيرسي رمادي — تي شيرت، 4×", body: "male", wear: [{ id: "male-t-shirt", cloth: "fb-grey-jersey" }, { id: "male-trousers", cloth: "fb-navy" }], zoom: 4, focus: [300, 330] },
+        { caption: "جيرسي رمادي — تي شيرت، 8×: أعمدة الحياكة", body: "male", wear: [{ id: "male-t-shirt", cloth: "fb-grey-jersey" }, { id: "male-trousers", cloth: "fb-navy" }], zoom: 8, focus: [300, 330] },
+      ],
+      [
+        { caption: "رصاصي شتوي — ثوب، 4×", body: "male", wear: [{ id: "male-thobe", cloth: "fb-winter-grey" }], zoom: 4, focus: [300, 360] },
+        { caption: "كحلي شتوي — ثوب، 4×", body: "male", wear: [{ id: "male-thobe", cloth: "fb-winter-navy" }], zoom: 4, focus: [300, 360] },
+        { caption: "كاروهات اسكتلندي أحمر (صوف) — جاكيت، 4×", body: "female", wear: [{ id: "female-jacket", cloth: "fb-red-tartan" }, { id: "female-dress", cloth: "fb-black-crepe" }], zoom: 4, focus: [300, 360] },
+      ],
+    ],
+  };
+  for (const [name, rows] of Object.entries(SHEETS)) {
+    it.each(["light", "dark"] as const)(`writes .preview/wardrobe/${name}-%s.html`, (theme) => {
+      const t = THEMES[theme];
+      const html = renderToStaticMarkup(
+        <>
+          {rows.map((row, r) => (
+            <div key={r} className="row">
+              {row.map((look) => (
+                <figure key={look.caption}>
+                  {stage(look)}
+                  <figcaption dir="rtl">
+                    <span>{look.caption}</span>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          ))}
+        </>
+      );
+      const css =
+        `<style>body{margin:0;padding:14px;background:${t.page};font:13px system-ui}` +
+        `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:12px;margin-bottom:12px}figure{margin:0;width:440px}` +
+        `svg{width:440px;height:600px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
+        `figcaption{margin-top:6px;color:${t.caption};text-align:right}</style>`;
+      writeFileSync(`.preview/wardrobe/${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    }, 120_000);
+  }
+});

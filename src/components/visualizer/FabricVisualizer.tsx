@@ -42,7 +42,7 @@ import { BODY_CANVAS, bodyTypes } from "@/lib/mannequin/bodies";
 import { productByKind } from "@/lib/products/registry";
 import { frameFor, panBy, type Viewport } from "@/lib/mannequin/frame";
 import { PRODUCT_CANVAS } from "@/lib/products/registry";
-import { needsZoom } from "@/lib/fabrics/printScale";
+import { zoomWouldShow } from "@/lib/fabrics/zoomHint";
 import { focusOf } from "@/lib/garments/closeUp";
 import {
   clothOf,
@@ -92,7 +92,7 @@ import {
   wornOn,
 } from "@/lib/garments/outfit";
 import { fabricBackground, fabricRepeatCm } from "@/lib/fabrics/artwork";
-import { hasPrint, type FabricFilter } from "@/lib/fabrics/filters";
+import type { FabricFilter } from "@/lib/fabrics/filters";
 import { suitsNames } from "@/lib/fabrics/suits";
 import { FabricPicker } from "@/components/fabric/FabricPicker";
 import { PublishDesign } from "@/components/feedback/Feedback";
@@ -192,6 +192,9 @@ const newDesign = (productId: ProductKind, fabric: Fabric): Design => ({
   stitch: {},
   direction: 0,
 });
+
+/** The closest the close-up goes: the zoom slider's top. */
+const MOST_ZOOM = 8;
 
 export function FabricVisualizer() {
   const { isOpen, fabric, close, setFabric } = useVisualizer();
@@ -680,29 +683,32 @@ export function FabricVisualizer() {
   }, [subject, isOpen]);
 
   /*
-    Whether a print in view is too small to read where it is. It is drawn at
-    its true size whatever the zoom, softened when a repeat is only a few
-    pixels across (see `printScale.ts`) — so when one is, say so: zooming in
-    is how to see it. A plain cloth has no print to see, whatever its surface —
-    a weave, a linen's slubs, a crepe's grain, a denim's twill, a knit — and
-    zooming in shows nothing more of it, so it is never asked to (`hasPrint`).
+    Whether zooming in would show something not showing now — see
+    `zoomWouldShow`: a print too small to read where it is, or a surface's
+    detail (a denim's streaks, a knit's columns, a wool's flecks) the closest
+    view draws. Every print and surface is drawn at its true size whatever
+    the zoom, softened where it is only a few pixels across (see
+    `printScale.ts`), so when one in view is, and the closest zoom would bring
+    it out, say so. Never over a plain cloth with nothing more to show, and
+    never where even 8× would not show it — a knit's columns on a phone.
   */
   const smallPrint = useMemo(() => {
     if (stagePx <= 0) return false;
-    const [cmPerUnit, pxPerUnit, inView] =
+    const [cmPerUnit, pxPerUnit, mostPxPerUnit, inView] =
       subject === "wardrobe"
         ? [
             BODY_CANVAS.cmPerUnit,
             stagePx / frameFor(zoom, focus, pan, viewport).w,
+            stagePx / frameFor(MOST_ZOOM, focus, pan, viewport).w,
             Object.values(outfitFabrics).flatMap((regions) => Object.values(regions)),
           ]
-        : [product.cmPerUnit, stagePx / (PRODUCT_CANVAS[0] / Math.max(1, zoom)), Object.values(partFabrics)];
-    return inView.some(
-      (f) =>
-        f !== undefined &&
-        hasPrint(f) &&
-        needsZoom((fabricRepeatCm(f) / cmPerUnit) * pxPerUnit)
-    );
+        : [
+            product.cmPerUnit,
+            stagePx / (PRODUCT_CANVAS[0] / Math.max(1, zoom)),
+            stagePx / (PRODUCT_CANVAS[0] / MOST_ZOOM),
+            Object.values(partFabrics),
+          ];
+    return inView.some((f) => f !== undefined && zoomWouldShow(f, pxPerUnit / cmPerUnit, mostPxPerUnit / cmPerUnit));
   }, [stagePx, subject, zoom, focus, pan, viewport, outfitFabrics, product, partFabrics]);
 
   const onDragStart = (e: React.PointerEvent) => {
@@ -1583,7 +1589,7 @@ export function FabricVisualizer() {
                 <input
                   type="range"
                   min={1}
-                  max={8}
+                  max={MOST_ZOOM}
                   step={0.5}
                   value={zoom}
                   onChange={(e) => setZoom(Number(e.target.value))}

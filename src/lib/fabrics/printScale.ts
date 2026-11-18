@@ -52,5 +52,4 @@ export function printSoften(keep: number): number {
   return Math.min(MAX_SOFTEN, Math.sqrt(-Math.log(keep) / (2 * Math.PI * Math.PI)));
 }
 
-/** Whether a repeat this size on screen is too small to read — when the visualizer says to zoom in. */
-export const needsZoom = (repeatPx: number) => repeatPx < SHARP_PX;
+/* Whether the visualizer asks for a close-up is `zoomWouldShow`'s question — see `zoomHint.ts`. */

@@ -35,6 +35,7 @@ export const MATERIALS: readonly FabricMaterial[] = [
   "denim",
   "wool",
   "silk",
+  "satin",
   "velvet",
   "chiffon",
   "leather",
@@ -42,7 +43,7 @@ export const MATERIALS: readonly FabricMaterial[] = [
 
 /**
  * What the pattern filter calls a fabric. A plain cloth is plain whatever its
- * surface — a linen's slubs, a crepe's grain and a denim's twill are its type,
+ * surface — a linen's slubs, a denim's streaks, a satin's sheen are its type,
  * not a pattern; a pattern goes by its family, small or large.
  */
 export type PatternFamily =
@@ -60,11 +61,6 @@ export type PatternFamily =
 const PATTERN_OF: Record<FabricMotif, PatternFamily> = {
   solid: "solid",
   slub: "solid",
-  crepe: "solid",
-  nida: "solid",
-  twill: "solid",
-  suiting: "solid",
-  jersey: "solid",
   stripe: "stripe",
   pinstripe: "stripe",
   wideStripe: "stripe",

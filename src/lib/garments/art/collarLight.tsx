@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
 import { FLAT_LIT, type Uid } from "@/lib/garments/shading";
+import { SheenContext, alongGrain } from "@/lib/garments/sheen";
 import type { Fold } from "@/lib/garments/folds";
 import type { Pt } from "@/lib/garments/fit";
 
@@ -56,20 +57,49 @@ export const edgeLightDefs = (uid: Uid): ReactNode => (
  * flat collar's rolled outer edge — never along a seam.
  */
 export const edgeLight = (uid: Uid, ...edges: string[]): ReactNode => (
-  <g
-    filter={`url(#${uid("edge-light")})`}
-    fill="none"
-    stroke="#ffffff"
-    strokeOpacity={EDGE_LIGHT.opacity}
-    strokeWidth={EDGE_LIGHT.width * 2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    {edges.map((d, i) => (
-      <path key={i} d={d} />
-    ))}
-  </g>
+  <>
+    <g
+      filter={`url(#${uid("edge-light")})`}
+      fill="none"
+      stroke="#ffffff"
+      strokeOpacity={EDGE_LIGHT.opacity}
+      strokeWidth={EDGE_LIGHT.width * 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {edges.map((d, i) => (
+        <path key={i} d={d} />
+      ))}
+    </g>
+    <EdgeSheen uid={uid} edges={edges} />
+  </>
 );
+
+/**
+ * On a cloth with a sheen, a folded edge shines as a fold's crest does: a
+ * narrow highlight just inside it, drawn out along the grain — see
+ * `garments/sheen.tsx`. Nothing on a matte cloth.
+ */
+function EdgeSheen({ uid, edges }: { uid: Uid; edges: string[] }) {
+  const sheen = useContext(SheenContext);
+  if (!sheen) return null;
+  return alongGrain(
+    sheen,
+    `url(#${uid("sheen-crest-1")})`,
+    <g
+      fill="none"
+      stroke={sheen.tint}
+      strokeOpacity={sheen.look.crestMax}
+      strokeWidth={EDGE_LIGHT.width * 1.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {edges.map((d, i) => (
+        <path key={i} d={d} />
+      ))}
+    </g>
+  );
+}
 
 /**
  * A fold in a collar — where a shirt collar's leaves turn over its band, a

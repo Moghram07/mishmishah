@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fabricById, fabrics, offeredFabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
 import { COLOR_FAMILIES, MATERIALS, patternOf } from "./filters";
-import { MOTIFS, fabricRepeatCm } from "./patterns";
+import { MOTIFS, SURFACES, fabricRepeatCm, fabricSurface } from "./patterns";
 import type { ColorFamily, Fabric, FabricMotif } from "@/types";
 
 /**
@@ -16,16 +16,15 @@ const motifOf = (f: Fabric) => (f.source === "procedural" ? f.motif : undefined)
 const withMotif = (m: FabricMotif) => fabrics.filter((f) => motifOf(f) === m);
 
 describe("the sample library", () => {
-  it("is about sixty fabrics, each its own", () => {
-    expect(fabrics.length).toBeGreaterThanOrEqual(55);
-    expect(fabrics.length).toBeLessThanOrEqual(65);
+  it("is about sixty fabrics, and the seven with a sheen (2026-11-18), each its own", () => {
+    expect(fabrics.length).toBe(68);
     expect(new Set(fabrics.map((f) => f.id)).size).toBe(fabrics.length);
     expect(new Set(fabrics.map((f) => f.name.en)).size, "English names").toBe(fabrics.length);
     expect(new Set(fabrics.map((f) => f.name.ar)).size, "Arabic names").toBe(fabrics.length);
   });
 
   it("names every fabric in Arabic and English, its type, colour family and the garments it suits — a sample, no shop or price", () => {
-    const fields = new Set(["id", "name", "source", "motif", "palette", "color", "material", "colorName", "colorFamily", "texture", "categories", "suits", "hidden"]);
+    const fields = new Set(["id", "name", "source", "motif", "palette", "color", "material", "colorName", "colorFamily", "texture", "categories", "suits", "hidden", "sheen"]);
     for (const f of fabrics) {
       expect(f.name.en.trim(), f.id).not.toBe("");
       expect(f.name.ar, f.id).toMatch(/[؀-ۿ]/);
@@ -52,18 +51,32 @@ describe("the sample library", () => {
     for (const id of ["fb-camel", "fb-chocolate", "fb-olive-linen"]) expect(plain.map((f) => f.id)).toContain(id);
   });
 
-  it("has every type's surface: cotton, linen with slubs, crepe, denim twill, wool suiting, jersey", () => {
-    const surfaces: [FabricMotif, string][] = [
-      ["solid", "cotton"],
-      ["slub", "linen"],
-      ["crepe", "crepe"],
-      ["twill", "denim"],
-      ["suiting", "wool"],
-      ["jersey", "jersey"],
-    ];
-    for (const [motif, material] of surfaces) {
-      expect(withMotif(motif).filter((f) => f.material === material).length, `${material} drawn as ${motif}`).toBeGreaterThan(0);
+  it("has every type's surface: cotton, linen with slubs, crepe, denim's streaks, a knit's columns, wool's flecks, satin's sheen", () => {
+    expect(withMotif("solid").filter((f) => f.material === "cotton").length, "plain cotton").toBeGreaterThan(0);
+    expect(withMotif("slub").filter((f) => f.material === "linen").length, "linen with slubs").toBeGreaterThan(0);
+    for (const material of ["crepe", "denim", "wool", "jersey", "satin"] as const) {
+      expect(fabrics.filter((f) => f.material === material).length, material).toBeGreaterThan(0);
     }
+    // every denim, knit and wool, old and new, in its material's surface — over a plain cloth or a print alike
+    for (const f of fabrics) {
+      const own = SURFACES[f.material];
+      expect(fabricSurface(f), f.id).toBe(own);
+      if (["denim", "jersey", "wool"].includes(f.material)) expect(own, f.id).toBeDefined();
+    }
+    // a crepe's pebbles and a nida's grain are finer than any screen shows: no surface, drawn plain
+    for (const f of fabrics.filter((x) => x.material === "crepe" || x.material === "nida")) {
+      expect([fabricSurface(f), motifOf(f)], f.id).toEqual([undefined, "solid"]);
+    }
+    // the satins shine; nothing else does — see sheen.test
+    expect(fabrics.filter((f) => f.sheen).map((f) => [f.id, f.sheen])).toEqual([
+      ["fb-ivory-satin", "bright"],
+      ["fb-champagne-satin", "bright"],
+      ["fb-emerald-satin", "bright"],
+      ["fb-burgundy-satin", "bright"],
+      ["fb-navy-satin", "bright"],
+      ["fb-black-satin", "bright"],
+      ["fb-soft-sheen-black", "soft"],
+    ]);
     // no sheer cloth among the new ones (the blush chiffon is from before)
     expect(fabrics.filter((f) => f.texture === "sheer").map((f) => f.id)).toEqual(["fb-blush-chiffon"]);
   });
@@ -87,6 +100,8 @@ describe("the sample library", () => {
     for (const material of ["crepe", "nida"]) {
       expect(abaya.some((f) => f.colorFamily === "black" && f.material === material), `an abaya black in ${material}`).toBe(true);
     }
+    // and the black with a soft sheen
+    expect(abaya.some((f) => f.colorFamily === "black" && f.sheen === "soft"), "an abaya black with a soft sheen").toBe(true);
   });
 
   it("keeps the sheer chiffon but does not offer it, until sheer cloth can be drawn", () => {
@@ -98,10 +113,10 @@ describe("the sample library", () => {
     expect(fabrics.filter((f) => f.hidden).map((f) => f.id)).toEqual(["fb-blush-chiffon"]);
   });
 
-  it("draws every linen and every denim alike: the linen's slubs, the denim's twill", () => {
+  it("draws every linen and every denim alike: the linen's slubs, the denim's streaks", () => {
     for (const f of fabrics) {
       if (f.material === "linen") expect(motifOf(f), f.id).toBe("slub");
-      if (f.material === "denim") expect(motifOf(f), f.id).toBe("twill");
+      if (f.material === "denim") expect([motifOf(f), fabricSurface(f)], f.id).toEqual(["solid", SURFACES.denim]);
     }
     expect(fabrics.filter((f) => f.material === "linen").length).toBe(5);
     expect(fabrics.filter((f) => f.material === "denim").length).toBe(3);

@@ -11,18 +11,24 @@ import {
 } from "react";
 import type { Fabric, FabricRegionId, GrainDirection, StitchId } from "@/types";
 import { fabricRepeatCm, useFabricArtwork } from "@/lib/fabrics/artwork";
+import { fabricSurface, surfaceArtwork } from "@/lib/fabrics/patterns";
 import { printKeep } from "@/lib/fabrics/printScale";
+import { sheenOf, sheenTint } from "@/lib/fabrics/sheen";
 import { stitchById } from "@/lib/data/stitches";
 import { FLAT_LIT, clothSurface, clothWarp, type Uid } from "@/lib/garments/shading";
+import { SheenContext, formSheen, sheenDefs, type Sheen } from "@/lib/garments/sheen";
 
 /**
  * One area of cloth, at its true print size.
  *
  * Bottom to top: the fabric fill (an SVG `<pattern>` whose tile size comes from
- * the motif's real repeat, never chosen by hand), then a fixed greyscale
- * shading layer composited with `multiply`, then the topstitch. The shading
- * belongs to the piece, not to the fabric, so swapping cloth never disturbs how
- * the piece is lit.
+ * the motif's real repeat, never chosen by hand) and over it, in `soft-light`,
+ * the cloth's surface (its own tile, at its own true size — see `SURFACES`),
+ * then a fixed greyscale shading layer composited with `multiply`, then the
+ * light, screened — and on a cloth with a sheen its highlights, screened too
+ * (see `garments/sheen.tsx`) — then the topstitch. The shading and the light
+ * belong to the piece, not to the fabric, so swapping cloth never disturbs how
+ * the piece is lit; only how much of the light a smooth cloth throws back.
  *
  * Both engines draw through this: a garment region on the mannequin and a
  * cushion on a sofa are the same problem.
@@ -383,6 +389,22 @@ export function FabricRegion({
   const seen = tonal ? threadSeen(zoom) : 1;
   const threadColor = stitch === "hidden" || seen === 0 ? null : tonal ? "#000000" : thread.color;
 
+  /*
+    The cloth's surface — a denim's streaks, a knit's columns, a wool's
+    flecks — at its own true size, faded in as far as the screen can show its
+    detail, and not at all once it cannot (see `surfaceArtwork`). Never on a
+    piece not cut from the fabric.
+  */
+  const surface = drawing.solid ? undefined : fabricSurface(fabric);
+  const surfaceArt = surface ? surfaceArtwork(surface, printKeep((surface.detailCm / cmPerUnit) * pxPerUnit)) : undefined;
+  const surfaceTile = surfaceArt ? surfaceArt.repeatCm / cmPerUnit : 0;
+
+  /* a smooth cloth's sheen — see `garments/sheen.tsx`; none on a matte one, nor on a piece not cut from the fabric */
+  const look = drawing.solid ? undefined : sheenOf(fabric);
+  const sheen: Sheen | null = look
+    ? { look, turn: direction + (drawing.grain?.turn ?? 0), pivot, tint: sheenTint(fabric) }
+    : null;
+
   const fill = drawing.solid ?? `url(#${uid("pattern")})`;
   /*
     The outfit's grain, plus however this particular piece is cut from it. The
@@ -397,6 +419,8 @@ export function FabricRegion({
 
   /* One list per pass, index for index: the same pieces, filled, edged and lit. */
   const cloth = piecesOf(drawing.shape(fill));
+  /* each piece again in its surface, laid over it in `soft-light` */
+  const surfaced = surfaceArt ? piecesOf(drawing.shape(`url(#${uid("surface-pattern")})`)) : [];
   const edges = piecesOf(drawing.edge?.() ?? drawing.shape("none"));
   const joined = Boolean(drawing.surface?.joined);
   const forms = drawing.surface && !joined ? piecesOf(drawing.shape("#fff")) : [];
@@ -441,6 +465,26 @@ export function FabricRegion({
             <rect width={tile} height={tile} fill={artwork.averageColor} opacity={artwork.veil} />
           )}
         </pattern>
+        {/* the surface: its own tile at its own true size, turned and slid with the grain as the print is */}
+        {surfaceArt && (
+          <pattern
+            id={uid("surface-pattern")}
+            patternUnits="userSpaceOnUse"
+            width={surfaceTile}
+            height={surfaceTile}
+            patternTransform={spin}
+          >
+            <image
+              href={surfaceArt.url}
+              x="0"
+              y="0"
+              width={surfaceTile}
+              height={surfaceTile}
+              preserveAspectRatio="xMidYMid slice"
+            />
+          </pattern>
+        )}
+        {sheen && sheenDefs(uid, sheen, drawing.surface?.blur ?? 10)}
         {whole.length > 0 && (
           <pattern
             id={uid("cuff-pattern")}
@@ -611,8 +655,16 @@ export function FabricRegion({
               filter={
                 drawing.surface?.warp !== undefined ? `url(#${uid("warp")})` : undefined
               }
+              /* isolated, so the surface blends with this piece's cloth and nothing under it */
+              style={surfaced[i] ? { isolation: "isolate" } : undefined}
             >
               {piece}
+              {/* the cloth's surface over it, warped with it — mid-grey leaves the cloth as it is */}
+              {surfaced[i] && (
+                <g style={{ mixBlendMode: "soft-light" }} opacity={surfaceArt!.opacity < 1 ? surfaceArt!.opacity : undefined}>
+                  {surfaced[i]}
+                </g>
+              )}
             </g>
           )}
           {/* the piece in a part's own cloth, laid over it exactly — warped as it is, so its edge is the piece's */}
@@ -715,7 +767,21 @@ export function FabricRegion({
       */}
       {drawing.light && (
         <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "screen" }}>
-          {behind(drawing.light(uid))}
+          {/* on a cloth with a sheen, its folds' crests shine too — see `FoldSheen` */}
+          {behind(<SheenContext.Provider value={sheen}>{drawing.light(uid)}</SheenContext.Provider>)}
+        </g>
+      )}
+
+      {/*
+        A smooth cloth's sheen over its form: where the body turns a piece
+        toward the light — see `formSheen`. Screened, like the light: it only
+        brightens, and the print under it stays where it is.
+      */}
+      {sheen && (forms.length > 0 || joined) && (
+        <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "screen" }}>
+          {behind(
+            <>{formSheen(uid, sheen, joined ? [drawing.shape("#fff")] : forms.map((f, i) => (!soft && softPieces.includes(i) ? null : f)))}</>
+          )}
         </g>
       )}
 

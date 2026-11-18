@@ -21,7 +21,7 @@ describe("the fabric filters", () => {
   });
 
   it("call a plain cloth plain whatever its surface, and a pattern by its family, small or large", () => {
-    const plain: FabricMotif[] = ["solid", "slub", "crepe", "nida", "twill", "suiting", "jersey"];
+    const plain: FabricMotif[] = ["solid", "slub"];
     for (const f of fabrics) {
       if (f.source !== "procedural") continue;
       expect(PATTERN_FAMILIES, f.id).toContain(patternOf(f));
@@ -51,11 +51,11 @@ describe("the fabric filters", () => {
   it("ask for a close-up only of a print: never of a plain cloth's surface, which no zoom shows more of", () => {
     for (const f of fabrics) {
       if (f.source !== "procedural") continue;
-      const plain = ["solid", "slub", "crepe", "nida", "twill", "suiting", "jersey"].includes(f.motif);
+      const plain = ["solid", "slub"].includes(f.motif);
       expect(hasPrint(f), f.id).toBe(!plain);
     }
-    // the denims, the crepes, the knit and the wools: no hint
-    for (const id of ["fb-denim-classic", "fb-indigo-denim", "fb-burgundy-crepe", "fb-black-nida", "fb-grey-jersey", "fb-winter-grey", "fb-apricot-linen"]) {
+    // the denims, the crepes, the knit, the wools, the satins: no print (a surface is not one — see zoomHint)
+    for (const id of ["fb-denim-classic", "fb-indigo-denim", "fb-burgundy-crepe", "fb-black-nida", "fb-grey-jersey", "fb-winter-grey", "fb-apricot-linen", "fb-ivory-satin"]) {
       expect(hasPrint(fabrics.find((f) => f.id === id)!), id).toBe(false);
     }
     // a print, small or large: the hint, when it is too small to read
