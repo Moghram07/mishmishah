@@ -389,14 +389,15 @@ export const MOTIFS: Record<FabricMotif, MotifSpec> = {
               fill="${withAlpha(p.accent, 0.55)}"/>
       `;
       const s = T / 88;
+      /*
+        The medallions alone. A faint cross ran through the middle of the
+        panel too, both ways, and on the cloth it read as a grid of straight
+        lines through every large medallion — tile edges, to the eye.
+      */
       return `
         ${medallion(c, c, s)}
         ${medallion(0, 0, s * 0.6)}${medallion(T, 0, s * 0.6)}
         ${medallion(0, T, s * 0.6)}${medallion(T, T, s * 0.6)}
-        <path d="M0 ${c} H${T} M${c} 0 V${T}" stroke="${withAlpha(
-        p.accent,
-        0.14
-      )}" stroke-width="1"/>
       `;
     },
     averageColor: (p) => mix([[p.base, 64], [p.accent, 30], [hi(p), 6]]),

@@ -197,7 +197,7 @@ export const fabrics: Fabric[] = [
   },
   {
     id: "fb-ivory-damask",
-    name: { en: "Palace Ivory Damask", ar: "دمشقي عاجي فاخر" },
+    name: { en: "Ivory Damask Print", ar: "طبعة دمشقية عاجية" },
     source: "procedural",
     motif: "damask",
     palette: { base: "#F2E7D2", accent: "#B99247", highlight: "#8A5A2B" },

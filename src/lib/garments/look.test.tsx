@@ -5603,8 +5603,8 @@ describe("satin's sheen and the surfaces a screen can show, light and dark", () 
       [dress("fb-ivory-satin", "ساتان عاجي", 2.5), dress("fb-emerald-satin", "ساتان زمردي", 2.5), dress("fb-black-satin", "ساتان أسود", 2.5)],
     ],
     silks: [
-      [dress("fb-rose-silk", "حرير ماء الورد", 1), dress("fb-midnight-floral", "زهور منتصف الليل", 1), dress("fb-ivory-damask", "دمشقي عاجي فاخر", 1)],
-      [dress("fb-rose-silk", "حرير ماء الورد", 2.5), dress("fb-midnight-floral", "زهور منتصف الليل", 2.5), dress("fb-ivory-damask", "دمشقي عاجي فاخر", 2.5)],
+      [dress("fb-rose-silk", "حرير ماء الورد", 1), dress("fb-midnight-floral", "زهور منتصف الليل", 1), dress("fb-ivory-damask", "طبعة دمشقية عاجية", 1)],
+      [dress("fb-rose-silk", "حرير ماء الورد", 2.5), dress("fb-midnight-floral", "زهور منتصف الليل", 2.5), dress("fb-ivory-damask", "طبعة دمشقية عاجية", 2.5)],
     ],
     "abaya-sheen": [
       [abaya("fb-black-crepe-satin", "كريب ساتان أسود", 1), abaya("fb-black-nida", "ندى أسود", 1)],
