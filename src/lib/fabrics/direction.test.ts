@@ -42,7 +42,7 @@ describe("a pattern direction", () => {
       expect(fabricHasDirection(f), f.id).toBe(own || surface || Boolean(f.sheen));
     }
     // a denim's streaks, a knit's columns and a wool's flecks run down the warp; a satin's shine is drawn out along it
-    for (const id of ["fb-denim-classic", "fb-indigo-denim", "fb-grey-jersey", "fb-winter-grey", "fb-ivory-satin", "fb-soft-sheen-black"]) {
+    for (const id of ["fb-denim-classic", "fb-indigo-denim", "fb-grey-jersey", "fb-winter-grey", "fb-ivory-satin", "fb-black-crepe-satin"]) {
       expect(fabricHasDirection(fabrics.find((f) => f.id === id)!), id).toBe(true);
     }
     // a crepe, a nida, a cotton: nothing that shows which way it is cut

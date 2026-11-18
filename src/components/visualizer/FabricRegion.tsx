@@ -9,7 +9,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { Fabric, FabricRegionId, GrainDirection, StitchId } from "@/types";
+import type { BodyType, Fabric, FabricRegionId, GrainDirection, StitchId } from "@/types";
 import { fabricRepeatCm, useFabricArtwork } from "@/lib/fabrics/artwork";
 import { fabricSurface, surfaceArtwork } from "@/lib/fabrics/patterns";
 import { printKeep } from "@/lib/fabrics/printScale";
@@ -197,6 +197,8 @@ interface Props {
    * product. The tonal thread shows only in a close-up — see `TONAL_THREAD`.
    */
   zoom?: number;
+  /** The body the cloth is on, whose curves a cloth with a sheen shines over — none for a product. */
+  body?: BodyType;
   /**
    * What lies under the cloth's edges, as mask ids — see `MannequinStage`.
    * With it, an edge lying on anything — skin, or another piece of cloth — is
@@ -357,6 +359,7 @@ export function FabricRegion({
   canvas,
   stitch,
   beneath,
+  body,
   zoom = 1,
   inlayFabric,
   partFabrics,
@@ -402,7 +405,7 @@ export function FabricRegion({
   /* a smooth cloth's sheen — see `garments/sheen.tsx`; none on a matte one, nor on a piece not cut from the fabric */
   const look = drawing.solid ? undefined : sheenOf(fabric);
   const sheen: Sheen | null = look
-    ? { look, turn: direction + (drawing.grain?.turn ?? 0), pivot, tint: sheenTint(fabric) }
+    ? { look, turn: direction + (drawing.grain?.turn ?? 0), pivot, tint: sheenTint(fabric), body, fitted: !drawing.surface?.joined }
     : null;
 
   const fill = drawing.solid ?? `url(#${uid("pattern")})`;
@@ -736,7 +739,8 @@ export function FabricRegion({
       {/* fixed shading — never changes with the fabric */}
       {drawing.shading && (
         <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "multiply" }}>
-          {behind(drawing.shading(uid))}
+          {/* on a cloth with a sheen, its folds' shadows deepen beside their crests — see `FoldShade` */}
+          {behind(<SheenContext.Provider value={sheen}>{drawing.shading(uid)}</SheenContext.Provider>)}
         </g>
       )}
 
@@ -773,12 +777,14 @@ export function FabricRegion({
       )}
 
       {/*
-        A smooth cloth's sheen over its form: where the body turns a piece
-        toward the light — see `formSheen`. Screened, like the light: it only
-        brightens, and the print under it stays where it is.
+        A smooth cloth's sheen over its form: where a piece's surface and the
+        body under it turn toward the light — see `formSheen`. Screened, like
+        the light: it only brightens, and the print under it stays where it
+        is. Held as a layer to the look's `form`, so highlights overlapping
+        inside it never add up past it.
       */}
       {sheen && (forms.length > 0 || joined) && (
-        <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "screen" }}>
+        <g mask={`url(#${uid("mask")})`} style={{ mixBlendMode: "screen" }} opacity={sheen.look.form}>
           {behind(
             <>{formSheen(uid, sheen, joined ? [drawing.shape("#fff")] : forms.map((f, i) => (!soft && softPieces.includes(i) ? null : f)))}</>
           )}

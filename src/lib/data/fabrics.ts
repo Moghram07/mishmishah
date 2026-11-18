@@ -63,6 +63,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "pink",
     texture: "smooth",
     categories: ["fashion", "wedding", "luxury"],
+    sheen: "medium",
     suits: [...DRESSES, "female-blouse"],
   },
   {
@@ -133,6 +134,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "navy",
     texture: "smooth",
     categories: ["fashion", "wedding", "curtains", "luxury"],
+    sheen: "medium",
     suits: [...DRESSES, "female-blouse"],
   },
   {
@@ -205,6 +207,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "cream",
     texture: "smooth",
     categories: ["home-decor", "curtains", "luxury", "wedding"],
+    sheen: "medium",
     suits: ["female-dress", "female-jacket"],
   },
   /* the plain black most abayas are cut from */
@@ -909,8 +912,8 @@ export const fabrics: Fabric[] = [
     name: { en: "Ivory Satin", ar: "ساتان عاجي" },
     source: "procedural",
     motif: "solid",
-    palette: { base: "#E0D4BA", accent: "#C9B794", highlight: "#FFF9EC" },
-    color: "#E0D4BA",
+    palette: { base: "#E8DFCB", accent: "#CFC4AD", highlight: "#FFFCF4" },
+    color: "#E8DFCB",
     material: "satin",
     colorName: { en: "Ivory", ar: "عاجي" },
     colorFamily: "cream",
@@ -994,10 +997,10 @@ export const fabrics: Fabric[] = [
     suits: [...DRESSES, "female-blouse"],
     sheen: "bright",
   },
-  /* the abaya's black with a soft sheen (its crepe and its nida are above, matte) */
+  /* the abaya's crepe satin: a soft sheen, about a third of a satin's (its crepe and its nida are above, matte) */
   {
-    id: "fb-soft-sheen-black",
-    name: { en: "Soft Sheen Black", ar: "أسود بلمعة خفيفة" },
+    id: "fb-black-crepe-satin",
+    name: { en: "Black Crepe Satin", ar: "كريب ساتان أسود" },
     source: "procedural",
     motif: "solid",
     palette: { base: "#1C1B1E", accent: "#100F12", highlight: "#3E3C42" },

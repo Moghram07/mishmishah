@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { describe, expect, it } from "vitest";
-import { writeFileSync } from "node:fs";
+import { writeSheet } from "@/lib/garments/writeSheet";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { collarById, collars, collarsForGarment } from "@/lib/data/collars";
@@ -165,8 +165,8 @@ describe("a look at them", () => {
 </style>
 ${body}`;
 
-  /* sheets only when images are being made: see vitest.config.mts */
-  it.skipIf(!process.env.SHEETS)("writes .preview/collars.html", () => {
+  /* drawn on every run, written only when images are being made — see `writeSheet` */
+  it("writes .preview/collars.html", () => {
     const rows: [string, BodyType, Fabric][] = [
       ["male · plain linen", "male", linen()],
       [
@@ -204,10 +204,10 @@ ${body}`;
         ))}
       </>
     );
-    writeFileSync(".preview/collars.html", page("Collars", 200, body));
+    writeSheet(".preview/collars.html", page("Collars", 200, body));
   });
 
-  it.skipIf(!process.env.SHEETS)("writes .preview/closeup.html", () => {
+  it("writes .preview/closeup.html", () => {
     const big: [BodyType, string, string][] = [
       ["female", "female-turtleneck-collar", "fb-apricot-linen"],
       ["female", "female-ruffled-collar", "fb-apricot-linen"],
@@ -223,7 +223,7 @@ ${body}`;
         ))}
       </div>
     );
-    writeFileSync(".preview/closeup.html", page("Collars, close up", 400, body));
+    writeSheet(".preview/closeup.html", page("Collars, close up", 400, body));
   });
 });
 

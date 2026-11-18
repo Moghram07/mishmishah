@@ -1,5 +1,5 @@
 import { describe, it } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeSheet } from "@/lib/garments/writeSheet";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProductTemplate } from "@/components/visualizer/ProductTemplate";
@@ -90,7 +90,6 @@ const KINDS: ProductKind[] = ["sofa", "chair", "pillow", "curtain"];
 const THEME_NAMES: Theme[] = ["light", "dark"];
 
 describe("home products, light and dark", () => {
-  mkdirSync(".preview/home", { recursive: true });
   it.each(KINDS.flatMap((k) => THEME_NAMES.map((theme) => [k, theme] as const)))(
     "writes .preview/home/r8-%s-%s.html",
     (kind, theme) => {
@@ -101,13 +100,12 @@ describe("home products, light and dark", () => {
         productTile(kind, "fb-indigo-plaid", 1, t),
         productTile(kind, "fb-indigo-plaid", 2.5, t),
       ];
-      writeFileSync(`.preview/home/r8-${kind}-${theme}.html`, sheet([tiles], theme));
+      writeSheet(`.preview/home/r8-${kind}-${theme}.html`, sheet([tiles], theme));
     }
   );
 });
 
 describe("small prints at true size, light and dark", () => {
-  mkdirSync(".preview/home", { recursive: true });
   it.each(THEME_NAMES)("writes .preview/home/r8-small-curtain-%s.html", (theme) => {
     const t = THEMES[theme];
     const rows = [
@@ -119,7 +117,7 @@ describe("small prints at true size, light and dark", () => {
       ],
       [productTile("curtain", "fb-midnight-floral", 1, t), productTile("curtain", "fb-midnight-floral", 4, t)],
     ];
-    writeFileSync(`.preview/home/r8-small-curtain-${theme}.html`, sheet(rows, theme));
+    writeSheet(`.preview/home/r8-small-curtain-${theme}.html`, sheet(rows, theme));
   });
   it.each(THEME_NAMES)("writes .preview/wardrobe/r8-small-dress-%s.html", (theme) => {
     const t = THEMES[theme];
@@ -128,6 +126,6 @@ describe("small prints at true size, light and dark", () => {
       [dressTile("fb-apricot-linen", 1, [300, 500], t), dressTile("fb-apricot-linen", 3, bodice, t)],
       [dressTile("fb-terracotta-herring", 1, [300, 500], t), dressTile("fb-terracotta-herring", 3, bodice, t)],
     ];
-    writeFileSync(`.preview/wardrobe/r8-small-dress-${theme}.html`, sheet(rows, theme, Math.round((PX * 986) / 488)));
+    writeSheet(`.preview/wardrobe/r8-small-dress-${theme}.html`, sheet(rows, theme, Math.round((PX * 986) / 488)));
   });
 });

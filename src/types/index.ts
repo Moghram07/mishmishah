@@ -53,10 +53,10 @@ export type FabricMaterial =
 
 /**
  * How much light a cloth throws back along its folds — see `SHEEN` in
- * `lib/fabrics/sheen.ts`: `bright`, a satin's clear shine; `soft`, the soft
- * sheen of an abaya black. A matte cloth has none.
+ * `lib/fabrics/sheen.ts`: `bright`, a satin's clear shine; `medium`, a silk's;
+ * `soft`, a crepe satin's — the abaya black. A matte cloth has none.
  */
-export type SheenLevel = "bright" | "soft";
+export type SheenLevel = "bright" | "medium" | "soft";
 
 export type FabricTexture = "smooth" | "woven" | "pile" | "sheer" | "ribbed" | "knit";
 
@@ -132,7 +132,7 @@ interface FabricCommon {
   categories: CategoryKey[];
   /** The garments it suits, by id — what a shop would cut it for. */
   suits: readonly string[];
-  /** Its sheen, if it has one — never on a matte cloth (cotton, linen, crepe, wool, jersey, denim, nida). */
+  /** Its sheen, if it has one — a satin's or a silk's; never on a matte cloth (cotton, linen, crepe, wool, jersey, denim, nida). */
   sheen?: SheenLevel;
   /**
    * Kept in the library but not offered — in no picker, card or list — until

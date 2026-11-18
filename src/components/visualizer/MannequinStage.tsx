@@ -290,6 +290,7 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
           canvas={CANVAS}
           // Real garments are topstitched; `hidden` is the choice.
           stitch={worn.stitch[region] ?? "tonal"}
+          body={outfit.bodyType}
           zoom={zoom}
           /* the garment's stripes, sewn on whichever of its regions they lie on, and its cuffs' own cloth */
           inlayFabric={fabrics[garmentId]?.trim}

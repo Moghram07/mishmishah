@@ -5,9 +5,10 @@ import { fabricById, fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { cutFrom, regionsOf } from "@/lib/garments/outfit";
-import { CREST, crest, type Fold } from "@/lib/garments/folds";
+import { CREST, SHADE, crest, shade, type Fold } from "@/lib/garments/folds";
 import { crestBlur, formSheenSpec } from "@/lib/garments/sheen";
-import { MATTE, SHEEN, SHEEN_CEILING, sheenPeak, sheenTint } from "./sheen";
+import { bodyHighlights } from "@/lib/garments/bodyLight";
+import { MATTE, SHADE_COLOR, SHEEN, SHEEN_CEILING, shadeDepth, sheenPeak, sheenTint } from "./sheen";
 import type { Fabric, FabricRegionId, Outfit } from "@/types";
 
 /**
@@ -44,6 +45,11 @@ const pointsOf = (d: string): Pt[] => {
 /** The crest highlights a markup draws for a cloth: its tint, filled. */
 const crestsOf = (html: string, f: Fabric) =>
   [...html.matchAll(new RegExp(`<path d="([^"]+)" fill="${sheenTint(f)}" fill-opacity="([\\d.]+)"`, "g"))].map(([, d, o]) => ({ d, opacity: Number(o) }));
+/** The deeper shadows beside the crests a markup draws: `SHADE_COLOR`, filled. */
+const shadesOf = (html: string) =>
+  [...html.matchAll(new RegExp(`<path d="([^"]+)" fill="${SHADE_COLOR}" fill-opacity="([\\d.]+)"`, "g"))].map(([, d, o]) => ({ d, opacity: Number(o) }));
+/** The folds' shadowed flanks a markup draws: the shadow grey, filled. */
+const shadowFlanksOf = (html: string) => [...html.matchAll(/<path d="([^"]+)" fill="#4d4d4d" fill-opacity="[\d.]+"/g)].map(([, d]) => pointsOf(d));
 /** The folds' lit flanks a markup draws: white, filled. */
 const flanksOf = (html: string) => [...html.matchAll(/<path d="([^"]+)" fill="#ffffff" fill-opacity="[\d.]+"/g)].map(([, d]) => pointsOf(d));
 const inside = ([x, y]: Pt, poly: Pt[]) => {
@@ -78,23 +84,29 @@ const SATINS = fabrics.filter((f) => f.sheen);
 const SHINY = ["female-dress", "female-skirt", "female-abaya", "male-thobe"];
 
 describe("a sheen", () => {
-  it("is only on satin — clear on the six satins, soft on the abaya black — and never on a matte cloth", () => {
+  it("is only on satin and silk — clear on the six satins, softer on the silks, soft on the crepe satin — and never on a matte cloth", () => {
     expect(SATINS.map((f) => `${f.id}:${f.sheen}`)).toEqual([
+      "fb-rose-silk:medium",
+      "fb-midnight-floral:medium",
+      "fb-ivory-damask:medium",
       "fb-ivory-satin:bright",
       "fb-champagne-satin:bright",
       "fb-emerald-satin:bright",
       "fb-burgundy-satin:bright",
       "fb-navy-satin:bright",
       "fb-black-satin:bright",
-      "fb-soft-sheen-black:soft",
+      "fb-black-crepe-satin:soft",
     ]);
     for (const f of fabrics) {
       if (MATTE.includes(f.material)) expect(f.sheen, `${f.id} is ${f.material}, matte`).toBeUndefined();
-      if (f.sheen) expect(f.material, f.id).toBe("satin");
+      if (f.sheen) expect(["satin", "silk"], f.id).toContain(f.material);
     }
-    // the soft one is softer: under half the satin's light along a crest and over the form
-    expect(SHEEN.soft.crestMax).toBeLessThan(SHEEN.bright.crestMax / 2);
-    expect(SHEEN.soft.form).toBeLessThan(SHEEN.bright.form / 2);
+    // the crepe satin about a third of the satin's, every part of it; the silk between the two
+    for (const part of ["crest", "crestMax", "form", "shade", "shadeMax"] as const) {
+      expect(SHEEN.soft[part] / SHEEN.bright[part], part).toBeCloseTo(1 / 3, 2);
+      expect(SHEEN.medium[part], part).toBeGreaterThan(SHEEN.soft[part]);
+      expect(SHEEN.medium[part], part).toBeLessThan(SHEEN.bright[part]);
+    }
   });
 
   it("draws nothing on a matte cloth — no highlight, no filter for one — on the dress, the skirt, the abaya and the thobe", () => {
@@ -176,14 +188,68 @@ describe("a sheen", () => {
       const html = draw("female-dress", f);
       const look = SHEEN[f.sheen!];
       for (const c of crestsOf(html, f)) expect(c.opacity, f.id).toBeLessThanOrEqual(look.crestMax);
-      // the form's highlight at its brightest is the look's
-      expect(html.includes(`amplitude="${look.form}"`), f.id).toBe(true);
-      // both screened, so they can only lighten: the last blend before every highlight is a screen
+      // the form's highlights — its outline's and the body's — held as one layer to the look's
+      expect(html.includes(`style="mix-blend-mode:screen" opacity="${look.form}"`), f.id).toBe(true);
+      // and the shadow beside a crest never darker than the look's deepest, which leaves over half
+      for (const c of shadesOf(html)) expect(c.opacity, `${f.id}: a shade`).toBeLessThanOrEqual(look.shadeMax);
+      expect(shadeDepth(look), f.sheen).toBeLessThanOrEqual(SHEEN_CEILING);
+      // the shadows multiplied, so they can only darken: the last blend before every one is a multiply
+      const blendAt = (at: number) => [...html.slice(0, at).matchAll(/mix-blend-mode:([a-z-]+)/g)].pop()?.[1];
+      for (const m of html.matchAll(new RegExp(`fill="${SHADE_COLOR}"`, "g"))) expect(blendAt(m.index!), `${f.id}: a shade`).toBe("multiply");
+      // the highlights screened, so they can only lighten: the last blend before every one is a screen
       const blendBefore = (at: number) => [...html.slice(0, at).matchAll(/mix-blend-mode:([a-z-]+)/g)].pop()?.[1];
       for (const m of html.matchAll(new RegExp(`fill="${sheenTint(f)}"`, "g"))) expect(blendBefore(m.index!), `${f.id}: a crest`).toBe("screen");
       for (const m of html.matchAll(/-sheen-form\)"/g)) expect(blendBefore(m.index!), `${f.id}: the form`).toBe("screen");
     }
   }, 120_000);
+
+  it("deepens the shadow right beside each crest, on the side turned away — on a satin or a silk, never on a matte cloth", () => {
+    for (const f of SATINS) {
+      for (const g of SHINY) {
+        const html = draw(g, f);
+        const flanks = shadowFlanksOf(html);
+        const shades = shadesOf(html);
+        expect(shades.length, `${f.id} on ${g}: shadows beside the crests`).toBeGreaterThan(4);
+        // each on the shadowed side of one of the garment's folds
+        for (const c of shades) {
+          const at = midBand(c.d);
+          expect(flanks.some((poly) => inside(at, poly)), `${f.id} on ${g}: a shadow at ${at.map(Math.round)} on no fold's shadowed side`).toBe(true);
+        }
+      }
+    }
+    // the crepe satin's a third of the satin's, the silk's between
+    const deepest = (id: string) => Math.max(...shadesOf(draw("female-dress", fabricById(id)!)).map((c) => c.opacity));
+    expect(deepest("fb-black-crepe-satin")).toBeLessThan(deepest("fb-rose-silk"));
+    expect(deepest("fb-rose-silk")).toBeLessThan(deepest("fb-black-satin"));
+    // a matte cloth: none — the same shadows as before
+    for (const f of fabrics.filter((x) => !x.sheen)) expect(shadesOf(draw("female-dress", f)).length, f.id).toBe(0);
+  }, 120_000);
+
+  it("shines where the body turns the cloth toward the light: her bust, the shoulders, the tops of the sleeves", () => {
+    const satin = fabricById("fb-emerald-satin")!;
+    const curves = (html: string) => (html.match(new RegExp(`<path d="[^"]+" fill="${sheenTint(satin)}" opacity="`, "g")) ?? []).length;
+    // her fitted dress: both shoulders, both sleeve tops, her bust
+    const dress = draw("female-dress", satin);
+    const all = bodyHighlights("female");
+    expect(all.length).toBe(6);
+    for (const b of all) expect(dress.includes(`d="${b.d}"`), `her ${b.d.slice(0, 24)}…`).toBe(true);
+    // lit from the upper left: each on her left brighter than on her right — shoulders, sleeves, bust
+    for (const [l, r] of [[0, 1], [2, 3], [4, 5]]) expect(all[l].strength, `pair ${l}`).toBeGreaterThan(all[r].strength);
+    // the left ones on her left, x under the centre line
+    for (const l of [0, 2, 4]) expect(centroid(pointsOf(all[l].d))[0]).toBeLessThan(300);
+    // an abaya hangs clear of her bust: shoulders and sleeves only
+    expect(bodyHighlights("female", { bust: false }).length).toBe(4);
+    const abaya = draw("female-abaya", satin);
+    for (const b of all.slice(4)) expect(abaya.includes(`d="${b.d}"`), "a bust on a robe").toBe(false);
+    for (const b of all.slice(0, 4)) expect(abaya.includes(`d="${b.d}"`), "her shoulders under the abaya's sheen").toBe(true);
+    // his thobe: his own shoulders and arms
+    const thobe = draw("male-thobe", satin);
+    for (const b of bodyHighlights("male", { bust: false })) expect(thobe.includes(`d="${b.d}"`), "his shoulders").toBe(true);
+    // a matte cloth: none of it
+    expect(curves(draw("female-dress", fabricById("fb-cream")!))).toBe(0);
+    // drawn in every region of it the form shines in, masked to each — the skirt's, a piece hung clear of her bust, without it
+    expect(curves(dress)).toBeGreaterThanOrEqual(6);
+  }, 60_000);
 
   it("comes from the shading's light, upper left: a crest shines on its lit side, and the form where it turns toward the light", () => {
     const fold = (ridge: Pt[]): Fold => ({ ridge, width: [10, 10], shadow: 0.4, light: 0.3, soft: 4 });
@@ -193,6 +259,13 @@ describe("a sheen", () => {
     expect(down[0]).toBeGreaterThan(300 - 10 * CREST[1]);
     const across = centroid(pointsOf(crest(fold([[200, 500], [400, 500]]))));
     expect(across[1]).toBeLessThan(500);
+    // and its shadow deepens on the other side, right against the ridge: on the right of one running down, below one running across
+    const downShade = centroid(pointsOf(shade(fold([[300, 400], [300, 600]]))));
+    expect(downShade[0]).toBeGreaterThan(300);
+    expect(downShade[0]).toBeLessThan(300 + 10 * SHADE[1]);
+    expect(centroid(pointsOf(shade(fold([[200, 500], [400, 500]]))))[1]).toBeGreaterThan(500);
+    // the highlight and the shadow meet at the ridge: neither reaches far past it
+    expect(CREST[0] + SHADE[0]).toBeLessThan(0.2);
     // the form's field is compared with the point toward the light — whatever way the grain is turned, back on the screen it points away from the light
     for (const turn of [0, 45, 90]) {
       const [sx, sy] = formSheenSpec(12, SHEEN.bright, turn).shift;

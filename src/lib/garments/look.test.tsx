@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { describe, it } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeSheet } from "@/lib/garments/writeSheet";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { PLAIN_BLACK, contrastingPlain, fabrics } from "@/lib/data/fabrics";
@@ -36,8 +36,9 @@ import { dictionaries } from "@/lib/i18n/dictionaries";
  * It asserts nothing, deliberately. Everything here that *can* be asserted is
  * asserted in `preview.test.tsx` or measured by `npm run check:garments`; what
  * is left is a judgement, and the job of this file is to put something in front
- * of an eye. An ordinary test run leaves it out (see `vitest.config.mts`): run
- * it with `SHEETS=1`, then open `.preview/look.html` and `.preview/shoulders.html`
+ * of an eye. Every test run draws every sheet — that every look renders, and
+ * draws something, is its check — and writes none: run it with `SHEETS=1` to
+ * write them (see `writeSheet`), then open `.preview/look.html` and `.preview/shoulders.html`
  * against a dev server on :3000 (they pull the mannequin photographs through a
  * `<base href>`, so a production build is never needed).
  */
@@ -115,11 +116,11 @@ const sheet = (zoom: number, focus: [number, number], bg?: string) =>
 
 describe("the wardrobe, to look at", () => {
   it("writes .preview/look.html", () => {
-    writeFileSync(".preview/look.html", sheet(1.0, [300, 500]));
+    writeSheet(".preview/look.html", sheet(1.0, [300, 500]));
   });
 
   it("writes .preview/shoulders.html", () => {
-    writeFileSync(".preview/shoulders.html", sheet(3.0, [300, 250]));
+    writeSheet(".preview/shoulders.html", sheet(3.0, [300, 250]));
   });
 
   /*
@@ -129,7 +130,7 @@ describe("the wardrobe, to look at", () => {
     that a white backdrop could not answer.
   */
   it("writes .preview/magenta.html", () => {
-    writeFileSync(".preview/magenta.html", sheet(1.0, [300, 500], "#FF00FF"));
+    writeSheet(".preview/magenta.html", sheet(1.0, [300, 500], "#FF00FF"));
   });
 });
 
@@ -163,7 +164,7 @@ const FIT: [string, BodyType, string[], [number, number], number][] = [
 
 describe("the fit, close up", () => {
   it("writes .preview/fit.html", () => {
-    writeFileSync(
+    writeSheet(
       ".preview/fit.html",
       page(
         FIT.map(([label, body, ids, focus, zoom]) =>
@@ -193,7 +194,7 @@ const AIM: [string, [number, number], number][] = [
 
 describe("the close-up goes where it is pointed", () => {
   it("writes .preview/zoom.html", () => {
-    writeFileSync(
+    writeSheet(
       ".preview/zoom.html",
       page(
         AIM.map(([label, focus, zoom]) =>
@@ -224,7 +225,7 @@ describe("the close-up goes where it is pointed", () => {
  */
 describe("the necklines, to look at", () => {
   it("writes .preview/necklines.html", () => {
-    writeFileSync(
+    writeSheet(
       ".preview/necklines.html",
       page(
         necklines.map((n) =>
@@ -273,7 +274,7 @@ describe("sleeves", () => {
         length: SLEEVE_KINDS[type].lengths[0],
       })
     );
-    writeFileSync(`.preview/sleeves-${body}.html`, page([...tiles, ...close], 260));
+    writeSheet(`.preview/sleeves-${body}.html`, page([...tiles, ...close], 260));
   });
 
   it("writes .preview/sleeves-dress.html", () => {
@@ -281,7 +282,7 @@ describe("sleeves", () => {
       const length = SLEEVE_KINDS[type].lengths[SLEEVE_KINDS[type].lengths.length - 1];
       return tile(`dress · ${type} ${length}`, "female", ["female-dress"], "fb-apricot-linen", 1.5, [300, 340], undefined, undefined, { type, length });
     });
-    writeFileSync(".preview/sleeves-dress.html", page(tiles, 260));
+    writeSheet(".preview/sleeves-dress.html", page(tiles, 260));
   });
 });
 
@@ -297,7 +298,7 @@ describe("collars, front-on", () => {
             : "male-shirt";
     /* a collar no top takes — the sailor — on the dress, cut to the first neckline it follows: the V */
     const cutOf = (c: (typeof collars)[number]) => (c.necklines ? `${body}-${c.necklines[0]}-neckline` : undefined);
-    writeFileSync(
+    writeSheet(
       `.preview/collarfront-${body}.html`,
       page(
         collars
@@ -415,7 +416,7 @@ describe("skin tones", () => {
       "<p>Ten tones evenly spaced in L* across real skin measured by spectrophotometer (Lu, Xiao, Li &amp; Pointer 2026, " +
       "Skin Res Technol, doi:10.1111/srt.70343), covering every ITA class. Each is a tint over the one photograph " +
       "(mannequin/skinTint.ts): the photograph's median renders as the measured colour, and shadows turn slightly redder.</p>";
-    writeFileSync(".preview/skin-tones.html", head + html);
+    writeSheet(".preview/skin-tones.html", head + html);
   });
 });
 
@@ -438,7 +439,6 @@ describe("the wardrobe, one garment at a time", () => {
   it.each(garments.flatMap((g) => [[g.id, "fb-apricot-linen", ""], [g.id, "fb-indigo-plaid", "-print"]]))(
     "writes .preview/wardrobe/%s (%s)",
     (id, clothId, suffix) => {
-    mkdirSync(".preview/wardrobe", { recursive: true });
     const g = garmentById(id)!;
     const cloth = f(clothId);
     const second = f("fb-rose-silk");
@@ -472,7 +472,7 @@ describe("the wardrobe, one garment at a time", () => {
       "<style>body{margin:0;padding:14px;background:#efeae4;font:12px system-ui}" +
       ".row{display:flex;gap:12px}figure{margin:0}svg{width:400px;height:808px;display:block;" +
       "background:#fff;border-radius:10px}figcaption{margin-top:5px;color:#555}</style>";
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/${id}${suffix}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -487,7 +487,7 @@ describe("the wardrobe, one garment at a time", () => {
  */
 describe("checkpoint sheets", () => {
   it("writes .preview/wardrobe/check-thobe.html", () => {
-    writeFileSync(
+    writeSheet(
       ".preview/wardrobe/check-thobe.html",
       page(
         [
@@ -501,7 +501,7 @@ describe("checkpoint sheets", () => {
   });
 
   it("writes .preview/wardrobe/check-collar.html", () => {
-    writeFileSync(
+    writeSheet(
       ".preview/wardrobe/check-collar.html",
       page(
         [
@@ -522,7 +522,7 @@ describe("checkpoint sheets", () => {
       ? ["female-t-shirt", "female-blouse", "female-dress"]
       : ["male-t-shirt", "male-shirt", "male-polo", "male-thobe"];
     const long: SleeveChoice = { type: "set-in", length: "long" };
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/check-sleeves-${body}.html`,
       page(
         tops.flatMap((id) => [
@@ -570,8 +570,7 @@ describe("thobe round 3", () => {
       "<style>body{margin:0;padding:14px;background:#efeae4;font:12px system-ui}" +
       ".row{display:flex;gap:12px}figure{margin:0}svg{width:" + w + "px;height:" + Math.round(w * 2.02) +
       "px;display:block;background:#fff;border-radius:10px}figcaption{margin-top:5px;color:#555}</style>";
-    mkdirSync(".preview/wardrobe", { recursive: true });
-    writeFileSync(file, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    writeSheet(file, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
   };
 
   it("writes .preview/wardrobe/thobe-r3.html", () => {
@@ -646,7 +645,7 @@ describe("thobe cuffs", () => {
       "<style>body{margin:0;padding:14px;background:#efeae4;font:13px system-ui}" +
       ".row{display:flex;gap:12px;margin-bottom:14px}figure{margin:0}svg{width:300px;height:606px;display:block;" +
       "background:#fff;border-radius:10px}figcaption{margin-top:5px;color:#555}</style>";
-    writeFileSync(
+    writeSheet(
       ".preview/wardrobe/thobe-cuffs.html",
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' +
         css + renderToStaticMarkup(<>{row("fb-apricot-linen")}{row("fb-denim-classic")}</>)
@@ -717,7 +716,7 @@ describe("the shared sleeve", () => {
       "<style>body{margin:0;padding:14px;background:#efeae4;font:12px system-ui}" +
       ".row{display:flex;gap:12px;margin-bottom:12px}figure{margin:0}svg{width:240px;height:485px;display:block;" +
       "background:#fff;border-radius:10px}figcaption{margin-top:5px;color:#555}</style>";
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/sleeves-${id}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -737,7 +736,7 @@ describe("jacket sleeves", () => {
         tile(`${body} jacket — sleeve 3×`, body, [under, `${body}-jacket`], "fb-apricot-linen", 3, focus),
       ];
     });
-    writeFileSync(".preview/wardrobe/sleeves-jackets.html", page(tiles, 300));
+    writeSheet(".preview/wardrobe/sleeves-jackets.html", page(tiles, 300));
   });
 });
 
@@ -789,7 +788,7 @@ describe("jacket outfits", () => {
         "<style>body{margin:0;padding:14px;background:#efeae4;font:12px system-ui}" +
         ".row{display:flex;gap:12px}figure{margin:0}svg{width:300px;height:606px;display:block;" +
         "background:#fff;border-radius:10px}figcaption{margin-top:5px;color:#555}</style>";
-      writeFileSync(
+      writeSheet(
         `.preview/wardrobe/jacket-over-${id}.html`,
         '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
       );
@@ -809,7 +808,7 @@ describe("thobe short sleeves", () => {
         tile(`thobe, ${length} sleeve — 3×`, "male", ["male-thobe"], "fb-apricot-linen", 3, focus, "male-regular-collar", undefined, sleeve),
       ];
     });
-    writeFileSync(".preview/wardrobe/thobe-short-elbow.html", page(tiles, 300));
+    writeSheet(".preview/wardrobe/thobe-short-elbow.html", page(tiles, 300));
   });
 });
 
@@ -874,7 +873,7 @@ describe("body folds", () => {
       "<style>body{margin:0;padding:14px;background:#efeae4;font:12px system-ui}" +
       ".row{display:flex;gap:12px;margin-bottom:12px}figure{margin:0}svg{width:280px;height:566px;display:block;" +
       "background:#fff;border-radius:10px}figcaption{margin-top:5px;color:#555}</style>";
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/folds-${id}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css +
         renderToStaticMarkup(<>{row("fb-apricot-linen", "plain")}{row("fb-indigo-plaid", "plaid")}</>)
@@ -927,7 +926,7 @@ describe("under the jacket's hem", () => {
       "<style>body{margin:0;padding:14px;background:#efeae4;font:12px system-ui}" +
       ".row{display:flex;gap:12px}figure{margin:0}svg{width:300px;height:606px;display:block;" +
       "background:#fff;border-radius:10px}figcaption{margin-top:5px;color:#555}</style>";
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/hem-${name}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -983,7 +982,7 @@ describe("cuffs", () => {
       "<style>body{margin:0;padding:14px;background:#efeae4;font:12px system-ui}" +
       ".row{display:flex;gap:12px;margin-bottom:12px}figure{margin:0}svg{width:220px;height:444px;display:block;" +
       "background:#fff;border-radius:10px}figcaption{margin-top:5px;color:#555}</style>";
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/cuffs-${id}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -1308,7 +1307,7 @@ describe("fixes, light and dark", () => {
         `<style>body{margin:0;padding:14px;background:${t.page};font:12px system-ui}` +
         `.row{display:flex;flex-wrap:wrap;gap:12px}figure{margin:0}svg{width:220px;height:444px;display:block;` +
         `background:${t.stage};color:${t.text};border-radius:10px}figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(
+      writeSheet(
         `.preview/wardrobe/fix-${file}.html`,
         '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
       );
@@ -1373,7 +1372,7 @@ describe("trousers, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:12px;margin-bottom:12px}figure{margin:0}` +
         `svg{width:360px;height:727px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(
+      writeSheet(
         `.preview/wardrobe/r3-trousers-${file}.html`,
         '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
       );
@@ -1436,7 +1435,7 @@ describe("skirt lengths, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:12px;margin-bottom:12px}figure{margin:0}` +
       `svg{width:300px;height:500px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles3-lengths-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
     );
@@ -1491,7 +1490,7 @@ describe("dress waists, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles4-waists-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
     );
@@ -1560,7 +1559,7 @@ describe("sleeves at an empire waist, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles5-sleeves-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
     );
@@ -1630,7 +1629,7 @@ describe("skirt shapes, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles6-shapes-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
     );
@@ -1723,7 +1722,7 @@ describe("the A-line, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles7-aline-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -1825,7 +1824,7 @@ describe("the circle and the pleated skirt, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles8-circle-pleated-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -1928,7 +1927,7 @@ describe("the tiered skirt, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles9-tiered-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -1996,7 +1995,7 @@ describe("the tiered skirt, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles9-tiered-all-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
     );
@@ -2073,7 +2072,7 @@ describe("a top over the skirt, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/top-over-skirt-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -2178,7 +2177,7 @@ describe("abaya, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/abaya-a1-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -2259,7 +2258,7 @@ describe("abaya, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/abaya-a2-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -2357,7 +2356,7 @@ describe("abaya, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/abaya-a3-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -2455,7 +2454,7 @@ describe("abaya, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/abaya-a4-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -2549,7 +2548,7 @@ describe("round 4, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:12px;margin-bottom:12px}figure{margin:0}` +
         `svg{width:360px;height:727px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(
+      writeSheet(
         `.preview/wardrobe/r4-${file}.html`,
         '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
       );
@@ -2614,7 +2613,7 @@ describe("his band collars, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:12px;margin-bottom:12px}figure{margin:0}` +
         `svg{width:360px;height:727px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(
+      writeSheet(
         `.preview/wardrobe/r6-${file}.html`,
         '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
       );
@@ -2706,7 +2705,7 @@ describe("the base layer, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:12px;margin-bottom:12px}figure{margin:0}` +
       `svg{width:300px;height:606px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/r7-base-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -2777,7 +2776,7 @@ describe("dress necklines, audit", () => {
         ])}
       </div>
     ));
-    writeFileSync(`.preview/wardrobe/necklines-${name}.html`, page(rows));
+    writeSheet(`.preview/wardrobe/necklines-${name}.html`, page(rows));
   });
 
   it.each(cuts.map((n) => [short(n.id), n] as const))("writes .preview/wardrobe/necklines-%s-options.html", (name, n) => {
@@ -2808,7 +2807,7 @@ describe("dress necklines, audit", () => {
     const collarTiles = kept.map((c) =>
       fig(c.id, short(c.id.replace(/-collar$/, "-neckline")), stage(dressed(n.id, { collar: c.id }), PLAIN, CLOSE_ZOOM, CLOSE))
     );
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/necklines-${name}-options.html`,
       page(
         <>
@@ -2830,7 +2829,7 @@ describe("dress necklines, audit", () => {
         </div>
       ))
     ));
-    writeFileSync(".preview/wardrobe/necklines-overview.html", page(rows));
+    writeSheet(".preview/wardrobe/necklines-overview.html", page(rows));
   });
 });
 
@@ -2905,7 +2904,7 @@ describe("the dress's empire waist and bodice, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/${name}-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -3037,7 +3036,7 @@ describe("the dress's and the blouse's seams, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/dress-seams-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -3126,7 +3125,7 @@ describe("every other garment's seams, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/garment-seams-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -3207,7 +3206,7 @@ describe("trouser legs, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles10-legs-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -3292,7 +3291,7 @@ describe("flare and palazzo, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles11-legs-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -3357,7 +3356,7 @@ describe("bow collar, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/styles12-bow-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -3433,7 +3432,7 @@ describe("buttons and belt, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:220px}` +
       `svg{width:220px;height:367px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(`.preview/wardrobe/${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    writeSheet(`.preview/wardrobe/${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
   };
   const CUTS = ["round", "scoop", "boat", "v", "square", "high", "sweetheart", "collared", "off-shoulder"] as const;
   const WHOLE = { zoom: 1, focus: [300, 500] as [number, number] };
@@ -3678,7 +3677,7 @@ describe("collars, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
       `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/round13-collars-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -3803,7 +3802,7 @@ describe("round 13 fixes, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
       `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/round13-fixes-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -3882,7 +3881,7 @@ describe("round 14, the Peter Pan, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
       `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/round14-peter-pan-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -3977,7 +3976,7 @@ describe("round 14 fixes, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
       `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/round14-fixes-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -4051,7 +4050,7 @@ describe("round 15, the sailor collar, light and dark", () => {
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
       `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(
+    writeSheet(
       `.preview/wardrobe/round15-sailor-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
     );
@@ -4197,7 +4196,7 @@ describe("round 16, sailor styles, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(
+      writeSheet(
         `.preview/wardrobe/round16-${name}-${theme}.html`,
         '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html
       );
@@ -4293,7 +4292,7 @@ describe("round 19, stripes on any edge, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/round19-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/round19-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -4408,7 +4407,7 @@ describe("round 20, a cloth for every part, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/round20-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/round20-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -4545,7 +4544,7 @@ describe("round 21, the sailor collar on every neckline it follows, light and da
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/round21-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/round21-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -4676,7 +4675,7 @@ describe("round 22, ties anywhere, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/round22-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/round22-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -4785,7 +4784,7 @@ describe("round 23, two rows of buttons, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/round23-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/round23-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -4934,7 +4933,7 @@ describe("round 24, the belt bow, the sash and the wrap's sash, light and dark",
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/round24-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/round24-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -5062,7 +5061,7 @@ describe("the belt over the dress's own parts, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/beltover-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/beltover-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -5175,7 +5174,7 @@ describe("a necktie and a bow tie on a shirt collar, light and dark", () => {
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/shirtties-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/shirtties-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -5280,7 +5279,7 @@ describe("her bow under the collar, and the necktie to the waistband, light and 
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/bowtie-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/bowtie-${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -5390,7 +5389,7 @@ describe("the shirt collar round the neck, and every tie at the bottom of its V,
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
         `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-      writeFileSync(`.preview/wardrobe/${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });
@@ -5454,7 +5453,7 @@ describe("the shirt collar on a garment it does not wrap, light and dark", () =>
       `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:10px;margin-bottom:12px}figure{margin:0;width:300px}` +
       `svg{width:300px;height:420px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
       `figcaption{margin-top:5px;color:${t.caption}}</style>`;
-    writeFileSync(`.preview/wardrobe/thobe-collar-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    writeSheet(`.preview/wardrobe/thobe-collar-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
   }, 120_000);
 });
 
@@ -5515,8 +5514,7 @@ describe("every fabric in the library, on her dress and his thobe", () => {
       "figure{margin:0;width:550px;background:#fff;border-radius:12px;padding:8px;box-sizing:border-box}" +
       ".st{display:flex;gap:6px}svg{width:172px;height:240px;display:block;background:#fff;border-radius:8px;color:#1f1915}" +
       "figcaption{margin-top:6px;color:#333;line-height:1.6;text-align:right}figcaption i{color:#c63e12;font-style:normal}</style>";
-    mkdirSync(".preview/wardrobe", { recursive: true });
-    writeFileSync(".preview/wardrobe/fabrics.html", '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    writeSheet(".preview/wardrobe/fabrics.html", '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
   }, 240_000);
 });
 
@@ -5554,8 +5552,7 @@ describe("every linen and every denim alike, close up", () => {
       ".row{display:flex;gap:12px;width:max-content}figure{margin:0;width:440px}" +
       "svg{width:440px;height:560px;display:block;background:#fff;border-radius:10px;color:#1f1915}" +
       "figcaption{margin-top:6px;color:#333;text-align:right}</style>";
-    mkdirSync(".preview/wardrobe", { recursive: true });
-    writeFileSync(".preview/wardrobe/linen-denim.html", '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+    writeSheet(".preview/wardrobe/linen-denim.html", '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
   }, 120_000);
 });
 
@@ -5590,7 +5587,8 @@ describe("satin's sheen and the surfaces a screen can show, light and dark", () 
     body: "female",
     wear: [{ id: "female-dress", cloth }],
     zoom,
-    focus: zoom > 1 ? [300, 470] : [300, 500],
+    /* at 2.5× the bodice and the top of the skirt: the bust, the shoulders, the sleeves and the first folds */
+    focus: zoom > 1 ? [300, 330] : [300, 500],
   });
   const abaya = (cloth: string, name: string, zoom: number): Look => ({
     caption: `${name} — ${zoom}×`,
@@ -5604,9 +5602,13 @@ describe("satin's sheen and the surfaces a screen can show, light and dark", () 
       [dress("fb-ivory-satin", "ساتان عاجي", 1), dress("fb-emerald-satin", "ساتان زمردي", 1), dress("fb-black-satin", "ساتان أسود", 1)],
       [dress("fb-ivory-satin", "ساتان عاجي", 2.5), dress("fb-emerald-satin", "ساتان زمردي", 2.5), dress("fb-black-satin", "ساتان أسود", 2.5)],
     ],
+    silks: [
+      [dress("fb-rose-silk", "حرير ماء الورد", 1), dress("fb-midnight-floral", "زهور منتصف الليل", 1), dress("fb-ivory-damask", "دمشقي عاجي فاخر", 1)],
+      [dress("fb-rose-silk", "حرير ماء الورد", 2.5), dress("fb-midnight-floral", "زهور منتصف الليل", 2.5), dress("fb-ivory-damask", "دمشقي عاجي فاخر", 2.5)],
+    ],
     "abaya-sheen": [
-      [abaya("fb-soft-sheen-black", "أسود بلمعة خفيفة", 1), abaya("fb-black-nida", "ندى أسود", 1)],
-      [abaya("fb-soft-sheen-black", "أسود بلمعة خفيفة", 2.5), abaya("fb-black-nida", "ندى أسود", 2.5)],
+      [abaya("fb-black-crepe-satin", "كريب ساتان أسود", 1), abaya("fb-black-nida", "ندى أسود", 1)],
+      [abaya("fb-black-crepe-satin", "كريب ساتان أسود", 2.5), abaya("fb-black-nida", "ندى أسود", 2.5)],
     ],
     surfaces: [
       [
@@ -5646,7 +5648,7 @@ describe("satin's sheen and the surfaces a screen can show, light and dark", () 
         `.row{display:flex;flex-wrap:nowrap;width:max-content;gap:12px;margin-bottom:12px}figure{margin:0;width:440px}` +
         `svg{width:440px;height:600px;display:block;background:${t.stage};color:${t.text};border-radius:10px}` +
         `figcaption{margin-top:6px;color:${t.caption};text-align:right}</style>`;
-      writeFileSync(`.preview/wardrobe/${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
+      writeSheet(`.preview/wardrobe/${name}-${theme}.html`, '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + html);
     }, 120_000);
   }
 });

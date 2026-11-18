@@ -1,5 +1,7 @@
-import { createContext, type ReactNode } from "react";
+import { Fragment, createContext, type ReactNode } from "react";
+import type { BodyType } from "@/types";
 import type { SheenLook } from "@/lib/fabrics/sheen";
+import { bodyHighlights } from "./bodyLight";
 import type { Uid } from "./shading";
 
 /**
@@ -12,12 +14,15 @@ import type { Uid } from "./shading";
  * unmoved, and the highlight never repeats with the print.
  *
  * - Along every fold's crest, on the side facing the light (`FoldSheen` in
- *   `folds.tsx`, and a collar's folded edge in `collarLight.tsx`). The folds
- *   are the garment's own, so the highlight follows them and moves wherever
- *   the body and the cut move them.
- * - Over the body's form (`formSheen` here): where a piece's own surface turns
- *   toward the light, from its height field — the same one its shading is
- *   lit from.
+ *   `folds.tsx`, and a collar's folded edge in `collarLight.tsx`) — and right
+ *   beside it, on the side turned away, a deeper shadow (`FoldShade`), cool
+ *   and sharp-edged: the contrast a satin is known by. The folds are the
+ *   garment's own, so both follow them and move wherever the body and the cut
+ *   move them.
+ * - Over the form (`formSheen` here): where a piece's own surface turns
+ *   toward the light, from its height field — the same one its shading is lit
+ *   from — and where the body under it does: the tops of the shoulders, the
+ *   tops of the sleeves, her bust (`bodyLight.ts`).
  *
  * The light comes from the upper left, as for all the shading (`LIGHT` in
  * `folds.tsx`, azimuth 225° in `clothSurface`). Every highlight is drawn out
@@ -29,6 +34,10 @@ import type { Uid } from "./shading";
 /** What a region's sheen needs while its folds are drawn. */
 export interface Sheen {
   look: SheenLook;
+  /** The body the cloth is on, whose curves shine through it — none on a product. */
+  body?: BodyType;
+  /** Whether the cloth follows the body's front, as a fitted bodice does — a robe hangs clear of her bust. */
+  fitted?: boolean;
   /** The grain, in degrees: the outfit's direction and the piece's own turn. A highlight is drawn out along it. */
   turn: number;
   /** The point the grain turns about — the pattern's own pivot. */
@@ -45,11 +54,28 @@ export const CREST_SOFTNESS = [1, 2, 4, 6, 9] as const;
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-/** A crest highlight's blur at a fold softness level: across the grain, and along it — the look's `along` more. */
+/**
+ * A crest highlight's blur at a fold softness level, and its shadow's: across
+ * the grain — narrow, so the edge between the two is sharp, as a satin's is —
+ * and along it, the look's `along` more.
+ */
 export function crestBlur(soft: number, look: SheenLook): readonly [across: number, along: number] {
-  const across = Math.max(0.5, r1(soft * 0.3));
+  const across = Math.max(0.4, r1(soft * 0.12));
   return [across, r1(across + look.along)];
 }
+
+/**
+ * The blur the shadow beside a crest is drawn through: a little softer
+ * across than the highlight's — its edge at the ridge still clear, its far
+ * side easing into the fold's own shadow — and drawn out along the grain.
+ */
+export function shadeBlur(soft: number, look: SheenLook): readonly [across: number, along: number] {
+  const across = Math.max(0.6, r1(soft * 0.22));
+  return [across, r1(across + look.along)];
+}
+
+/** The blur the body's highlights are drawn through: soft across, drawn out along the grain — half as far as a crest, or a small curve's light thins to nothing. */
+export const bodyBlur = (look: SheenLook): readonly [number, number] => [2.5, r1(2.5 + look.along / 2)];
 
 /** Toward the light, upper left, on the screen — the shading's light. */
 const LIGHT = [-Math.SQRT1_2, -Math.SQRT1_2] as const;
@@ -96,10 +122,16 @@ export function sheenDefs(uid: Uid, sheen: Sheen, blur: number): ReactNode {
     <>
       {CREST_SOFTNESS.map((s) => {
         const [a, b] = crestBlur(s, sheen.look);
+        const [c, d] = shadeBlur(s, sheen.look);
         return (
-          <filter key={s} id={uid(`sheen-crest-${s}`)} x="-30%" y="-30%" width="160%" height="160%" colorInterpolationFilters="sRGB">
-            <feGaussianBlur stdDeviation={`${a} ${b}`} />
-          </filter>
+          <Fragment key={s}>
+            <filter id={uid(`sheen-crest-${s}`)} x="-30%" y="-30%" width="160%" height="160%" colorInterpolationFilters="sRGB">
+              <feGaussianBlur stdDeviation={`${a} ${b}`} />
+            </filter>
+            <filter id={uid(`sheen-shade-${s}`)} x="-30%" y="-30%" width="160%" height="160%" colorInterpolationFilters="sRGB">
+              <feGaussianBlur stdDeviation={`${c} ${d}`} />
+            </filter>
+          </Fragment>
         );
       })}
       {/*
@@ -114,12 +146,16 @@ export function sheenDefs(uid: Uid, sheen: Sheen, blur: number): ReactNode {
         <feGaussianBlur in="SourceAlpha" stdDeviation={`${across} ${along}`} result="height" />
         <feOffset in="height" dx={shift[0]} dy={shift[1]} result="toward" />
         <feComposite in="height" in2="toward" operator="arithmetic" k1="0" k2={FORM_GAIN} k3={-FORM_GAIN} k4="0" result="facing" />
+        {/* at full strength here: the layer it is drawn in is held to the look's `form` */}
         <feComponentTransfer in="facing" result="shine">
-          <feFuncA type="gamma" amplitude={sheen.look.form} exponent={FORM_PEAK} offset="0" />
+          <feFuncA type="gamma" amplitude="1" exponent={FORM_PEAK} offset="0" />
         </feComponentTransfer>
         <feFlood floodColor={sheen.tint} result="tint" />
         <feComposite in="tint" in2="shine" operator="in" result="lit" />
         <feComposite in="lit" in2="SourceAlpha" operator="in" />
+      </filter>
+      <filter id={uid("sheen-body")} x="-50%" y="-50%" width="200%" height="200%" colorInterpolationFilters="sRGB">
+        <feGaussianBlur stdDeviation={bodyBlur(sheen.look).join(" ")} />
       </filter>
     </>
   );
@@ -142,7 +178,26 @@ export function alongGrain(sheen: Sheen, filter: string, children: ReactNode): R
   );
 }
 
-/** The form's highlight over each piece of a region — its `forms`, white shapes — through `sheen-form`. */
+/**
+ * The form's highlight over each piece of a region — its `forms`, white
+ * shapes — through `sheen-form`, and the body's curves under it. All at full
+ * strength: the layer they are drawn in is held to the look's `form`, so
+ * where they overlap they never add up past it.
+ */
 export function formSheen(uid: Uid, sheen: Sheen, pieces: ReactNode[]): ReactNode {
-  return pieces.map((piece, i) => <g key={i}>{alongGrain(sheen, `url(#${uid("sheen-form")})`, piece)}</g>);
+  const curves = sheen.body ? bodyHighlights(sheen.body, { bust: sheen.fitted !== false }) : [];
+  return (
+    <>
+      {pieces.map((piece, i) => (
+        <g key={i}>{alongGrain(sheen, `url(#${uid("sheen-form")})`, piece)}</g>
+      ))}
+      {curves.length > 0 &&
+        alongGrain(
+          sheen,
+          `url(#${uid("sheen-body")})`,
+          /* `opacity`, not `fill-opacity`: a curve's light, told apart from a crest's in the markup */
+          curves.map((c, i) => <path key={i} d={c.d} fill={sheen.tint} opacity={c.strength} />)
+        )}
+    </>
+  );
 }

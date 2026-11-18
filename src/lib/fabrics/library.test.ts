@@ -16,7 +16,7 @@ const motifOf = (f: Fabric) => (f.source === "procedural" ? f.motif : undefined)
 const withMotif = (m: FabricMotif) => fabrics.filter((f) => motifOf(f) === m);
 
 describe("the sample library", () => {
-  it("is about sixty fabrics, and the seven with a sheen (2026-11-18), each its own", () => {
+  it("is about sixty fabrics, and the seven satins (2026-11-18), each its own", () => {
     expect(fabrics.length).toBe(68);
     expect(new Set(fabrics.map((f) => f.id)).size).toBe(fabrics.length);
     expect(new Set(fabrics.map((f) => f.name.en)).size, "English names").toBe(fabrics.length);
@@ -67,15 +67,18 @@ describe("the sample library", () => {
     for (const f of fabrics.filter((x) => x.material === "crepe" || x.material === "nida")) {
       expect([fabricSurface(f), motifOf(f)], f.id).toEqual([undefined, "solid"]);
     }
-    // the satins shine; nothing else does — see sheen.test
+    // the silks and the satins shine; nothing else does — see sheen.test
     expect(fabrics.filter((f) => f.sheen).map((f) => [f.id, f.sheen])).toEqual([
+      ["fb-rose-silk", "medium"],
+      ["fb-midnight-floral", "medium"],
+      ["fb-ivory-damask", "medium"],
       ["fb-ivory-satin", "bright"],
       ["fb-champagne-satin", "bright"],
       ["fb-emerald-satin", "bright"],
       ["fb-burgundy-satin", "bright"],
       ["fb-navy-satin", "bright"],
       ["fb-black-satin", "bright"],
-      ["fb-soft-sheen-black", "soft"],
+      ["fb-black-crepe-satin", "soft"],
     ]);
     // no sheer cloth among the new ones (the blush chiffon is from before)
     expect(fabrics.filter((f) => f.texture === "sheer").map((f) => f.id)).toEqual(["fb-blush-chiffon"]);

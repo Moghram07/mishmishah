@@ -15,7 +15,7 @@ const f = (id: string) => fabricById(id)!;
 
 describe("the zoom hint", () => {
   it("is never shown over a plain cloth with nothing more to show — a cotton, a crepe, a nida, a satin", () => {
-    for (const id of ["fb-white", "fb-cream", "fb-black-crepe", "fb-burgundy-crepe", "fb-black-nida", "fb-ivory-satin", "fb-soft-sheen-black"]) {
+    for (const id of ["fb-white", "fb-cream", "fb-black-crepe", "fb-burgundy-crepe", "fb-black-nida", "fb-ivory-satin", "fb-black-crepe-satin"]) {
       expect(detailsOf(f(id)), id).toEqual([]);
       for (const now of [0.5, 1.3, 4.7, 19]) expect(zoomWouldShow(f(id), now, 38), `${id} at ${now} px/cm`).toBe(false);
     }

@@ -5,7 +5,7 @@ import type { Uid } from "./shading";
 import type { PuffShape } from "./sleeves";
 import { BODY_CANVAS } from "@/lib/mannequin/bodies";
 import { SheenContext, alongGrain } from "./sheen";
-import type { SheenLook } from "@/lib/fabrics/sheen";
+import { SHADE_COLOR, type SheenLook } from "@/lib/fabrics/sheen";
 
 /**
  * Folds: the one way every garment here draws drape, gathers and darts.
@@ -1053,8 +1053,13 @@ function drawFlanks(uid: Uid, folds: Fold[], lit: boolean): ReactNode {
   );
 }
 
-/** The folds' shadowed flanks — for a region's `shading`, which multiplies. */
-export const foldShadows = (uid: Uid, folds: Fold[]): ReactNode => drawFlanks(uid, folds, false);
+/** The folds' shadowed flanks — for a region's `shading`, which multiplies — and, on a cloth with a sheen, the deeper shadow beside their crests. */
+export const foldShadows = (uid: Uid, folds: Fold[]): ReactNode => (
+  <>
+    {drawFlanks(uid, folds, false)}
+    <FoldShade uid={uid} folds={folds} />
+  </>
+);
 
 /**
  * Where on a fold's lit flank a smooth cloth's highlight lies, as shares of
@@ -1099,9 +1104,69 @@ export function crest(fold: Fold): string {
   return `M${pts.map(([x, y]) => `${r1(x)} ${r1(y)}`).join(" L")} Z`;
 }
 
+/**
+ * Where beside a fold's crest a smooth cloth's shadow deepens, as shares of
+ * the shadowed flank's width from the ridge out: right against the crest, on
+ * the side turned away from the light — see `shade`.
+ */
+export const SHADE: readonly [from: number, to: number] = [0.04, 0.55];
+
+/**
+ * The band beside a fold's crest a smooth cloth's shadow deepens in: from
+ * `SHADE[0]` to `SHADE[1]` of the shadowed flank's width out from the ridge,
+ * on the side away from the light — the crest's highlight's other side.
+ */
+export function shade(fold: Fold): string {
+  const { ridge, width } = fold;
+  const n = ridge.length;
+  const normals = litNormals(fold).map(([x, y]): Pt => [-x, -y]);
+  const at = (share: number) =>
+    ridge.map(([x, y], i): Pt => {
+      const w = lerp(width[0], width[1], n === 1 ? 0 : i / (n - 1)) * share;
+      return [x + normals[i][0] * w, y + normals[i][1] * w];
+    });
+  const pts = [...at(SHADE[0]), ...at(SHADE[1]).reverse()];
+  return `M${pts.map(([x, y]) => `${r1(x)} ${r1(y)}`).join(" L")} Z`;
+}
+
+/** How deep the shadow beside a fold's crest falls, for a look: with the fold's own shadow, down to the look's deepest. */
+export const shadeOpacity = (fold: Fold, look: SheenLook): number =>
+  Math.floor(Math.min(look.shadeMax, (look.shade * fold.shadow) / 0.5) * 100) / 100;
+
+/**
+ * The deeper shadow beside each fold's crest, on a cloth with a sheen —
+ * multiplied, in the region's shading; on a matte cloth, nothing. A satin
+ * reads as one by this as much as by its highlight: bright, and right beside
+ * it dark. Cool (`SHADE_COLOR`), so on a warm cloth it falls grey-beige; and
+ * through the crest's own blur, sharp across the fold and drawn out along the
+ * grain. The folds that shine (`FoldSheen`), and that have a shadow side.
+ */
+export function FoldShade({ uid, folds }: { uid: Uid; folds: Fold[] }) {
+  const sheen = useContext(SheenContext);
+  if (!sheen) return null;
+  const lit = folds.filter((f) => f.light > 0 && f.shadow > 0 && !f.shadowToward);
+  return (
+    <>
+      {SOFTNESS.map((s) => {
+        const at = lit.filter((f) => level(f.soft) === s);
+        if (at.length === 0) return null;
+        return (
+          <Fragment key={s}>
+            {alongGrain(
+              sheen,
+              `url(#${uid(`sheen-shade-${s}`)})`,
+              at.map((f, i) => <path key={i} d={shade(f)} fill={SHADE_COLOR} fillOpacity={shadeOpacity(f, sheen.look)} />)
+            )}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 /** How bright a fold's crest shines, for a look: with the fold's own light, up to the look's most. */
 export const crestOpacity = (fold: Fold, look: SheenLook): number =>
-  Math.round(Math.min(look.crestMax, (look.crest * fold.light) / 0.3) * 100) / 100;
+  Math.floor(Math.min(look.crestMax, (look.crest * fold.light) / 0.3) * 100) / 100;
 
 /**
  * The highlight along each fold's crest, on a cloth with a sheen — the
