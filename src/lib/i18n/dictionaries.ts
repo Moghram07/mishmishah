@@ -190,6 +190,10 @@ export const dictionaries = {
     "feedback.copied": "Copied",
     "feedback.copyEmail": "Copy the email address",
     "feedback.design": "Design",
+
+    "notFound.title": "Page not found",
+    "notFound.body": "The link may be old, or the address may have a typo.",
+    "notFound.home": "Back to home",
   },
 
   ar: {
@@ -373,6 +377,10 @@ export const dictionaries = {
     "feedback.copied": "تم النسخ",
     "feedback.copyEmail": "نسخ عنوان البريد",
     "feedback.design": "التصميم",
+
+    "notFound.title": "الصفحة غير موجودة",
+    "notFound.body": "قد يكون الرابط قديمًا، أو في العنوان خطأ.",
+    "notFound.home": "العودة إلى الرئيسية",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
