@@ -12,6 +12,7 @@ import { cutFrom } from "@/lib/garments/outfit";
 import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { FabricSwatchChip } from "@/components/fabric/FabricCard";
 import { BrandMark } from "@/components/ui/Logo";
+import { Glow } from "@/components/ui/Glow";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import type { Outfit } from "@/types";
 import { DEFAULT_SKIN_TONE, skinTones } from "@/lib/data/skinTones";
@@ -107,7 +108,7 @@ export function Hero() {
         {/* live showcase */}
         <div className="animate-scale-in">
           <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-charcoal to-[#2a1d16] p-6 shadow-lift">
-            <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-apricot-500/25 blur-3xl" />
+            <Glow size={192} blur={64} color="#FF6A2C" alpha={0.25} className="-right-10 -top-10" />
 
             {/* brand emblem — the real logo artwork */}
             <div className="flex items-center justify-between">

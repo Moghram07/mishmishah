@@ -6,6 +6,7 @@ import { categories } from "@/lib/data/categories";
 import { cn } from "@/lib/utils/cn";
 import { Section } from "@/components/ui/Section";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Glow } from "@/components/ui/Glow";
 
 /** An even grid for however many categories are offered: three sit in one row, even on a phone. */
 const GRID: Record<number, string> = {
@@ -33,10 +34,7 @@ export function PopularCategories() {
               background: `linear-gradient(140deg, ${c.color}22, ${c.color}0a)`,
             }}
           >
-            <span
-              className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-30 blur-2xl transition-opacity group-hover:opacity-50"
-              style={{ backgroundColor: c.color }}
-            />
+            <Glow size={96} blur={40} color={c.color} className="-right-6 -top-6 opacity-30 transition-opacity group-hover:opacity-50" />
             <span
               className="mb-1 h-2 w-8 rounded-full"
               style={{ backgroundColor: c.color }}

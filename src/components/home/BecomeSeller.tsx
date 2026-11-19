@@ -4,6 +4,7 @@ import { Mail, MessageCircle, Store } from "lucide-react";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { Section } from "@/components/ui/Section";
 import { ButtonLink } from "@/components/ui/Button";
+import { Glow } from "@/components/ui/Glow";
 import { SHOP_CONTACT, shopJoinMailto, whatsappLink } from "@/lib/contact";
 
 export function BecomeSeller() {
@@ -13,8 +14,8 @@ export function BecomeSeller() {
   return (
     <Section id="seller">
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-charcoal to-[#3a2418] p-8 shadow-lift sm:p-12">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-apricot-500/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-10 h-64 w-64 rounded-full bg-apricot-600/20 blur-3xl" />
+        <Glow size={256} blur={64} color="#FF6A2C" alpha={0.3} className="-right-16 -top-16" />
+        <Glow size={256} blur={64} color="#F0501A" alpha={0.2} className="-bottom-20 -left-10" />
         <div className="relative">
           <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-apricot-300">
             <Store className="h-3.5 w-3.5" />
