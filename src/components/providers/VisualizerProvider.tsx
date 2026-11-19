@@ -10,6 +10,8 @@ import {
 import type { Fabric } from "@/types";
 import { offeredFabrics } from "@/lib/data/fabrics";
 import { FabricVisualizer } from "@/components/visualizer/FabricVisualizer";
+// TEMPORARY — the phone-speed measurement (?debug=perf); remove before release
+import { PerfOverlay } from "@/components/debug/PerfOverlay";
 
 interface VisualizerValue {
   isOpen: boolean;
@@ -42,6 +44,7 @@ export function VisualizerProvider({ children }: { children: React.ReactNode }) 
     <VisualizerContext.Provider value={value}>
       {children}
       <FabricVisualizer />
+      <PerfOverlay />
     </VisualizerContext.Provider>
   );
 }

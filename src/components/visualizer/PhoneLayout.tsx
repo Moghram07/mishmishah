@@ -138,6 +138,7 @@ export function PhoneLayout(p: Props) {
       {/* the stage: the figure, always in view */}
       <div
         ref={p.setStageEl}
+        data-perf="stage"
         {...p.gestures}
         className="relative min-h-0 flex-1 touch-none select-none overflow-hidden bg-gradient-to-b from-muted/40 to-background"
       >
@@ -371,7 +372,7 @@ function CategoryBody({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 pb-2">
-      <div ref={strip} role="group" aria-label={category.label} className="no-scrollbar flex h-[124px] shrink-0 items-stretch gap-2 overflow-x-auto px-3">
+      <div ref={strip} role="group" aria-label={category.label} data-perf-cat={category.id} className="no-scrollbar flex h-[124px] shrink-0 items-stretch gap-2 overflow-x-auto px-3">
         {category.reset && <ResetCard {...category.reset} />}
         {category.cards
           ? category.cards.map((card) => <Card key={card.id} card={card} />)
