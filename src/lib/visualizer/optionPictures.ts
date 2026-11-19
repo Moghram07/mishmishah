@@ -12,7 +12,8 @@ import manifest from "./optionPictures.json";
  * the drawing a picture was made from has changed since.
  */
 
-export type PictureKind = "garment" | "neckline" | "sleeve" | "collar" | "tie" | "belt" | "cuff";
+/** An option of a garment's — or a ready-made look, kept under its body's name: `female/look-evening`. */
+export type PictureKind = "garment" | "neckline" | "sleeve" | "collar" | "tie" | "belt" | "cuff" | "look";
 
 /** A picture's size in pixels: the card's 96 × 80 well, at 2.5×. */
 export const PICTURE_PX = [240, 200] as const;

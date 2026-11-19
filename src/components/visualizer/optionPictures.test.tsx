@@ -14,6 +14,7 @@ import { tiesFor } from "@/lib/data/collars";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { collarsFitting, cutFrom, necklineOf, setCollar, setNeckline, setSleeve, sleeveOf, tiesOffered } from "@/lib/garments/outfit";
 import { writeSheet } from "@/lib/garments/writeSheet";
+import { LOOKS } from "@/lib/data/looks";
 import { PICTURES, pictureKey } from "@/lib/visualizer/optionPictures";
 import { PICTURE_VIEWPORT, pictureRecipes, type PictureRecipe } from "@/lib/visualizer/pictureRecipes";
 import type { Fabric, FabricRegionId, Outfit } from "@/types";
@@ -76,6 +77,7 @@ function offered(): Set<string> {
       }
     }
   }
+  for (const look of LOOKS) keys.add(pictureKey(look.body, "look", look.id));
   return keys;
 }
 

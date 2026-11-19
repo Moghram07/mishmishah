@@ -626,5 +626,41 @@
  "male-trousers/garment": {
   "v": "0c009c96",
   "drawn": "231c99b2a099"
+ },
+ "female/look-abaya": {
+  "v": "89a12240",
+  "drawn": "2640063b5489"
+ },
+ "female/look-evening": {
+  "v": "0de336c3",
+  "drawn": "0fb4ba6ab6a2"
+ },
+ "female/look-modest-maxi": {
+  "v": "4118ad4e",
+  "drawn": "12389974ac7f"
+ },
+ "female/look-sailor": {
+  "v": "98ac8cef",
+  "drawn": "297ab6c92d17"
+ },
+ "female/look-shirt-dress": {
+  "v": "9e115ee5",
+  "drawn": "0a85d6f98b65"
+ },
+ "male/look-suit": {
+  "v": "80e92d0d",
+  "drawn": "cae6d3f9489b"
+ },
+ "male/look-summer-linen": {
+  "v": "14c890d2",
+  "drawn": "f90f81f4ba7e"
+ },
+ "male/look-white-thobe": {
+  "v": "3e224da2",
+  "drawn": "9c8dcabd21be"
+ },
+ "male/look-winter-thobe": {
+  "v": "3519551e",
+  "drawn": "4682798e4fda"
  }
 }

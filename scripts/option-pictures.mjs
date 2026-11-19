@@ -20,6 +20,10 @@ import sharp from "sharp";
  * the manifest the app reads (`lib/visualizer/optionPictures.json`): each
  * picture's own hash, for its URL, and the drawing's, for the test.
  *
+ * Only pictures that are new, or whose drawing changed, are photographed
+ * again (`--all` for every one): the rest keep their files and hashes, so a
+ * phone that has them keeps them.
+ *
  * The sheet fetches the mannequin photographs from the dev server on :3000,
  * as every preview sheet does. WebP through `sharp`, which Next installs.
  */
@@ -65,6 +69,9 @@ async function main() {
   }
   const drawn = JSON.parse(readFileSync(DRAWN, "utf8"));
   const keys = Object.keys(drawn).sort();
+  const before = existsSync(MANIFEST) ? JSON.parse(readFileSync(MANIFEST, "utf8")) : {};
+  const all = process.argv.includes("--all");
+  const keep = (key) => !all && before[key]?.drawn === drawn[key] && existsSync(join(OUT, `${key}.webp`));
 
   const profile = mkdtempSync(join(tmpdir(), "option-pictures-"));
   const proc = spawn(
@@ -73,6 +80,9 @@ async function main() {
     { stdio: "ignore" }
   );
   const manifest = {};
+  for (const key of keys) if (keep(key)) manifest[key] = before[key];
+  const todo = keys.filter((key) => !keep(key));
+  console.log(`${todo.length} to photograph, ${keys.length - todo.length} unchanged`);
   try {
     const page = await connect();
     await page.send("Page.enable");
@@ -83,7 +93,7 @@ async function main() {
     // one figure at a time: a page of them all at once runs past the raster budget and drops tiles
     await page.eval(`(() => { for (const f of document.querySelectorAll("figure")) f.style.display = "none"; })()`);
     let n = 0;
-    for (const key of keys) {
+    for (const key of todo) {
       const shown = await page.eval(`(() => {
         for (const f of document.querySelectorAll("figure[data-on]")) { f.style.display = "none"; f.removeAttribute("data-on"); }
         const f = document.getElementById(${JSON.stringify(key)});
@@ -102,7 +112,7 @@ async function main() {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, webp);
       manifest[key] = { v: hash(webp, 8), drawn: drawn[key] };
-      if (++n % 20 === 0) console.log(`${n}/${keys.length}`);
+      if (++n % 20 === 0) console.log(`${n}/${todo.length}`);
     }
     page.close();
   } finally {

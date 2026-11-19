@@ -197,6 +197,11 @@ export const dictionaries = {
     "viz.pieces": "Garments",
     "viz.next": "Next",
     "viz.wholeFigure": "Whole figure",
+    "viz.looks": "Looks",
+    "viz.looksHint": "A whole design in one tap — then change anything.",
+    "viz.saveImage": "Save image",
+    "viz.confirm": "Confirm",
+    "viz.cancel": "Cancel",
   },
 
   ar: {
@@ -387,6 +392,11 @@ export const dictionaries = {
     "viz.pieces": "القطع",
     "viz.next": "التالي",
     "viz.wholeFigure": "المجسّم كاملًا",
+    "viz.looks": "تصاميم جاهزة",
+    "viz.looksHint": "تصميم كامل بلمسة، ثم غيّر ما تشاء.",
+    "viz.saveImage": "حفظ صورة",
+    "viz.confirm": "تأكيد",
+    "viz.cancel": "إلغاء",
   },
 } satisfies Record<Locale, Record<string, string>>;
 

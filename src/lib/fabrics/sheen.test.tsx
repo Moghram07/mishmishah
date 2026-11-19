@@ -5,7 +5,7 @@ import { fabricById, fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { cutFrom, regionsOf } from "@/lib/garments/outfit";
-import { CREST, SHADE, crest, shade, type Fold } from "@/lib/garments/folds";
+import { CONTOUR_SHINE, CREST, SHADE, contour, crest, crestOpacity, shade, shadeOpacity, type Fold } from "@/lib/garments/folds";
 import { chestBlur, crestBlur, formSheenSpec } from "@/lib/garments/sheen";
 import { bodyHighlights } from "@/lib/garments/bodyLight";
 import { BUST } from "@/lib/garments/art/female/yoke";
@@ -284,6 +284,26 @@ describe("a sheen", () => {
     // a robe hangs clear of her figure: no band on it; his body has none
     expect(bodyHighlights("female", { bust: false }).some((b) => b.broad)).toBe(false);
     expect(bodyHighlights("male").some((b) => b.broad)).toBe(false);
+  });
+
+  it("keeps her bodice clean under the bust: the contour there takes a fraction of a crest's light and shade", () => {
+    // the turn of the cloth under the bust, as the dress and her tops draw it
+    const under = contour({ centre: [265, 290], half: 26, sag: 9, width: 7, shadow: 0.24, light: 0.16, soft: 6 });
+    const open: Fold = { ...under, shine: undefined };
+    expect(under.shine).toBe(CONTOUR_SHINE);
+    expect(CONTOUR_SHINE).toBeLessThanOrEqual(0.35);
+    for (const look of [SHEEN.bright, SHEEN.medium, SHEEN.soft]) {
+      // a third of what a fold in the open takes, or less: no line of light, no dark line under it
+      expect(crestOpacity(under, look)).toBeLessThanOrEqual(Math.ceil(crestOpacity(open, look) * CONTOUR_SHINE * 100) / 100);
+      expect(shadeOpacity(under, look)).toBeLessThanOrEqual(Math.ceil(shadeOpacity(open, look) * CONTOUR_SHINE * 100) / 100);
+    }
+    // on the satin dress, every crest under her bust is that faint
+    const dress = draw("female-dress", fabricById("fb-emerald-satin")!);
+    const faint = crestOpacity(under, SHEEN.bright);
+    expect(faint).toBeLessThan(0.06);
+    expect(dress.includes(`fill-opacity="${faint}"`)).toBe(true);
+    // a matte cloth has no crest light or shade to soften: its folds are as they were
+    expect(shadesOf(draw("female-dress", fabricById("fb-cream")!)).length).toBe(0);
   });
 
   it("comes from the shading's light, upper left: a crest shines on its lit side, and the form where it turns toward the light", () => {

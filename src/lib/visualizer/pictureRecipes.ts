@@ -21,6 +21,7 @@ import {
   sleeveOf,
   tiesOffered,
 } from "@/lib/garments/outfit";
+import { LOOKS } from "@/lib/data/looks";
 import { pictureKey, PICTURE_PX, type PictureKind } from "./optionPictures";
 
 /**
@@ -95,7 +96,7 @@ export function pictureRecipes(): PictureRecipe[] {
     const p = profileFor(body);
     const x = a.centerX;
     const wristX = (edgeAt(p.armOuter, p.wristY) ?? 160) + 14;
-    const VIEW: Record<Exclude<PictureKind, "garment">, { zoom: number; focus: [number, number] }> = {
+    const VIEW: Record<Exclude<PictureKind, "garment" | "look">, { zoom: number; focus: [number, number] }> = {
       neckline: { zoom: 3.4, focus: [x, a.shoulderY + 43] },
       sleeve: { zoom: 2.6, focus: [x, Math.round((a.shoulderY + p.wristY) / 2) + 8] },
       collar: { zoom: 3.6, focus: [x, a.shoulderY + 15] },
@@ -106,7 +107,7 @@ export function pictureRecipes(): PictureRecipe[] {
 
     for (const g of garmentsFor(body)) {
       const base = [cutFrom(g, cloth.id)];
-      const add = (kind: PictureKind, id: string | undefined, worn: WornGarment[], view = kind === "garment" ? GARMENT_VIEW[g.id] : VIEW[kind]) => {
+      const add = (kind: Exclude<PictureKind, "look">, id: string | undefined, worn: WornGarment[], view = kind === "garment" ? GARMENT_VIEW[g.id] : VIEW[kind]) => {
         if (!view) throw new Error(`no picture framing for ${g.id}`);
         out.push({ key: pictureKey(g.id, kind, id), kind, body, garmentId: g.id, worn, zoom: view.zoom, focus: view.focus });
       };
@@ -176,6 +177,10 @@ export function pictureRecipes(): PictureRecipe[] {
         }
       }
     }
+  }
+  // the ready-made looks, each whole, in its own cloths
+  for (const look of LOOKS) {
+    out.push({ key: pictureKey(look.body, "look", look.id), kind: "look", body: look.body, garmentId: look.body, worn: look.worn(), zoom: 1.15, focus: [300, 505] });
   }
   return out;
 }

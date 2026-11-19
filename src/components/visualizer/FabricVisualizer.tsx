@@ -101,6 +101,9 @@ import { exportShareCard, type ShareEntry } from "@/lib/share/shareCard";
 import { ProductTemplate, productPanBy } from "./ProductTemplate";
 import { MannequinStage } from "./MannequinStage";
 import { PhoneLayout, type PhoneCategory } from "./PhoneLayout";
+import { PhoneFabrics } from "./PhoneFabrics";
+import { looksFor, type Look } from "@/lib/data/looks";
+import { offersWhole, wearWhole, WHOLE_NAMES } from "@/lib/visualizer/fabricParts";
 import { pictureSrc, type PictureKind } from "@/lib/visualizer/optionPictures";
 import {
   WHOLE_VIEW,
@@ -289,6 +292,8 @@ export function FabricVisualizer() {
   const [view, setView] = useState<StageView>(WHOLE_VIEW);
   /** The phone panel's category open in each group. */
   const [phoneCat, setPhoneCat] = useState<Partial<Record<PanelTab, string>>>({});
+  /** The part the phone's fabrics cut, by garment: «whole» — the whole garment — or one of its regions. */
+  const [fabricPart, setFabricPart] = useState<Record<string, string>>({});
 
   /*
     The stage, and the controls laid over the bottom of it, measured. The
@@ -335,6 +340,11 @@ export function FabricVisualizer() {
     () => garmentsFor(outfit.bodyType),
     [outfit.bodyType]
   );
+  /* the ready-made look the mannequin is wearing, untouched since it was put on — its card ticked */
+  const lookNow = useMemo(() => {
+    const now = JSON.stringify(outfit.worn);
+    return looksFor(outfit.bodyType).find((l) => JSON.stringify(l.worn()) === now)?.id;
+  }, [outfit.worn, outfit.bodyType]);
 
   /**
    * The garment the fabric picker is cutting — only ever one that is actually
@@ -637,6 +647,21 @@ export function FabricVisualizer() {
     }
   };
 
+  /**
+   * Put on a ready-made look: the whole design, in its own cloths, as one
+   * step undo takes back. The skin tone stays, and the other mannequin keeps
+   * what it wore; the stage shows the whole figure, and the fabrics start at
+   * the whole of each garment.
+   */
+  const wearLook = (look: Look) => {
+    const lookWorn = look.worn();
+    setOutfit((o) => ({ ...o, worn: lookWorn, direction: 0 }));
+    const first = garmentById(lookWorn[0].garmentId)!;
+    setCutting({ garmentId: first.id, region: first.fabricRegions[0] });
+    setFabricPart({});
+    setView(WHOLE_VIEW);
+  };
+
   const cutRegion = (f: Fabric) => {
     if (subject === "wardrobe") {
       setOutfit((o) => ({
@@ -664,6 +689,8 @@ export function FabricVisualizer() {
 
   const reset = () => {
     setZoom(1);
+    setView(WHOLE_VIEW);
+    setFabricPart({});
     if (subject === "wardrobe") {
       // Re-dress the mannequin that is actually on the stage. Resetting used
       // to reach for the female default whichever body was showing.
@@ -1635,11 +1662,27 @@ export function FabricVisualizer() {
       })(),
     })),
     hint: t("viz.layersHint"),
-    after: { label: t("viz.reset"), icon: <RotateCcw className="h-5 w-5" />, onPick: reset },
+  };
+  /* the ready-made looks for the mannequin on the stage — starting again as their first card */
+  const looksCat: PhoneCategory = {
+    id: "looks",
+    label: t("viz.looks"),
+    cards: looksFor(outfit.bodyType).map((look) => ({
+      id: look.id,
+      label: pick(look.name),
+      active: lookNow === look.id,
+      onPick: () => wearLook(look),
+      picture: (() => {
+        const src = pictureSrc(look.body, "look", look.id);
+        return src ? { src } : undefined;
+      })(),
+    })),
+    hint: t("viz.looksHint"),
+    reset: { label: t("viz.reset"), confirm: t("viz.confirm"), cancel: t("viz.cancel"), onConfirm: reset },
   };
   const asCats = (rows: RowSpec[]): PhoneCategory[] => rows.flatMap((r) => (r.phone ? [{ id: r.id, label: r.label, ...r.phone }] : []));
   const phoneCats: Record<"cut" | "extras", PhoneCategory[]> = {
-    cut: subject === "wardrobe" ? [piecesCat, ...asCats(cutRows)] : [],
+    cut: subject === "wardrobe" ? [looksCat, piecesCat, ...asCats(cutRows)] : [],
     extras: subject === "wardrobe" ? asCats(extraRows) : [],
   };
   const cats = tab === "fabrics" ? [] : phoneCats[tab];
@@ -1682,6 +1725,97 @@ export function FabricVisualizer() {
       const centre = part ? part.focus : viewport ? centreOf(frameOf(v, viewport)) : v.centre;
       return { zoom: z, centre, by: "viewer" };
     });
+
+  /*
+    The phone's fabrics: the garment being edited — the whole of it first,
+    «الفستان كله», then each of its parts — and what the swatches cut.
+  */
+  const fabricsOn = cuttingEntry;
+  const partsOn = fabricsOn ? regionsOf(fabricsOn.garment, fabricsOn.worn) : [];
+  const wholeOn = fabricsOn ? offersWhole(fabricsOn.garment, fabricsOn.worn) : false;
+  const partOn = (() => {
+    if (!fabricsOn) return undefined;
+    const want = fabricPart[fabricsOn.garment.id];
+    if (want === "whole" && wholeOn) return "whole";
+    if (want && partsOn.includes(want as FabricRegionId)) return want;
+    return wholeOn ? "whole" : partsOn[0];
+  })();
+  const regionOn = (partOn === "whole" ? partsOn[0] : partOn) as FabricRegionId | undefined;
+  const phoneFabric = (fabricsOn && regionOn && outfitFabrics[fabricsOn.garment.id]?.[regionOn]) || fabric;
+  const choosePart = (id: string) => {
+    if (!fabricsOn) return;
+    setFabricPart((p) => ({ ...p, [fabricsOn.garment.id]: id }));
+    setCutting({ garmentId: fabricsOn.garment.id, region: (id === "whole" ? partsOn[0] : id) as FabricRegionId });
+  };
+  const cutPart = (f: Fabric) => {
+    if (!fabricsOn || !partOn) return;
+    const g = fabricsOn.garment;
+    setOutfit((o) => ({
+      ...o,
+      worn: o.worn.map((w) =>
+        w.garmentId !== g.id ? w : partOn === "whole" ? wearWhole(w, g, f.id) : { ...w, fabrics: { ...w.fabrics, [partOn]: f.id } }
+      ),
+    }));
+    setFabric(f);
+  };
+  const editingSwitch =
+    subject === "wardrobe" && worn.length > 1
+      ? {
+          label: t("viz.editing"),
+          choices: worn.map(({ garment }) => ({ id: garment.id, label: pick(garment.name) })),
+          active: cutting.garmentId,
+          onPick: (id: string) => {
+            const g = garmentById(id);
+            if (g) setCutting({ garmentId: g.id, region: g.fabricRegions[0] });
+          },
+        }
+      : null;
+  const phoneFabrics =
+    subject === "wardrobe" && fabricsOn ? (
+      <PhoneFabrics
+        editing={editingSwitch}
+        parts={[
+          ...(wholeOn ? [{ id: "whole", label: pick(WHOLE_NAMES[fabricsOn.garment.id]), active: partOn === "whole", onPick: () => choosePart("whole") }] : []),
+          ...partsOn.map((r) => ({
+            id: r,
+            label: partsOn.length > 1 ? pick(regionLabel(r)) : pick(fabricsOn.garment.name),
+            active: partOn === r,
+            onPick: () => choosePart(r),
+          })),
+        ]}
+        fabrics={offeredFabrics}
+        activeId={phoneFabric.id}
+        onPick={cutPart}
+        filter={fabricFilter}
+        onFilter={setFabricFilter}
+        about={{
+          name: pick(phoneFabric.name),
+          // its type, unless its name says it already — «ساتان شمبانيا» — then its repeat
+          detail: [
+            pick(phoneFabric.name).includes(t(`material.${phoneFabric.material}`)) ? null : t(`material.${phoneFabric.material}`),
+            `${t("viz.repeat")} ${fabricRepeatCm(phoneFabric).toFixed(1)} ${t("unit.cm")}`,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          suits:
+            phoneFabric.suits.length > 0
+              ? `${t("card.suits")}: ${suitsNames(phoneFabric).map(pick).join(locale === "ar" ? "، " : ", ")}`
+              : undefined,
+        }}
+        direction={
+          fabricHasDirection(phoneFabric)
+            ? {
+                label: t("viz.rotation"),
+                choices: GRAIN_PRESETS.map((d) => ({ id: String(d), label: t(GRAIN_LABELS[d]) })),
+                active: String(direction),
+                onPick: (id: string) => setDirection(Number(id)),
+              }
+            : null
+        }
+      />
+    ) : (
+      fabricsList
+    );
 
   if (!isOpen) return null;
 
@@ -1754,22 +1888,10 @@ export function FabricVisualizer() {
           categories={cats}
           category={catNow}
           onCategory={chooseCat}
-          editing={
-            subject === "wardrobe" && worn.length > 1
-              ? {
-                  label: t("viz.editing"),
-                  choices: worn.map(({ garment }) => ({ id: garment.id, label: pick(garment.name) })),
-                  active: cutting.garmentId,
-                  onPick: (id) => {
-                    const g = garmentById(id);
-                    if (g) setCutting({ garmentId: g.id, region: g.fabricRegions[0] });
-                  },
-                }
-              : null
-          }
+          editing={editingSwitch}
           next={nextStep}
           empty={t("viz.noExtras")}
-          fabrics={fabricsList}
+          fabrics={phoneFabrics}
         />
       </div>
     );

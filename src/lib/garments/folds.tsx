@@ -57,6 +57,13 @@ export interface Fold {
    * flank facing it is in shadow and the other is not lit.
    */
   shadowToward?: Pt;
+  /**
+   * How much of a sheen's crest — its highlight, and the deeper shade beside
+   * it — the fold takes, against a fold out in the open: 1 unless set. A fold
+   * under a form — her bust — lies in the form's own shade; at full strength
+   * the two read on satin as a line of light under the bust.
+   */
+  shine?: number;
 }
 
 /* ----------------------------------------------------------------- layout */
@@ -204,6 +211,13 @@ export interface ContourSpec {
 }
 
 /**
+ * A contour's share of a sheen's crest light and shade (`Fold.shine`): faint,
+ * so a satin or silk bodice reads clean under the bust. A matte cloth has no
+ * crest light or shade at all, so it is the same as before.
+ */
+export const CONTOUR_SHINE = 0.3;
+
+/**
  * Where cloth turns under a form — under a bust, under a seat: an arc whose
  * upper flank catches the light and whose lower flank falls into the shadow
  * the form throws.
@@ -214,7 +228,7 @@ export function contour(spec: ContourSpec): Fold {
     const t = i / 8;
     return [cx - half + 2 * half * t, cy - sag + sag * Math.sin(Math.PI * t)];
   });
-  return { ridge, width: [width, width], shadow, light, soft: spec.soft ?? width * 0.6 };
+  return { ridge, width: [width, width], shadow, light, soft: spec.soft ?? width * 0.6, shine: CONTOUR_SHINE };
 }
 
 /**
@@ -1131,7 +1145,7 @@ export function shade(fold: Fold): string {
 
 /** How deep the shadow beside a fold's crest falls, for a look: with the fold's own shadow, down to the look's deepest. */
 export const shadeOpacity = (fold: Fold, look: SheenLook): number =>
-  Math.floor(Math.min(look.shadeMax, (look.shade * fold.shadow) / 0.5) * 100) / 100;
+  Math.floor(Math.min(look.shadeMax, (look.shade * fold.shadow * (fold.shine ?? 1)) / 0.5) * 100) / 100;
 
 /**
  * The deeper shadow beside each fold's crest, on a cloth with a sheen —
@@ -1164,9 +1178,9 @@ export function FoldShade({ uid, folds }: { uid: Uid; folds: Fold[] }) {
   );
 }
 
-/** How bright a fold's crest shines, for a look: with the fold's own light, up to the look's most. */
+/** How bright a fold's crest shines, for a look: with the fold's own light — and its share of it, `shine` — up to the look's most. */
 export const crestOpacity = (fold: Fold, look: SheenLook): number =>
-  Math.floor(Math.min(look.crestMax, (look.crest * fold.light) / 0.3) * 100) / 100;
+  Math.floor(Math.min(look.crestMax, (look.crest * fold.light * (fold.shine ?? 1)) / 0.3) * 100) / 100;
 
 /**
  * The highlight along each fold's crest, on a cloth with a sheen — the

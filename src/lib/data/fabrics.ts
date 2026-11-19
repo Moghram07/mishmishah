@@ -21,6 +21,8 @@ const SHIRTS = ["female-blouse", "male-shirt"];
 const TEES = ["female-t-shirt", "male-t-shirt", "male-polo"];
 const TROUSERS = ["female-trousers", "male-trousers"];
 const JACKETS = ["female-jacket", "male-jacket"];
+/** Not a garment but a part worn on many — a necktie, a bow, a scarf: the satins, silks and crepes take one. See `fabrics/suits.ts`. */
+const TIES = ["tie"];
 
 export const fabrics: Fabric[] = [
   {
@@ -64,7 +66,7 @@ export const fabrics: Fabric[] = [
     texture: "smooth",
     categories: ["fashion", "wedding", "luxury"],
     sheen: "medium",
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
   },
   {
     id: "fb-indigo-plaid",
@@ -135,7 +137,7 @@ export const fabrics: Fabric[] = [
     texture: "smooth",
     categories: ["fashion", "wedding", "curtains", "luxury"],
     sheen: "medium",
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
   },
   {
     id: "fb-desert-geo",
@@ -208,7 +210,7 @@ export const fabrics: Fabric[] = [
     texture: "smooth",
     categories: ["home-decor", "curtains", "luxury", "wedding"],
     sheen: "medium",
-    suits: ["female-dress", "female-jacket"],
+    suits: ["female-dress", "female-jacket", ...TIES],
   },
   /* the plain black most abayas are cut from */
   {
@@ -223,7 +225,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "black",
     texture: "smooth",
     categories: ["fashion"],
-    suits: [...ABAYA, ...DRESSES, "female-trousers"],
+    suits: [...ABAYA, ...DRESSES, "female-trousers", ...TIES],
   },
   /* plain white: most thobes, and the stripes on a navy sailor collar */
   {
@@ -429,7 +431,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "red",
     texture: "smooth",
     categories: ["fashion"],
-    suits: [...DRESSES, "female-blouse", "female-trousers"],
+    suits: [...DRESSES, "female-blouse", "female-trousers", ...TIES],
   },
   {
     id: "fb-fuchsia-crepe",
@@ -443,7 +445,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "pink",
     texture: "smooth",
     categories: ["fashion"],
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
   },
   {
     id: "fb-lilac-crepe",
@@ -457,7 +459,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "purple",
     texture: "smooth",
     categories: ["fashion", "wedding"],
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
   },
   /* jersey, a knit */
   {
@@ -919,7 +921,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "cream",
     texture: "smooth",
     categories: ["fashion", "wedding", "luxury"],
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
     sheen: "bright",
   },
   {
@@ -934,7 +936,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "beige",
     texture: "smooth",
     categories: ["fashion", "wedding", "luxury"],
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
     sheen: "bright",
   },
   {
@@ -949,7 +951,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "green",
     texture: "smooth",
     categories: ["fashion", "luxury"],
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
     sheen: "bright",
   },
   {
@@ -964,7 +966,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "red",
     texture: "smooth",
     categories: ["fashion", "luxury"],
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
     sheen: "bright",
   },
   {
@@ -979,7 +981,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "navy",
     texture: "smooth",
     categories: ["fashion", "luxury"],
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
     sheen: "bright",
   },
   {
@@ -994,7 +996,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "black",
     texture: "smooth",
     categories: ["fashion", "luxury"],
-    suits: [...DRESSES, "female-blouse"],
+    suits: [...DRESSES, "female-blouse", ...TIES],
     sheen: "bright",
   },
   /* the abaya's crepe satin: a soft sheen, about a third of a satin's (its crepe and its nida are above, matte) */
@@ -1010,7 +1012,7 @@ export const fabrics: Fabric[] = [
     colorFamily: "black",
     texture: "smooth",
     categories: ["fashion"],
-    suits: [...ABAYA, ...DRESSES],
+    suits: [...ABAYA, ...DRESSES, ...TIES],
     sheen: "soft",
   },
 ];

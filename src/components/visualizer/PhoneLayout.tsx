@@ -12,6 +12,7 @@ import {
   Move,
   Palette,
   Redo2,
+  RotateCcw,
   Ruler,
   Scissors,
   Sparkles,
@@ -64,8 +65,11 @@ export interface PhoneCategory {
   follow?: PhoneChoices;
   /** Said under the cards when there is no second choice. */
   hint?: string;
-  /** Something after the cards: starting again, after the garments. */
-  after?: { label: string; icon: React.ReactNode; onPick: () => void };
+  /**
+   * Starting again, as the row's first card: easy to find, and hard to do by
+   * mistake — a tap asks for a second, «تأكيد», before anything is cleared.
+   */
+  reset?: { label: string; confirm: string; cancel: string; onConfirm: () => void };
 }
 
 interface Props {
@@ -91,6 +95,7 @@ interface Props {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** Saves a picture of the design: the figure, and each part's fabric. */
   share: () => void;
   exporting: boolean;
   close: () => void;
@@ -106,7 +111,7 @@ interface Props {
   next: { label: string; go: () => void } | null;
   /** Said when the group has nothing to offer the garment. */
   empty?: string;
-  /** The fabrics group, as it is until it is rebuilt for the phone. */
+  /** The fabrics group: `PhoneFabrics`. */
   fabrics: React.ReactNode;
 }
 
@@ -164,8 +169,14 @@ export function PhoneLayout(p: Props) {
           {/* top, at the end: share and close, and the beta and its feedback */}
           <div className="absolute end-3 top-3 flex flex-col items-end gap-2">
             <div className="flex gap-2">
-              <button onClick={p.share} disabled={p.exporting} aria-label={t("viz.share")} title={t("viz.share")} className={FLOAT}>
-                {p.exporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}
+              {/* it saves a picture of the design to the phone — said in words, not left to an arrow */}
+              <button
+                onClick={p.share}
+                disabled={p.exporting}
+                className="btn-focus pointer-events-auto inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card/90 px-3.5 text-sm font-semibold text-foreground shadow-soft hover:bg-card disabled:text-foreground/40"
+              >
+                {p.exporting ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Download className="h-[18px] w-[18px]" />}
+                {t("viz.saveImage")}
               </button>
               <button onClick={p.close} aria-label={t("viz.close")} title={t("viz.close")} className={FLOAT}>
                 <X className="h-5 w-5" />
@@ -209,10 +220,22 @@ export function PhoneLayout(p: Props) {
       </div>
 
       {/* the panel: one choice at a time, the groups at the bottom */}
-      <section aria-label={p.title} className="flex shrink-0 flex-col border-t border-border bg-card land:w-[56%] land:border-s land:border-t-0">
-        <div role="tabpanel" id={`viz-panel-${p.tab}`} aria-labelledby={`viz-tab-${p.tab}`} className="flex h-[236px] shrink-0 flex-col land:min-h-0 land:flex-1">
+      <section
+        aria-label={p.title}
+        className={cn(
+          "flex shrink-0 flex-col border-t border-border bg-card land:h-auto land:w-[56%] land:border-s land:border-t-0",
+          // the fabrics rise to two-thirds of the screen; the figure stays in view above them
+          p.tab === "fabrics" && "h-[66.7%]"
+        )}
+      >
+        <div
+          role="tabpanel"
+          id={`viz-panel-${p.tab}`}
+          aria-labelledby={`viz-tab-${p.tab}`}
+          className={cn("flex flex-col land:min-h-0 land:flex-1", p.tab === "fabrics" ? "min-h-0 flex-1" : "h-[236px] shrink-0")}
+        >
           {p.tab === "fabrics" ? (
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">{p.fabrics}</div>
+            p.fabrics
           ) : (
             <>
               <CategoryRow {...p} />
@@ -349,18 +372,10 @@ function CategoryBody({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 pb-2">
       <div ref={strip} role="group" aria-label={category.label} className="no-scrollbar flex h-[124px] shrink-0 items-stretch gap-2 overflow-x-auto px-3">
+        {category.reset && <ResetCard {...category.reset} />}
         {category.cards
           ? category.cards.map((card) => <Card key={card.id} card={card} />)
           : category.main && <BigChoices choices={category.main} />}
-        {category.after && (
-          <button
-            onClick={category.after.onPick}
-            className="btn-focus flex w-24 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border px-2 text-center text-[12.5px] font-semibold leading-tight text-muted-foreground hover:border-apricot-400 hover:text-foreground"
-          >
-            {category.after.icon}
-            {category.after.label}
-          </button>
-        )}
         {nextChip}
       </div>
       <div className="no-scrollbar flex h-11 shrink-0 items-center gap-2 overflow-x-auto px-3">
@@ -370,6 +385,58 @@ function CategoryBody({
           category.hint && <p className="line-clamp-3 text-xs leading-[1.2] text-muted-foreground">{category.hint}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Starting again: the first card of the looks, easy to find. One tap only
+ * asks — «تأكيد» or «إلغاء» — so a stray tap clears nothing; a tap anywhere
+ * else, or a few seconds, puts it back. Even confirmed, it is one step undo
+ * takes back.
+ */
+function ResetCard({ label, confirm, cancel, onConfirm }: NonNullable<PhoneCategory["reset"]>) {
+  const [asking, setAsking] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!asking) return;
+    const away = (e: PointerEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setAsking(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    const id = setTimeout(() => setAsking(false), 6000);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      clearTimeout(id);
+    };
+  }, [asking]);
+  return (
+    <div ref={box} className="flex w-24 shrink-0">
+      {asking ? (
+        <div role="group" aria-label={label} className="flex w-full flex-col justify-center gap-1.5 rounded-2xl border-2 border-apricot-500 bg-apricot-500/5 p-1.5">
+          <button
+            onClick={() => {
+              setAsking(false);
+              onConfirm();
+            }}
+            className="btn-focus inline-flex h-11 items-center justify-center gap-1 rounded-full bg-apricot-500 px-2 text-[13px] font-semibold text-white"
+          >
+            <RotateCcw className="h-4 w-4" />
+            {confirm}
+          </button>
+          <button onClick={() => setAsking(false)} className="btn-focus h-11 rounded-full border border-border bg-background px-2 text-[13px] font-semibold text-foreground">
+            {cancel}
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAsking(true)}
+          className="btn-focus flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border px-2 text-center text-[12.5px] font-semibold leading-tight text-muted-foreground hover:border-apricot-400 hover:text-foreground"
+        >
+          <RotateCcw className="h-5 w-5" />
+          {label}
+        </button>
+      )}
     </div>
   );
 }

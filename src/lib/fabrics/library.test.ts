@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SUIT_PARTS, suitsNames } from "./suits";
 import { fabricById, fabrics, offeredFabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
 import { COLOR_FAMILIES, MATERIALS, patternOf } from "./filters";
@@ -23,6 +24,22 @@ describe("the sample library", () => {
     expect(new Set(fabrics.map((f) => f.name.ar)).size, "Arabic names").toBe(fabrics.length);
   });
 
+  it("marks the satins, silks and crepes as suiting a tie, named «ربطة» last in the «يناسب» line", () => {
+    const tie = (f: (typeof fabrics)[number]) => f.suits.includes("tie");
+    const satins = fabrics.filter((f) => f.material === "satin");
+    const silks = fabrics.filter((f) => f.material === "silk");
+    const crepes = fabrics.filter((f) => f.material === "crepe");
+    expect([satins.length, silks.length, crepes.length]).toEqual([7, 3, 4]);
+    for (const f of [...satins, ...silks, ...crepes]) {
+      expect(tie(f), f.id).toBe(true);
+      expect(suitsNames(f).at(-1), f.id).toEqual({ en: "Tie", ar: "ربطة" });
+    }
+    // nothing else is marked for one
+    expect(fabrics.filter(tie).length).toBe(14);
+    // the garments it suits still come first, each once
+    expect(suitsNames(fabrics.find((f) => f.id === "fb-emerald-satin")!).map((n) => n.ar)).toEqual(["فستان", "تنورة", "بلوزة", "ربطة"]);
+  });
+
   it("names every fabric in Arabic and English, its type, colour family and the garments it suits — a sample, no shop or price", () => {
     const fields = new Set(["id", "name", "source", "motif", "palette", "color", "material", "colorName", "colorFamily", "texture", "categories", "suits", "hidden", "sheen"]);
     for (const f of fabrics) {
@@ -31,7 +48,8 @@ describe("the sample library", () => {
       expect(MATERIALS, f.id).toContain(f.material);
       expect(COLOR_FAMILIES.map((c) => c.id), f.id).toContain(f.colorFamily);
       expect(f.suits.length, f.id).toBeGreaterThan(0);
-      for (const g of f.suits) expect(garmentById(g), `${f.id} suits ${g}`).toBeDefined();
+      // a garment, or a part named in `SUIT_PARTS` — a tie
+      for (const g of f.suits) expect(garmentById(g) ?? SUIT_PARTS[g], `${f.id} suits ${g}`).toBeDefined();
       expect(new Set(f.suits).size, f.id).toBe(f.suits.length);
       // drawn in code, nothing found online; nothing a shop would add: no price, stock, store or rating
       expect(f.source, f.id).toBe("procedural");
