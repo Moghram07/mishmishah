@@ -1948,11 +1948,11 @@ export function FabricVisualizer() {
             <button
               onClick={share}
               disabled={exporting}
-              aria-label={t("viz.share")}
+              aria-label={t("viz.saveImage")}
               className="btn-focus inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-border px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60 sm:px-4"
             >
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              <span className="hidden sm:inline">{t("viz.share")}</span>
+              <span className="hidden sm:inline">{t("viz.saveImage")}</span>
             </button>
             <button
               onClick={close}
@@ -2231,7 +2231,7 @@ export function FabricVisualizer() {
                 </button>
                 <Button variant="primary" className="w-full" onClick={share}>
                   <Download className="h-4 w-4" />
-                  {t("viz.share")}
+                  {t("viz.saveImage")}
                 </Button>
               </div>
             </div>
