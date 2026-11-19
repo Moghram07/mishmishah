@@ -1,14 +1,13 @@
 import type { BodyType } from "@/types";
-import { profileFor, type BodyEdge } from "@/lib/mannequin/profile";
-import { BUST } from "./art/female/yoke";
+import { edgeAt, profileFor, type BodyEdge } from "@/lib/mannequin/profile";
 
 /**
  * Where the body turns cloth toward the light — for a cloth with a sheen
  * (see `garments/sheen.tsx`): the tops of the shoulders, the tops of the
- * sleeves over the deltoid, and her bust. The light is the shading's, from the
- * upper left, so the left of each is lit more than the right.
+ * sleeves over the deltoid, and her upper chest. The light is the shading's,
+ * from the upper left, so the left of each is lit more than the right.
  *
- * Read off the measured body (`mannequin/profile.ts`, the bust from `BUST`),
+ * Read off the measured body (`mannequin/profile.ts`),
  * not placed by eye: the shoulder strip follows the shoulder's own slope, the
  * sleeve's follows the outside of the arm, so they sit where her shoulder and
  * his arm actually are. Drawn into the region they fall on and masked to it:
@@ -19,6 +18,11 @@ export interface BodyHighlight {
   d: string;
   /** How bright, against the form's brightest: 0 to 1. */
   strength: number;
+  /**
+   * Spread wide and soft rather than kept to its shape — her chest's broad
+   * sheen, drawn through `sheen-chest` instead of `sheen-body`.
+   */
+  broad?: true;
 }
 
 type Pt = [number, number];
@@ -57,14 +61,44 @@ function strip(edge: BodyEdge, y0: number, y1: number, from: number, to: number)
   return [[...inner, ...outer.reverse()]];
 }
 
-/** A soft ellipse, turned `deg`, as a polygon. */
-function ellipse([cx, cy]: Pt, rx: number, ry: number, deg: number): Pt[] {
-  const a = (deg * Math.PI) / 180;
-  return Array.from({ length: 16 }, (_, k) => {
-    const t = (k / 16) * Math.PI * 2;
-    const [x, y] = [Math.cos(t) * rx, Math.sin(t) * ry];
-    return [cx + x * Math.cos(a) - y * Math.sin(a), cy + x * Math.sin(a) + y * Math.cos(a)] as Pt;
-  });
+/**
+ * Her upper chest, as one band from shoulder to shoulder — where a fitted
+ * bodice turns up toward the light, above the bust — returned as its left
+ * half (x from just inside the shoulder to the centre line). The band rises
+ * to the shoulders, as the body does, and thins toward them; mirrored, the
+ * two halves meet edge to edge on the centre line, and blurred together they
+ * are one sheen, brighter on the lit side.
+ *
+ * It replaced a highlight on each breast: two round lights read as two spots
+ * and drew the eye to them. A satin bodice catches the light across the whole
+ * of the upper chest, not at two points.
+ */
+export const CHEST = {
+  /** In from the shoulder point, where the band ends. */
+  inset: 15,
+  /** Its top on the centre line, below the shoulder point. */
+  drop: 22,
+  /** How much higher it is at the shoulders than at the centre. */
+  rise: 16,
+  /** Its depth on the centre line, and at its ends. */
+  depth: [30, 20] as const,
+};
+
+function chestHalf(shoulderX: number, shoulderY: number): Pt[] {
+  const x0 = shoulderX + CHEST.inset;
+  const span = 300 - x0;
+  const top: Pt[] = [];
+  const bottom: Pt[] = [];
+  for (let k = 0; k <= 11; k++) {
+    const x = x0 + (span * k) / 11;
+    // u: 1 at the shoulder end, 0 at the centre line
+    const u = (300 - x) / span;
+    const y = shoulderY + CHEST.drop - CHEST.rise * u * u;
+    const depth = CHEST.depth[0] + (CHEST.depth[1] - CHEST.depth[0]) * u * u;
+    top.push([x, y]);
+    bottom.push([x, y + depth]);
+  }
+  return [...top, ...bottom.reverse()];
 }
 
 const path = (poly: Pt[]) => `M${poly.map(([x, y]) => `${r1(x)} ${r1(y)}`).join(" L")} Z`;
@@ -72,7 +106,8 @@ const mirror = (poly: Pt[]): Pt[] => poly.map(([x, y]) => [CANVAS_W - x, y]);
 
 /**
  * The highlights the body throws on a cloth with a sheen. `bust` false for a
- * robe — an abaya, a thobe — hung from the shoulders and falling clear of it.
+ * robe — an abaya, a thobe — hung from the shoulders and falling clear of her
+ * figure: no chest band on it.
  */
 export function bodyHighlights(body: BodyType, { bust = true }: { bust?: boolean } = {}): BodyHighlight[] {
   const p = profileFor(body);
@@ -88,11 +123,12 @@ export function bodyHighlights(body: BodyType, { bust = true }: { bust?: boolean
   both(strip(p.armOuter, top + 2, p.shoulderPointY, 2, 11), 1, 0.5);
   // the top of each sleeve, over the deltoid: the outside of the arm from the shoulder point down
   both(strip(p.armOuter, p.shoulderPointY - 2, Math.min(p.armpitY, p.shoulderPointY + 40), 2, 13), 0.9, 0.3);
-  // her bust: the upper left of each, where it turns toward the light
+  // her upper chest: one broad band above the bust, shoulder to shoulder, its left half lit more
   if (bust && body === "female") {
-    const [[lx, ly], [rx, ry]] = BUST.points;
-    out.push({ d: path(ellipse([lx - 8, ly - 11], 15, 10, -30)), strength: 0.9 });
-    out.push({ d: path(ellipse([rx - 8, ry - 11], 15, 10, -30)), strength: 0.7 });
+    const half = chestHalf(edgeAt(p.armOuter, p.shoulderPointY) ?? 197, p.shoulderPointY);
+    out.push({ d: path(half), strength: 0.8, broad: true });
+    out.push({ d: path(mirror(half)), strength: 0.5, broad: true });
   }
   return out;
 }
+

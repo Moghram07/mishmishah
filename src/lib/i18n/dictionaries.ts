@@ -194,6 +194,9 @@ export const dictionaries = {
     "notFound.title": "Page not found",
     "notFound.body": "The link may be old, or the address may have a typo.",
     "notFound.home": "Back to home",
+    "viz.pieces": "Garments",
+    "viz.next": "Next",
+    "viz.wholeFigure": "Whole figure",
   },
 
   ar: {
@@ -381,6 +384,9 @@ export const dictionaries = {
     "notFound.title": "الصفحة غير موجودة",
     "notFound.body": "قد يكون الرابط قديمًا، أو في العنوان خطأ.",
     "notFound.home": "العودة إلى الرئيسية",
+    "viz.pieces": "القطع",
+    "viz.next": "التالي",
+    "viz.wholeFigure": "المجسّم كاملًا",
   },
 } satisfies Record<Locale, Record<string, string>>;
 

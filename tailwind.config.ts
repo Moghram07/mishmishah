@@ -10,6 +10,10 @@ const config: Config = {
       screens: { "2xl": "1360px" },
     },
     extend: {
+      screens: {
+        // a phone held sideways: the visualizer lays its stage and panel side by side
+        land: { raw: "(orientation: landscape) and (max-height: 520px)" },
+      },
       colors: {
         // Semantic tokens (driven by CSS variables → adapt to light/dark)
         background: "hsl(var(--background) / <alpha-value>)",

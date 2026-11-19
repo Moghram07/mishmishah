@@ -77,6 +77,13 @@ export function shadeBlur(soft: number, look: SheenLook): readonly [across: numb
 /** The blur the body's highlights are drawn through: soft across, drawn out along the grain — half as far as a crest, or a small curve's light thins to nothing. */
 export const bodyBlur = (look: SheenLook): readonly [number, number] => [2.5, r1(2.5 + look.along / 2)];
 
+/**
+ * The blur her chest's broad sheen is drawn through: wide enough that the band
+ * has no edge anywhere — a glow across the upper chest, never a shape on it —
+ * and drawn out along the grain as the other curves are.
+ */
+export const chestBlur = (look: SheenLook): readonly [number, number] => [9, r1(9 + look.along / 2)];
+
 /** Toward the light, upper left, on the screen — the shading's light. */
 const LIGHT = [-Math.SQRT1_2, -Math.SQRT1_2] as const;
 
@@ -157,6 +164,10 @@ export function sheenDefs(uid: Uid, sheen: Sheen, blur: number): ReactNode {
       <filter id={uid("sheen-body")} x="-50%" y="-50%" width="200%" height="200%" colorInterpolationFilters="sRGB">
         <feGaussianBlur stdDeviation={bodyBlur(sheen.look).join(" ")} />
       </filter>
+      {/* room on every side for the wide blur, whichever way the grain turns the band */}
+      <filter id={uid("sheen-chest")} x="-100%" y="-100%" width="300%" height="300%" colorInterpolationFilters="sRGB">
+        <feGaussianBlur stdDeviation={chestBlur(sheen.look).join(" ")} />
+      </filter>
     </>
   );
 }
@@ -186,18 +197,18 @@ export function alongGrain(sheen: Sheen, filter: string, children: ReactNode): R
  */
 export function formSheen(uid: Uid, sheen: Sheen, pieces: ReactNode[]): ReactNode {
   const curves = sheen.body ? bodyHighlights(sheen.body, { bust: sheen.fitted !== false }) : [];
+  /* `opacity`, not `fill-opacity`: a curve's light, told apart from a crest's in the markup */
+  const lights = (list: typeof curves) => list.map((c, i) => <path key={i} d={c.d} fill={sheen.tint} opacity={c.strength} />);
+  const narrow = curves.filter((c) => !c.broad);
+  const broad = curves.filter((c) => c.broad);
   return (
     <>
       {pieces.map((piece, i) => (
         <g key={i}>{alongGrain(sheen, `url(#${uid("sheen-form")})`, piece)}</g>
       ))}
-      {curves.length > 0 &&
-        alongGrain(
-          sheen,
-          `url(#${uid("sheen-body")})`,
-          /* `opacity`, not `fill-opacity`: a curve's light, told apart from a crest's in the markup */
-          curves.map((c, i) => <path key={i} d={c.d} fill={sheen.tint} opacity={c.strength} />)
-        )}
+      {narrow.length > 0 && alongGrain(sheen, `url(#${uid("sheen-body")})`, lights(narrow))}
+      {/* the chest's halves blurred together, so they meet as one sheen */}
+      {broad.length > 0 && alongGrain(sheen, `url(#${uid("sheen-chest")})`, lights(broad))}
     </>
   );
 }

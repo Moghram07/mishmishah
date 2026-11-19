@@ -6,8 +6,10 @@ import { garmentById } from "@/lib/data/garments";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
 import { cutFrom, regionsOf } from "@/lib/garments/outfit";
 import { CREST, SHADE, crest, shade, type Fold } from "@/lib/garments/folds";
-import { crestBlur, formSheenSpec } from "@/lib/garments/sheen";
+import { chestBlur, crestBlur, formSheenSpec } from "@/lib/garments/sheen";
 import { bodyHighlights } from "@/lib/garments/bodyLight";
+import { BUST } from "@/lib/garments/art/female/yoke";
+import { profileFor } from "@/lib/mannequin/profile";
 import { MATTE, SHADE_COLOR, SHEEN, SHEEN_CEILING, shadeDepth, sheenPeak, sheenTint } from "./sheen";
 import type { Fabric, FabricRegionId, Outfit } from "@/types";
 
@@ -225,7 +227,7 @@ describe("a sheen", () => {
     for (const f of fabrics.filter((x) => !x.sheen)) expect(shadesOf(draw("female-dress", f)).length, f.id).toBe(0);
   }, 120_000);
 
-  it("shines where the body turns the cloth toward the light: her bust, the shoulders, the tops of the sleeves", () => {
+  it("shines where the body turns the cloth toward the light: her upper chest, the shoulders, the tops of the sleeves", () => {
     const satin = fabricById("fb-emerald-satin")!;
     const curves = (html: string) => (html.match(new RegExp(`<path d="[^"]+" fill="${sheenTint(satin)}" opacity="`, "g")) ?? []).length;
     // her fitted dress: both shoulders, both sleeve tops, her bust
@@ -233,7 +235,7 @@ describe("a sheen", () => {
     const all = bodyHighlights("female");
     expect(all.length).toBe(6);
     for (const b of all) expect(dress.includes(`d="${b.d}"`), `her ${b.d.slice(0, 24)}…`).toBe(true);
-    // lit from the upper left: each on her left brighter than on her right — shoulders, sleeves, bust
+    // lit from the upper left: each on her left brighter than on her right — shoulders, sleeves, chest
     for (const [l, r] of [[0, 1], [2, 3], [4, 5]]) expect(all[l].strength, `pair ${l}`).toBeGreaterThan(all[r].strength);
     // the left ones on her left, x under the centre line
     for (const l of [0, 2, 4]) expect(centroid(pointsOf(all[l].d))[0]).toBeLessThan(300);
@@ -250,6 +252,39 @@ describe("a sheen", () => {
     // drawn in every region of it the form shines in, masked to each — the skirt's, a piece hung clear of her bust, without it
     expect(curves(dress)).toBeGreaterThanOrEqual(6);
   }, 60_000);
+
+  it("lights her upper chest as one broad band, never a spot on each breast", () => {
+    const all = bodyHighlights("female");
+    const broad = all.filter((b) => b.broad);
+    // two halves of one band, the left lit more, and nothing else drawn wide
+    expect(broad.length).toBe(2);
+    expect(broad[0].strength).toBeGreaterThan(broad[1].strength);
+    const [left, right] = broad.map((b) => pointsOf(b.d));
+    // they meet edge to edge on the centre line: the left half's inner edge is the right half's
+    const onLine = (pts: Pt[]) => pts.filter(([x]) => Math.abs(x - 300) < 0.05).map(([, y]) => y).sort((a, b) => a - b);
+    expect(onLine(left).length).toBe(2);
+    expect(onLine(right)).toEqual(onLine(left));
+    // broad: from inside one shoulder to inside the other, well over half the shoulders' span
+    const xs = [...left, ...right].map(([x]) => x);
+    const ys = [...left, ...right].map(([, y]) => y);
+    const p = profileFor("female");
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(150);
+    // across the upper chest: below the shoulder point, its lowest still above the bust's apex
+    expect(Math.min(...ys)).toBeGreaterThan(p.shoulderPointY);
+    expect(Math.max(...ys)).toBeLessThan(BUST.points[0][1] - 8);
+    // and higher at the shoulders than on the centre line, as the body is
+    const topAt = (pts: Pt[], x: number) => Math.min(...pts.filter(([px]) => Math.abs(px - x) < 0.05).map(([, y]) => y));
+    expect(topAt(left, Math.min(...xs))).toBeLessThan(topAt(left, 300));
+    // soft: through its own blur, several times the narrow curves', so the band has no edge to read as a shape
+    const satin = fabricById("fb-emerald-satin")!;
+    expect(chestBlur(SHEEN.bright)[0]).toBeGreaterThanOrEqual(8);
+    const dress = draw("female-dress", satin);
+    expect(dress).toMatch(/<filter id="[^"]*sheen-chest[^"]*"[^>]*><feGaussianBlur stdDeviation="9 /);
+    for (const b of broad) expect(dress.includes(`d="${b.d}"`)).toBe(true);
+    // a robe hangs clear of her figure: no band on it; his body has none
+    expect(bodyHighlights("female", { bust: false }).some((b) => b.broad)).toBe(false);
+    expect(bodyHighlights("male").some((b) => b.broad)).toBe(false);
+  });
 
   it("comes from the shading's light, upper left: a crest shines on its lit side, and the form where it turns toward the light", () => {
     const fold = (ridge: Pt[]): Fold => ({ ridge, width: [10, 10], shadow: 0.4, light: 0.3, soft: 4 });

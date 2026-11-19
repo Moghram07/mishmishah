@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   RotateCcw,
   X,
@@ -100,6 +100,18 @@ import { fabricHasDirection } from "@/lib/fabrics/patterns";
 import { exportShareCard, type ShareEntry } from "@/lib/share/shareCard";
 import { ProductTemplate, productPanBy } from "./ProductTemplate";
 import { MannequinStage } from "./MannequinStage";
+import { PhoneLayout, type PhoneCategory } from "./PhoneLayout";
+import { pictureSrc, type PictureKind } from "@/lib/visualizer/optionPictures";
+import {
+  WHOLE_VIEW,
+  frameOf,
+  centreOf,
+  movedView,
+  nextZoom,
+  partView,
+  viewForPart,
+  type StageView,
+} from "@/lib/visualizer/stageView";
 import { Silhouette, boxAround } from "./Silhouette";
 import { useHistory } from "./history";
 import {
@@ -146,6 +158,12 @@ import type {
  * there is also the height of the controls laid over the bottom of the stage.
  */
 const STAGE_ROOM = 24;
+
+/** The room the whole figure keeps from the phone stage's edges: its controls sit in the corners, beside it. */
+const PHONE_ROOM = 10;
+
+/** Where desktop's layout begins. Under it, the phone's. */
+const DESKTOP = "(min-width: 1024px)";
 
 /**
  * The ways a pattern can be laid on the body, in degrees: lengthwise, across,
@@ -262,6 +280,17 @@ export function FabricVisualizer() {
   const drag = useRef<{ x: number; y: number } | null>(null);
 
   /*
+    Under 1024 px the visualizer is laid out for a phone (`PhoneLayout`); at
+    1024 and over, desktop's layout below, untouched. The design is the same
+    state either way; only where you are looking is each layout's own.
+  */
+  const isDesktop = useIsDesktop();
+  /** The phone's stage: the whole figure, or a close-up — following the category, or where the viewer put it. */
+  const [view, setView] = useState<StageView>(WHOLE_VIEW);
+  /** The phone panel's category open in each group. */
+  const [phoneCat, setPhoneCat] = useState<Partial<Record<PanelTab, string>>>({});
+
+  /*
     The stage, and the controls laid over the bottom of it, measured. The
     mannequin is drawn into the whole stage rather than a box its own shape, so
     a close-up runs to the stage's edges instead of being cut off square in the
@@ -275,18 +304,21 @@ export function FabricVisualizer() {
   const viewport = useMemo<Viewport | null>(
     () =>
       stageSize
-        ? {
-            width: stageSize.width,
-            height: stageSize.height,
-            inset: [
-              STAGE_ROOM,
-              STAGE_ROOM,
-              (dockSize?.height ?? 0) + STAGE_ROOM / 3,
-              STAGE_ROOM,
-            ],
-          }
+        ? isDesktop
+          ? {
+              width: stageSize.width,
+              height: stageSize.height,
+              inset: [
+                STAGE_ROOM,
+                STAGE_ROOM,
+                (dockSize?.height ?? 0) + STAGE_ROOM / 3,
+                STAGE_ROOM,
+              ],
+            }
+          : // the phone's controls float in the stage's corners, clear of the figure in its middle
+            { width: stageSize.width, height: stageSize.height, inset: [PHONE_ROOM, PHONE_ROOM, PHONE_ROOM, PHONE_ROOM] }
         : null,
-    [stageSize, dockSize]
+    [stageSize, dockSize, isDesktop]
   );
   const [exporting, setExporting] = useState(false);
 
@@ -342,6 +374,9 @@ export function FabricVisualizer() {
         ),
         design: { ...s.design, ...newDesign(s.design.productId, fabric) },
       }));
+      // the phone opens on the whole figure, at each group's first category
+      setView(WHOLE_VIEW);
+      setPhoneCat({});
     }
     wasOpen.current = isOpen;
   }, [isOpen, fabric, rebase]);
@@ -680,7 +715,7 @@ export function FabricVisualizer() {
     const ro = new ResizeObserver(([entry]) => setStagePx(entry.contentRect.width));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [subject, isOpen]);
+  }, [subject, isOpen, isDesktop]);
 
   /*
     Whether zooming in would show something not showing now — see
@@ -694,12 +729,16 @@ export function FabricVisualizer() {
   */
   const smallPrint = useMemo(() => {
     if (stagePx <= 0) return false;
+    // what the stage showing frames: desktop's zoom, focus and drag, or the phone's view
+    const [z, at, moved]: [number, readonly [number, number] | undefined, readonly [number, number]] = isDesktop
+      ? [zoom, focus, pan]
+      : [view.zoom, view.centre ?? undefined, [0, 0]];
     const [cmPerUnit, pxPerUnit, mostPxPerUnit, inView] =
       subject === "wardrobe"
         ? [
             BODY_CANVAS.cmPerUnit,
-            stagePx / frameFor(zoom, focus, pan, viewport).w,
-            stagePx / frameFor(MOST_ZOOM, focus, pan, viewport).w,
+            stagePx / frameFor(z, at, moved, viewport).w,
+            stagePx / frameFor(MOST_ZOOM, at, moved, viewport).w,
             Object.values(outfitFabrics).flatMap((regions) => Object.values(regions)),
           ]
         : [
@@ -709,7 +748,7 @@ export function FabricVisualizer() {
             Object.values(partFabrics),
           ];
     return inView.some((f) => f !== undefined && zoomWouldShow(f, pxPerUnit / cmPerUnit, mostPxPerUnit / cmPerUnit));
-  }, [stagePx, subject, zoom, focus, pan, viewport, outfitFabrics, product, partFabrics]);
+  }, [stagePx, subject, zoom, focus, pan, viewport, outfitFabrics, product, partFabrics, isDesktop, view]);
 
   const onDragStart = (e: React.PointerEvent) => {
     if (!pannable) return;
@@ -733,6 +772,95 @@ export function FabricVisualizer() {
   const onDragEnd = () => {
     drag.current = null;
   };
+
+  /*
+    The phone's stage, moved by hand: one finger drags a close-up, two pinch.
+    A pinch is shown as the browser scaling the picture already drawn — a
+    redraw for every move of two fingers is more than a phone can paint — and
+    the stage is drawn again once, at the new view, when the fingers lift. A
+    drag redraws as it goes, once a frame. Either is the viewer's own view,
+    which the categories then leave alone (`stageView.ts`).
+  */
+  const fingers = useRef(new Map<number, [number, number]>());
+  const pinch = useRef<{ d0: number; m0: [number, number]; m1: [number, number]; k: number; from: StageView } | null>(null);
+  const slide = useRef<[number, number] | null>(null);
+  const slideFrame = useRef<{ id: number; from: [number, number]; to: [number, number] } | null>(null);
+  const stagePoint = (e: React.PointerEvent<HTMLElement>): [number, number] => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  };
+  /* the controls floating on the stage take their own taps */
+  const onControl = (e: React.PointerEvent) => !!(e.target as Element).closest?.("button, a, input, [role=group], [role=menu]");
+
+  const onTouchDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (onControl(e) || (e.pointerType === "mouse" && e.button !== 0)) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    fingers.current.set(e.pointerId, stagePoint(e));
+    if (fingers.current.size === 2) {
+      const [a, b] = [...fingers.current.values()];
+      const m: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      pinch.current = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, m0: m, m1: m, k: 1, from: view };
+      slide.current = null;
+    } else if (fingers.current.size === 1 && view.zoom > 1.001) {
+      slide.current = stagePoint(e);
+    }
+  };
+
+  const onTouchMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!fingers.current.has(e.pointerId)) return;
+    fingers.current.set(e.pointerId, stagePoint(e));
+    const pz = pinch.current;
+    if (pz && fingers.current.size >= 2) {
+      const [a, b] = [...fingers.current.values()];
+      const m: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      // no closer than the closest zoom, no further out than the whole figure
+      const k = Math.min(MOST_ZOOM / pz.from.zoom, Math.max(1 / pz.from.zoom, Math.hypot(a[0] - b[0], a[1] - b[1]) / pz.d0));
+      pz.m1 = m;
+      pz.k = k;
+      const svg = stageRef.current;
+      if (svg) {
+        svg.style.transformOrigin = "0 0";
+        svg.style.transform = `translate(${m[0] - pz.m0[0] * k}px, ${m[1] - pz.m0[1] * k}px) scale(${k})`;
+      }
+      return;
+    }
+    const from = slide.current;
+    if (!from || !viewport) return;
+    const to = stagePoint(e);
+    slide.current = to;
+    // at most one redraw a frame, from where the last one left off
+    if (slideFrame.current) slideFrame.current.to = to;
+    else {
+      const id = requestAnimationFrame(() => {
+        const step = slideFrame.current;
+        slideFrame.current = null;
+        if (step) setView((v) => movedView(v, viewport, step.from, step.to, 1));
+      });
+      slideFrame.current = { id, from, to };
+    }
+  };
+
+  const onTouchEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    fingers.current.delete(e.pointerId);
+    const pz = pinch.current;
+    if (pz && fingers.current.size < 2) {
+      pinch.current = null;
+      const svg = stageRef.current;
+      if (svg) svg.style.transform = "";
+      if (viewport && (pz.k !== 1 || pz.m1[0] !== pz.m0[0] || pz.m1[1] !== pz.m0[1])) setView(movedView(pz.from, viewport, pz.m0, pz.m1, pz.k));
+      // the finger still down starts nothing until it lifts
+      slide.current = null;
+    }
+    if (fingers.current.size === 0) slide.current = null;
+  };
+
+  /* Safari's own pinch would zoom the page under the stage */
+  useEffect(() => {
+    if (isDesktop || !stageEl) return;
+    const stop = (e: Event) => e.preventDefault();
+    stageEl.addEventListener("gesturestart", stop);
+    return () => stageEl.removeEventListener("gesturestart", stop);
+  }, [isDesktop, stageEl]);
 
   const share = useCallback(async () => {
     if (!stageRef.current) return;
@@ -840,8 +968,6 @@ export function FabricVisualizer() {
   const bowPlaces = cuttingEntry ? bowPlacesFor(bowPlacesOf(cuttingEntry.worn)) : [];
   const wornBowAt = cuttingEntry ? bowAtOf(cuttingEntry.worn) : undefined;
 
-  if (!isOpen) return null;
-
   /*
     Each shape's icon is the garment as worn — its cut, its sleeve, its waist
     and its length — cut to that shape instead, so an icon is what picking it
@@ -924,7 +1050,16 @@ export function FabricVisualizer() {
     /** Nothing added — no collar, no tie, no belt: left out of the feedback email's design line. */
     none?: boolean;
     body: React.ReactNode;
+    /** The same choice on a phone: picture cards, or a few words, and what goes with it — see `PhoneLayout`. */
+    phone?: Omit<PhoneCategory, "id" | "label">;
   }
+  /* an option's picture on the garment being cut, when one has been made */
+  const pic = (kind: PictureKind, id?: string): { src: string } | undefined => {
+    const src = cuttingGarment ? pictureSrc(cuttingGarment.id, kind, id) : undefined;
+    return src ? { src } : undefined;
+  };
+  /* a choice's words, for the phone's buttons */
+  const words = <T extends string>(list: { id: T; name: { en: string; ar: string } }[]) => list.map((c) => ({ id: c.id as string, label: pick(c.name) }));
   const named = (list: { id: string; name: { en: string; ar: string } }[], id: string | undefined) => {
     const hit = list.find((c) => c.id === id);
     return hit ? pick(hit.name) : undefined;
@@ -938,6 +1073,10 @@ export function FabricVisualizer() {
       label: t("viz.neckline"),
       value: named(necklineChoices, wornNecklineId),
       region: "top",
+      phone: {
+        cards: necklineChoices.map((n) => ({ id: n.id, label: pick(n.name), active: wornNecklineId === n.id, onPick: () => chooseNeckline(n.id), picture: pic("neckline", n.id) })),
+        hint: t("viz.necklineHint"),
+      },
       body: (
         <>
           <div className="flex flex-wrap gap-2">
@@ -967,6 +1106,19 @@ export function FabricVisualizer() {
               .filter(Boolean)
               .join(" · "),
       region: "top",
+      phone: {
+        cards: sleeveChoices.map((id) => ({ id, label: pick(sleeveTypeName(cuttingGarment, id)), active: wornSleeve.type === id, onPick: () => chooseSleeve({ type: id }), picture: pic("sleeve", id) })),
+        ...(sleeveLengths.length > 1
+          ? {
+              follow: {
+                label: t("viz.sleeveLength"),
+                choices: sleeveLengths.map((id) => ({ id: id as string, label: pick(sleeveLengthById(id)!.name) })),
+                active: wornSleeve.length,
+                onPick: (id: string) => chooseSleeve({ length: id as SleeveChoice["length"] }),
+              },
+            }
+          : { hint: t("viz.sleeveHint") }),
+      },
       body: (
         <>
           <div className="flex flex-wrap gap-2">
@@ -998,6 +1150,20 @@ export function FabricVisualizer() {
       label: t("viz.skirt"),
       value: [named(skirtShapeChoices, wornSkirt.shape), named(skirtLengthChoices, wornSkirt.length)].filter(Boolean).join(" · "),
       region: "bottom",
+      phone: (() => {
+        const lengths = { label: t("viz.length"), choices: words(skirtLengthChoices), active: wornSkirt.length as string, onPick: (length: string) => chooseSkirt({ length: length as SkirtChoice["length"] }) };
+        if (!shapeIcons) return { main: lengths };
+        return {
+          cards: skirtShapeChoices.map((shape, i) => ({
+            id: shape.id,
+            label: pick(shape.name),
+            active: wornSkirt.shape === shape.id,
+            onPick: () => chooseSkirt({ shape: shape.id }),
+            picture: { node: <Silhouette pieces={shapeIcons.pieces[i]} box={shapeIcons.box} className={cn("h-[68px] w-full", wornSkirt.shape === shape.id ? "text-apricot-500" : "text-muted-foreground")} /> },
+          })),
+          ...(skirtLengthChoices.length > 1 ? { follow: lengths } : {}),
+        };
+      })(),
       body: (
         <>
           {shapeIcons && (
@@ -1043,6 +1209,7 @@ export function FabricVisualizer() {
       label: t("viz.waist"),
       value: named(waistChoices, wornSkirt.waist),
       region: "bottom",
+      phone: { main: { label: t("viz.waist"), choices: words(waistChoices), active: (wornSkirt.waist ?? waistChoices[0].id) as string, onPick: (waist: string) => chooseSkirt({ waist: waist as SkirtChoice["waist"] }) } },
       body: (
         <Segmented
           label={t("viz.waist")}
@@ -1059,6 +1226,7 @@ export function FabricVisualizer() {
       id: "front",
       label: t("viz.front"),
       value: named(frontChoices, wornFront),
+      phone: { main: { label: t("viz.front"), choices: words(frontChoices), active: wornFront, onPick: (f: string) => chooseFront(f as FrontId) } },
       body: (
         <Segmented
           label={t("viz.front")}
@@ -1076,6 +1244,15 @@ export function FabricVisualizer() {
       /* «شكل البنطلون», not «القصّة» (the whole group's name) nor «بنطلون» (the garment's) */
       label: t("viz.trousersShape"),
       value: named(legChoices, wornLeg),
+      phone: {
+        cards: legChoices.map((leg, i) => ({
+          id: leg.id,
+          label: pick(leg.name),
+          active: wornLeg === leg.id,
+          onPick: () => chooseLeg(leg.id),
+          picture: { node: <Silhouette pieces={legIcons.pieces[i]} box={legIcons.box} className={cn("h-[68px] w-full", wornLeg === leg.id ? "text-apricot-500" : "text-muted-foreground")} /> },
+        })),
+      },
       body: (
         <div role="group" aria-label={t("viz.leg")} className="flex gap-2 overflow-x-auto pb-1">
           {legChoices.map((leg, i) => {
@@ -1114,6 +1291,13 @@ export function FabricVisualizer() {
       value: wornCollar ? pick(wornCollar.name) : t("viz.noCollar"),
       none: !wornCollar,
       region: wornCollar ? "collar" : "top",
+      phone: {
+        cards: [
+          { id: "none", label: t("viz.noCollar"), active: !wornCollarId, onPick: () => chooseCollar(undefined), picture: pic("collar", "none") },
+          ...collarChoices.map((c) => ({ id: c.id, label: pick(c.name), active: wornCollarId === c.id, onPick: () => chooseCollar(c.id), picture: pic("collar", c.id) })),
+        ],
+        hint: t("viz.collarHint"),
+      },
       body: (
         <>
           <div className="flex flex-wrap gap-2">
@@ -1138,6 +1322,12 @@ export function FabricVisualizer() {
       value: [named(stripeChoices, wornStripes), ...(wornStripes !== "none" ? stripeEdges.filter((c) => wornStripesOn.includes(c.id)).map((c) => pick(c.name)) : [])].join(" · "),
       none: wornStripes === "none",
       region: wornStripesOn.length > 0 ? "trim" : undefined,
+      phone: {
+        main: { label: t("viz.stripes"), choices: words(stripeChoices), active: wornStripes, onPick: (n: string) => chooseStripes(n as StripesId) },
+        ...(wornStripes !== "none"
+          ? { follow: { label: t("viz.stripesAt"), choices: words(stripeEdges), active: wornStripesOn as string[], onPick: (edge: string) => toggleStripes(edge as StripeEdgeId) } }
+          : {}),
+      },
       body: (
         <>
           <Segmented label={t("viz.stripes")} choices={stripeChoices.map((c) => ({ id: c.id, label: pick(c.name) }))} active={wornStripes} onPick={chooseStripes} />
@@ -1163,6 +1353,12 @@ export function FabricVisualizer() {
       value: [named(tieChoices, wornTie), ...(tiePlaces.length > 1 && wornTieAt ? [named(tiePlaces, wornTieAt)] : [])].join(" · "),
       none: wornTie === "none",
       region: wornTie !== "none" ? "tie" : undefined,
+      phone: {
+        cards: tieChoices.map((c) => ({ id: c.id, label: pick(c.name), active: wornTie === c.id, onPick: () => chooseTie(c.id), picture: pic("tie", c.id) })),
+        ...(tiePlaces.length > 1 && wornTieAt
+          ? { follow: { label: t("viz.tieAt"), choices: words(tiePlaces), active: wornTieAt, onPick: (at: string) => chooseTieAt(at as TieAtId) } }
+          : {}),
+      },
       body: (
         <>
           <Segmented label={t("viz.tie")} choices={tieChoices.map((c) => ({ id: c.id, label: pick(c.name) }))} active={wornTie} onPick={chooseTie} />
@@ -1184,6 +1380,12 @@ export function FabricVisualizer() {
       value: [named(buttonChoices, wornButtons), ...(rowChoices.length > 1 && wornRows ? [named(rowChoices, wornRows)] : [])].join(" · "),
       none: wornButtons === "none",
       region: "top",
+      phone: {
+        main: { label: t("viz.buttons"), choices: words(buttonChoices), active: wornButtons, onPick: (b: string) => chooseButtons(b as ButtonsId) },
+        ...(rowChoices.length > 1 && wornRows
+          ? { follow: { label: t("viz.buttonRows"), choices: words(rowChoices), active: wornRows, onPick: (r: string) => chooseButtonRows(r as ButtonRowsId) } }
+          : {}),
+      },
       body: (
         <>
           <Segmented label={t("viz.buttons")} choices={buttonChoices.map((b) => ({ id: b.id, label: pick(b.name) }))} active={wornButtons} onPick={chooseButtons} />
@@ -1205,6 +1407,12 @@ export function FabricVisualizer() {
       value: [named(beltChoices, wornBelt), ...(bowPlaces.length > 1 && wornBowAt ? [named(bowPlaces, wornBowAt)] : [])].join(" · "),
       none: wornBelt === "none",
       region: "bottom",
+      phone: {
+        cards: beltChoices.map((b) => ({ id: b.id, label: pick(b.name), active: wornBelt === b.id, onPick: () => chooseBelt(b.id), picture: pic("belt", b.id) })),
+        ...(bowPlaces.length > 1 && wornBowAt
+          ? { follow: { label: t("viz.bowAt"), choices: words(bowPlaces), active: wornBowAt, onPick: (at: string) => chooseBowAt(at as BowAtId) } }
+          : {}),
+      },
       body: (
         <>
           <div role="group" aria-label={t("viz.belt")} className="flex flex-wrap gap-2">
@@ -1231,6 +1439,9 @@ export function FabricVisualizer() {
       value: wornSleeve.cuff ? pick(sleeveCuffById(wornSleeve.cuff)!.name) : undefined,
       none: !wornSleeve.cuff || wornSleeve.cuff === "none",
       region: "top",
+      phone: {
+        cards: cuffChoices.map((id) => ({ id, label: pick(sleeveCuffById(id)!.name), active: wornSleeve.cuff === id, onPick: () => chooseSleeve({ cuff: id }), picture: pic("cuff", id) })),
+      },
       body: (
         <div className="flex flex-wrap gap-2">
           {cuffChoices.map((id) => (
@@ -1404,6 +1615,165 @@ export function FabricVisualizer() {
     { id: "extras", label: t("viz.tabExtras") },
     { id: "fabrics", label: t("viz.tabFabrics") },
   ];
+
+  /*
+    The phone panel: each group's categories — the garments first, then the
+    rows above, each as picture cards or a few words — the one open, and the
+    way on from it, «التالي».
+  */
+  const piecesCat: PhoneCategory = {
+    id: "pieces",
+    label: t("viz.pieces"),
+    cards: wardrobe.map((g) => ({
+      id: g.id,
+      label: pick(g.name),
+      active: isWearing(outfit.worn, g.id),
+      onPick: () => toggleGarment(g.id),
+      picture: (() => {
+        const src = pictureSrc(g.id, "garment");
+        return src ? { src } : undefined;
+      })(),
+    })),
+    hint: t("viz.layersHint"),
+    after: { label: t("viz.reset"), icon: <RotateCcw className="h-5 w-5" />, onPick: reset },
+  };
+  const asCats = (rows: RowSpec[]): PhoneCategory[] => rows.flatMap((r) => (r.phone ? [{ id: r.id, label: r.label, ...r.phone }] : []));
+  const phoneCats: Record<"cut" | "extras", PhoneCategory[]> = {
+    cut: subject === "wardrobe" ? [piecesCat, ...asCats(cutRows)] : [],
+    extras: subject === "wardrobe" ? asCats(extraRows) : [],
+  };
+  const cats = tab === "fabrics" ? [] : phoneCats[tab];
+  const catNow = cats.find((c) => c.id === phoneCat[tab])?.id ?? cats[0]?.id;
+  /* a collar's close-up centres on the collar's own drawing */
+  const ownFocus = catNow === "collar" && cuttingGarment && cuttingEntry && wornCollar ? focusOf(cuttingGarment, cuttingEntry.worn, "collar") : undefined;
+
+  /* a category chosen — by a tap, by «التالي», or by another garment not having the last one — frames its part */
+  useEffect(() => {
+    if (isDesktop) return;
+    setView((v) => viewForPart(v, tab === "fabrics" ? null : partView(catNow ?? "", outfit.bodyType, ownFocus)));
+    // the category, not every recut: a new collar on the same category leaves the view where it is
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesktop, tab, catNow, cutting.garmentId, outfit.bodyType]);
+
+  /* choosing a category also points the fabrics at what it is about, as opening a row does on desktop */
+  const chooseCat = (id: string) => {
+    setPhoneCat((c) => ({ ...c, [tab]: id }));
+    const row = [...cutRows, ...extraRows].find((r) => r.id === id);
+    if (row?.region && cuttingEntry && regionsOf(cuttingEntry.garment, cuttingEntry.worn).includes(row.region)) {
+      setCutting({ garmentId: cuttingEntry.garment.id, region: row.region });
+    }
+  };
+  const nextStep = (() => {
+    if (tab === "fabrics") return null;
+    const i = cats.findIndex((c) => c.id === catNow);
+    if (i >= 0 && i < cats.length - 1) {
+      const n = cats[i + 1];
+      return { label: n.label, go: () => chooseCat(n.id) };
+    }
+    const after: PanelTab = tab === "cut" && phoneCats.extras.length > 0 ? "extras" : "fabrics";
+    return { label: TABS.find((x) => x.id === after)!.label, go: () => setTab(after) };
+  })();
+  /* the zoom button: in a step, from where it is looking — from the whole figure, toward the part being chosen */
+  const zoomStep = () =>
+    setView((v) => {
+      const z = nextZoom(v.zoom);
+      if (z <= 1) return WHOLE_VIEW;
+      const part = v.zoom <= 1.001 ? partView(catNow ?? "", outfit.bodyType, ownFocus) : null;
+      const centre = part ? part.focus : viewport ? centreOf(frameOf(v, viewport)) : v.centre;
+      return { zoom: z, centre, by: "viewer" };
+    });
+
+  if (!isOpen) return null;
+
+  if (!isDesktop) {
+    return (
+      <div role="dialog" aria-modal="true" aria-label={t("viz.title")} dir={dir} className="fixed inset-0 z-[100] h-[100dvh] animate-fade-in bg-background">
+        <PublishDesign line={designLine} />
+        <PhoneLayout
+          title={t("viz.title")}
+          stage={
+            subject === "wardrobe" ? (
+              <MannequinStage
+                ref={stageRef}
+                outfit={outfit}
+                fabrics={outfitFabrics}
+                zoom={view.zoom}
+                focus={view.centre ?? undefined}
+                viewport={viewport}
+                className={cn(
+                  "absolute inset-0 z-10 h-full w-full text-foreground drop-shadow-[0_24px_48px_rgba(27,23,20,0.22)]",
+                  !viewport && "invisible"
+                )}
+              />
+            ) : (
+              <ProductTemplate
+                ref={stageRef}
+                kind={design.productId}
+                fabrics={partFabrics}
+                direction={design.direction}
+                stitch={design.stitch}
+                zoom={zoom}
+                focusPart={activePart}
+                pan={pan}
+                className="absolute inset-0 z-10 m-auto h-full max-h-[440px] w-full max-w-[440px] text-foreground"
+              />
+            )
+          }
+          setStageEl={setStageEl}
+          gestures={{ onPointerDown: onTouchDown, onPointerMove: onTouchMove, onPointerUp: onTouchEnd, onPointerCancel: onTouchEnd }}
+          zoom={view.zoom}
+          narrow={(stageSize?.width ?? 390) < 380}
+          onZoom={zoomStep}
+          onWhole={() => setView(WHOLE_VIEW)}
+          note={smallPrint ? "zoomToSee" : view.zoom > 1.001 ? "drag" : "trueScale"}
+          body={
+            subject === "wardrobe"
+              ? { label: t("viz.body"), bodies: bodyTypes.map((b) => ({ id: b.id, label: pick(b.label) })), active: outfit.bodyType, onPick: (id) => setBody(id as BodyType) }
+              : null
+          }
+          skin={
+            subject === "wardrobe"
+              ? {
+                  label: t("viz.skinTone"),
+                  tones: skinTones.map((s) => ({ id: s.id, label: pick(s.label), color: s.color })),
+                  active: outfit.skinTone,
+                  onPick: (id) => setOutfit((o) => ({ ...o, skinTone: id as Outfit["skinTone"] })),
+                }
+              : null
+          }
+          undo={undo}
+          redo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          share={share}
+          exporting={exporting}
+          close={close}
+          tabs={TABS}
+          tab={tab}
+          onTab={setTab}
+          categories={cats}
+          category={catNow}
+          onCategory={chooseCat}
+          editing={
+            subject === "wardrobe" && worn.length > 1
+              ? {
+                  label: t("viz.editing"),
+                  choices: worn.map(({ garment }) => ({ id: garment.id, label: pick(garment.name) })),
+                  active: cutting.garmentId,
+                  onPick: (id) => {
+                    const g = garmentById(id);
+                    if (g) setCutting({ garmentId: g.id, region: g.fabricRegions[0] });
+                  },
+                }
+              : null
+          }
+          next={nextStep}
+          empty={t("viz.noExtras")}
+          fabrics={fabricsList}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1747,6 +2117,19 @@ export function FabricVisualizer() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Whether desktop's layout is showing: 1024 px wide or more. The server renders nothing here (the sheet is closed), so its answer never shows. */
+function useIsDesktop() {
+  return useSyncExternalStore(
+    (changed) => {
+      const m = window.matchMedia(DESKTOP);
+      m.addEventListener("change", changed);
+      return () => m.removeEventListener("change", changed);
+    },
+    () => window.matchMedia(DESKTOP).matches,
+    () => true
   );
 }
 

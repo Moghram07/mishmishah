@@ -205,11 +205,14 @@ export function BodyButton<T extends string>({
   bodies,
   active,
   onPick,
+  large = false,
 }: {
   label: string;
   bodies: { id: T; label: string }[];
   active: T;
   onPick: (id: T) => void;
+  /** A finger's size, 44 px — the phone's stage. */
+  large?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const current = bodies.find((b) => b.id === active);
@@ -220,7 +223,10 @@ export function BodyButton<T extends string>({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${label}: ${current?.label ?? ""}`}
-        className="btn-focus inline-flex h-9 items-center gap-1.5 rounded-full border border-border/60 bg-card/85 px-3 text-xs font-semibold text-foreground shadow-soft backdrop-blur transition-colors hover:bg-card"
+        className={cn(
+          "btn-focus inline-flex items-center gap-1.5 rounded-full border border-border/60 font-semibold text-foreground shadow-soft transition-colors hover:bg-card",
+          large ? "h-11 bg-card/90 px-3.5 text-sm" : "h-9 bg-card/85 px-3 text-xs backdrop-blur"
+        )}
       >
         <PersonStanding className="h-4 w-4 text-apricot-500" />
         {current?.label}
@@ -241,7 +247,8 @@ export function BodyButton<T extends string>({
                   setOpen(false);
                 }}
                 className={cn(
-                  "btn-focus flex w-full items-center rounded-xl px-3 py-2 text-start text-sm font-semibold transition-colors",
+                  "btn-focus flex w-full items-center rounded-xl px-3 text-start text-sm font-semibold transition-colors",
+                  large ? "h-11" : "py-2",
                   b.id === active ? "bg-apricot-500/10 text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
