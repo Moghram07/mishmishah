@@ -1,6 +1,8 @@
 "use client";
 
 import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+// TEMPORARY — the phone-speed measurement (?debug=perf); remove before release
+import { perfStage } from "@/lib/debug/perf";
 import {
   RotateCcw,
   X,
@@ -1782,6 +1784,11 @@ export function FabricVisualizer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDesktop, tab, catNow, cutting.garmentId, outfit.bodyType]);
 
+  /* TEMPORARY (?debug=perf): the stage was given a new figure — timed from the tap that asked for it */
+  useLayoutEffect(() => {
+    if (isOpen) perfStage();
+  }, [isOpen, stageOutfit, stageFabrics, shown, zoom, pan, focus, viewport]);
+
   /* choosing a category also points the fabrics at what it is about, as opening a row does on desktop */
   const chooseCat = (id: string) => {
     setPhoneCat((c) => ({ ...c, [tab]: id }));
@@ -2057,6 +2064,7 @@ export function FabricVisualizer() {
           */}
           <div
             ref={setStageEl}
+            data-perf="stage"
             className="relative flex h-[58svh] shrink-0 items-center justify-center overflow-hidden bg-gradient-to-b from-muted/40 to-background p-6 sm:p-10 lg:h-auto lg:flex-1 lg:shrink"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-apricot-radial" />
