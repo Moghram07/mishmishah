@@ -18,8 +18,9 @@
   - The tinted photographs: the tone's three lookup tables from
     `mannequin/skinTint.ts` — the very curve the filter used — applied to
     each pixel, in sRGB, as the filter did. Inside the edge the photograph is
-    made solid, the colour just within it carried a few pixels out, so the
-    outline, not the old stepped alpha, is the edge drawn. Lossless WebP in
+    made solid, the colour from two pixels within it carried out over the
+    cut-out's own lighter rim, so the outline, not the old stepped alpha or
+    its rim, is the edge drawn. Lossless WebP in
     `public/mannequin/tinted/`, their hashes in `src/lib/mannequin/tinted.json`.
 
   usage: node --experimental-strip-types --no-warnings scripts/mannequin/tinted.mjs
@@ -51,7 +52,9 @@ const { bodies, BODY_CANVAS } = await import(src("src/lib/mannequin/bodies.ts"))
 
 const ISO = 127.5;
 const SOLID = 230;
-const BLEED = 4;
+/** The cut-out's own rim — a pixel or two of lighter matte at the edge — is not trusted: the colour comes from this far in. */
+const RIM = 2;
+const BLEED = RIM + 4;
 
 /** The photograph's contours at half coverage, in pixel-centre coordinates: closed loops of points. */
 function contours(alpha, w, h) {
@@ -242,11 +245,31 @@ function curve(pts, unit) {
   return d + "z";
 }
 
-/** Inside the edge made solid: the colour of the solid pixels carried out BLEED pixels, alpha 255 there, 0 beyond. */
-function solidify(rgba, w, h) {
+/** Whether each pixel is at least `r` pixels inside the solid body: the opaque pixels, eroded by a square of radius r. */
+export function deepInside(rgba, w, h, r) {
   const solid = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) solid[i] = rgba[i * 4 + 3] >= SOLID ? 1 : 0;
+  const rows = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let all = 1;
+      for (let k = -r; k <= r && all; k++) all = x + k >= 0 && x + k < w && solid[y * w + x + k] ? 1 : 0;
+      rows[y * w + x] = all;
+    }
+  const deep = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let all = 1;
+      for (let k = -r; k <= r && all; k++) all = y + k >= 0 && y + k < h && rows[(y + k) * w + x] ? 1 : 0;
+      deep[y * w + x] = all;
+    }
+  return deep;
+}
+
+/** Inside the edge made solid: the colour from RIM pixels in carried out BLEED pixels, alpha 255 there, 0 beyond. */
+function solidify(rgba, w, h) {
+  const solid = deepInside(rgba, w, h, RIM);
   const out = Buffer.from(rgba);
-  for (let i = 0; i < w * h; i++) if (rgba[i * 4 + 3] >= SOLID) solid[i] = 1;
   for (let round = 0; round < BLEED; round++) {
     const add = [];
     for (let y = 0; y < h; y++)
