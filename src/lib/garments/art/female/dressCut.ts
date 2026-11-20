@@ -400,7 +400,7 @@ function raglanSleeves(raglan: OffShoulderBand["raglan"], sleeve: SleeveChoice, 
  * is drafted into whatever the cut left. The cut decides where the bodice's top
  * corner is; the sleeve decides everything below it.
  */
-function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Bodice {
+function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId, bare = false): Bodice {
   const sleeves = NECKLINE_SLEEVES[id];
   const S = sleevesFor(waist);
   const cut = necklineCut("female", id, {
@@ -408,6 +408,7 @@ function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId): Bodice {
     ease: EASE,
     seamY: NECK_BASE_SEAM,
     waistY: seamAt(waist),
+    bare,
   });
 
   if (sleeves === "none" || sleeves === "band") {
@@ -601,14 +602,17 @@ export function bodiceFor(
   waist: WaistId = "natural",
   buttons: ButtonsId = "none",
   collared = false,
-  braided = false
+  braided = false,
+  /* drawn with no collar sewn on: the crew and the V from the neck's own points — see `CutSpec.bare` */
+  bare = false
 ): Bodice {
   /* buttoned to the waist or to the hem, the bodice is the same: its placket runs to the waist seam either way */
   const placketed = placketOn(id, buttons);
-  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placketed ? "|placket" : ""}`;
+  const drawnBare = bare && !collared;
+  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placketed ? "|placket" : ""}${drawnBare ? "|bare" : ""}`;
   /* braid sewn along the neck edge covers its topstitch, as a collar does — but leaves a keyhole's own closure, which it goes round */
   if (braided && !collared) {
-    const open = bodiceFor(id, sleeve, waist, buttons);
+    const open = bodiceFor(id, sleeve, waist, buttons, false, false, bare);
     let c = cache.get(`${key}|braided`);
     if (!c) {
       c = unstitched(open);
@@ -616,7 +620,11 @@ export function bodiceFor(
     }
     return c;
   }
-  /* with a collar sewn on, the neck edge's topstitch goes, and a keyhole's own closure — see `underCollar` */
+  /*
+    with a collar sewn on, the neck edge's topstitch goes, and a keyhole's own
+    closure — see `underCollar`; and the crew and the V are cut as every
+    collar was drafted against — see `CutSpec.collared`
+  */
   if (collared) {
     const open = bodiceFor(id, sleeve, waist, buttons);
     let c = cache.get(`${key}|collared`);
@@ -628,7 +636,7 @@ export function bodiceFor(
   }
   let b = cache.get(key);
   if (!b) {
-    b = placketed ? withPlacket(bodiceFor(id, sleeve, waist), waist) : bodice(id, sleeve, waist);
+    b = placketed ? withPlacket(bodiceFor(id, sleeve, waist, "none", false, false, drawnBare), waist) : bodice(id, sleeve, waist, drawnBare);
     cache.set(key, b);
   }
   return b;
@@ -1386,7 +1394,8 @@ export function drawnBodice(choice: GarmentChoice): Bodice {
   const waist = choice.skirt?.waist ?? "natural";
   const buttons = placketButtons(choice);
   const placket = bodiceFor(id, sleeve, waist, buttons).placket !== undefined;
-  return bodiceFor(id, sleeve, waist, placket ? buttons : "none", Boolean(choice.opening));
+  /* as drawn: with no collar sewn on, bare — see `CutSpec.bare` */
+  return bodiceFor(id, sleeve, waist, placket ? buttons : "none", Boolean(choice.opening), false, !choice.opening);
 }
 
 /**
@@ -1732,6 +1741,24 @@ function necklineEdges(b: Bodice, choice: GarmentChoice): Edge[] {
     const sides = runs.filter((r) => r.length > 8).sort((a, c) => a[0][0] - c[0][0]);
     return sides.slice(0, 2).map((r, i) => ({ kind: "neckline" as const, side: i as 0 | 1, line: i === 1 ? reverse(r) : r, pieces: pieces.filter(({ d }) => d !== b.cut.extras[0]), lay: lay(i === 1 ? reverse(r) : r) }));
   }
+  /*
+    A wrap's along each panel's own edge, not one V, which stopped both at
+    the crossing: the top panel's its whole length — over its shoulder, down
+    past the centre to the waist at the side, and on under the sash; the
+    under panel's from its shoulder only to where the two cross, where it
+    goes under the top one, drawn first so the top one's lies over it.
+  */
+  if (b.cut.wrap) {
+    const { apex, over } = b.cut.wrap;
+    const iApex = line.reduce((best, p, i) => (Math.hypot(p[0] - apex[0], p[1] - apex[1]) < Math.hypot(line[best][0] - apex[0], line[best][1] - apex[1]) ? i : best), 0);
+    const topAbove = line.slice(0, iApex + 1);
+    const topRun = [...topAbove, ...over.slice(1)];
+    const underRun = reverse(line.slice(iApex));
+    return [
+      { kind: "neckline", side: 1, line: underRun, pieces, lay: { ...lay(underRun), ends: [16, 0] } },
+      { kind: "neckline", side: 0, line: topRun, pieces, lay: { ...lay(topAbove), ends: [16, 0] } },
+    ];
+  }
   return [{ kind: "neckline", line, pieces, lay: lay(line) }];
 }
 
@@ -1846,7 +1873,8 @@ function fitSide(skirt: SkirtChoice, b: ReturnType<typeof beltFor>, end: number)
  * to. None on a cut whose front has no middle.
  */
 function neckPoint(id: NecklineId, waist: WaistId = "natural"): Pt | null {
-  const { cut } = bodiceFor(id, undefined, id === "wrap" ? waist : "natural");
+  /* a tie is knotted at a bare neck — a collar knots its own — so at the neck as drawn bare */
+  const { cut } = bodiceFor(id, undefined, id === "wrap" ? waist : "natural", "none", false, false, true);
   if (cut.vee) return cut.vee.apex;
   if (cut.neck) return [cut.neck.center, cut.neck.seamY + cut.neck.dip];
   if (cut.wrap) return cut.wrap.apex;

@@ -442,7 +442,8 @@ describe("the tie at the V", () => {
   };
 
   it("is knotted at the point of the V, over it, centred on it", () => {
-    const apex = bodiceFor("v").cut.vee!.apex;
+    // a tie is knotted at a bare V: the V as drawn with no collar — see `CutSpec.bare`
+    const apex = bodiceFor("v", undefined, "natural", "none", false, false, true).cut.vee!.apex;
     expect(TIE_AT).toEqual(apex);
     for (const kind of ["knot", "necktie"] as const) {
       const { parts, pieces } = sailorTie(kind);

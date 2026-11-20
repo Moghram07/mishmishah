@@ -11,7 +11,7 @@ import { buttonsFor } from "@/lib/data/closures";
 import { DRESS_EDGE_SPECS, DRESS_POINT_SPEC, NECK_CENTRE, bodiceFor, dressEdges, dressPoints } from "./art/female/dressCut";
 import { TIE_AT, panelStripes, sailor, sailorEdges } from "./art/female/collarCuts";
 import { tieAt } from "./art/female/ties";
-import { NECKLINE_TIED } from "./necklines";
+import { NECKLINE_TIED, neckLandmarks } from "./necklines";
 import { NECKLINE_EDGED, NECKLINE_IDS } from "./necklines";
 import { BAND_STRIPE_ROOM, STRIPES, fittedBands, insideRings, ringsOf, stripesAlong } from "./stripes";
 import type { Edge, EdgeOffer } from "./edges";
@@ -226,8 +226,8 @@ describe("the sailor collar's edges and the dress's points", () => {
     }
     // every cut a tie can be knotted at the neck of has the point, and no other
     for (const { cut } of DRESS_POINT_SPEC.every()) expect(dressPoints({ neckline: cut }).length, cut).toBe(NECKLINE_TIED.includes(cut) ? 1 : 0);
-    // a round neck's at its lowest, on her throat's centre
-    expect(dressPoints({ neckline: "round" })[0].at[0]).toBeCloseTo(NECK_CENTRE, 6);
+    // a round neck's at its lowest, on her throat's centre — the axis of her neck's landmarks, the crew is cut about
+    expect(dressPoints({ neckline: "round" })[0].at[0]).toBeCloseTo(neckLandmarks("female").axis, 6);
   });
 });
 
@@ -247,5 +247,21 @@ describe("where parts touch", () => {
     const tie = markup.indexOf(`d="${tieAt("necktie", TIE_AT).pieces[0]}"`);
     expect(lastButton).toBeGreaterThan(0);
     expect(tie).toBeGreaterThan(lastButton);
+  });
+});
+
+describe("a wrap's stripes", () => {
+  it("run the top panel's whole edge, past the crossing to its waist, and the under panel's only to the crossing — at every waist", () => {
+    for (const waist of ["empire", "natural", "dropped"] as const) {
+      const choice = { neckline: "wrap", skirt: { shape: "flared", length: "midi", waist }, stripes: { count: "two", on: ["neckline"] } } as Parameters<typeof dressEdges>[0];
+      const wrap = bodiceFor("wrap", undefined, waist).cut.wrap!;
+      const necks = dressEdges(choice).filter((e) => e.kind === "neckline");
+      expect(necks, waist).toHaveLength(2);
+      const ends = necks.map((e) => e.line[e.line.length - 1]);
+      const near = (a: readonly number[], b: readonly number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1;
+      // the under panel's first, so the top one's lies over it; it stops where the two cross
+      expect(near(ends[0], wrap.apex), `${waist}: under panel's to the crossing`).toBe(true);
+      expect(near(ends[1], wrap.tie), `${waist}: top panel's to its waist`).toBe(true);
+    }
   });
 });

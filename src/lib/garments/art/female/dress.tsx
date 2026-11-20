@@ -478,7 +478,7 @@ function offRow(d: string, y: number): string {
 }
 
 const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons: ButtonsId = "none", collared = false, braided = false): RegionArt => {
-  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, placket } = bodiceFor(id, sleeve, waist, buttons, collared, braided);
+  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, placket } = bodiceFor(id, sleeve, waist, buttons, collared, braided, !collared);
   /*
     Its placket — one buttoned on, or a shirt-dress's own — lit as a collar
     is: no line round it, the soft shadow under its edges, and a little light
@@ -1134,6 +1134,18 @@ export const dressFront: GarmentArt = {
     const { buckle } = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
     return <Buckle {...buckle} />;
   },
+  behindBody: (choice) =>
+    bodiceFor(
+      (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")
+        ? (choice.neckline as NecklineId)
+        : DEFAULT_CUT,
+      choice.sleeve ?? DEFAULT_SLEEVE,
+      choice.skirt?.waist,
+      "none",
+      false,
+      false,
+      true
+    ).cut.backNeck ?? null,
   armCover: (choice) =>
     bodiceFor(
       (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")

@@ -296,7 +296,9 @@ describe("under a collar, no topstitch along the neck", () => {
     expect(placketRows.length).toBeGreaterThan(20);
     expect(shirt.stitch).toContain(placketRows);
     for (const id of collarCuts) {
-      const neck = bodiceFor(id).cut.neckStitch ?? bodiceFor(id).cut.stitch;
+      // the neck as drawn with no collar: bare — see `CutSpec.bare`
+      const bare = bodiceFor(id, undefined, "natural", "none", false, false, true).cut;
+      const neck = bare.neckStitch ?? bare.stitch;
       if (neck) expect(dress.cut!({ neckline: id }).top!.stitch, id).toContain(neck);
     }
   });

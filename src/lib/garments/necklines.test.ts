@@ -8,6 +8,7 @@ import {
   NECKLINE_WANTS,
   necklineCut,
   type NecklineId,
+  neckLandmarks,
 } from "./necklines";
 import { BODICES, bodiceFor, cloth } from "./art/female/dressCut";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
@@ -276,5 +277,46 @@ describe("the bodice's cloth", () => {
         expect("seams" in b.cut, `${id} ${waist}`).toBe(false);
       }
     }
+  });
+});
+
+describe("the neck's landmarks, and the cuts on a bare neck", () => {
+  it("marks where the neck meets each shoulder, mirrored about the neck's own axis, and the front of its base below them", () => {
+    for (const body of ["female", "male"] as const) {
+      const { left, right, front, axis } = neckLandmarks(body);
+      expect(left[1], body).toBe(right[1]);
+      expect(left[0] + right[0], body).toBeCloseTo(2 * axis, 9);
+      expect(front[0], body).toBe(axis);
+      expect(front[1] - left[1], body).toBeGreaterThan(8);
+      expect(front[1] - left[1], body).toBeLessThan(20);
+    }
+  });
+
+  it("cuts the crew and the V from those points: no cloth up the neck, and the back of the neckline behind it", () => {
+    const lm = neckLandmarks("female");
+    for (const id of ["round", "v"] as const) {
+      const bare = necklineCut("female", id, { ...spec, bare: true });
+      expect(bare.parts!.neck, id).toEqual(lm.left);
+      expect(bare.parts!.neckRight, id).toEqual(lm.right);
+      // nothing of its top edge higher than where the neck meets the shoulders
+      const top = Math.min(...points(bare.edge).map(([, y]) => y));
+      expect(top, id).toBeGreaterThan(lm.left[1] - 0.5);
+      expect(bare.backNeck, id).toBeTruthy();
+      // with a collar sewn on, the cut every collar was drafted against
+      expect(necklineCut("female", id, spec).edge, id).not.toBe(bare.edge);
+      expect(necklineCut("female", id, spec).backNeck, id).toBeUndefined();
+    }
+    // the crew's lowest point a small drop below the front of the neck's base, on its axis
+    const crew = necklineCut("female", "round", { ...spec, bare: true }).neck!;
+    expect(crew.seamY + crew.dip - neckLandmarks("female").front[1]).toBeGreaterThan(0);
+    expect(crew.seamY + crew.dip - neckLandmarks("female").front[1]).toBeLessThan(8);
+  });
+
+  it("wraps a halter's band round the neck, and bares the shoulders and the upper chest beside it", () => {
+    expect(NECKLINE_BARES.halter).toEqual(expect.arrayContaining(["shoulderCap", "upperArm", "upperChest"]));
+    const band = necklineCut("female", "halter", spec).halter!;
+    // its ends on the neck's own outline, above where the neck meets the shoulders
+    const lm = neckLandmarks("female");
+    for (const end of [band.upper[0], band.upper[band.upper.length - 1], band.lower[0], band.lower[band.lower.length - 1]]) expect(end[1]).toBeLessThan(lm.left[1]);
   });
 });

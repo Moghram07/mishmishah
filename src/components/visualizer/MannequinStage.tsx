@@ -483,6 +483,30 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
           );
         })}
 
+        {/*
+          The back of a neckline, behind the neck — the crew's, the V's — in
+          the garment's own cloth, a little in shade, as its inside is: the
+          body hides all but the band either side of the neck. None under a
+          collar, which draws its own back.
+        */}
+        {visible.map(({ garment, worn }) => {
+          if (collarOf(worn) || !clothed(garment.id, "top")) return null;
+          const back = garmentArt(garment.asset.front)?.behindBody?.(choiceOf(worn));
+          if (!back) return null;
+          return (
+            <g key={`${garment.id}-back-neck`}>
+              {cutRegion(
+                garment.id,
+                worn,
+                "top",
+                { shape: (fill: string) => <path d={back} fill={fill} />, shading: () => <path d={back} fill="#cfc9c2" /> },
+                `${garment.id}-back-neck`,
+                undefined
+              )}
+            </g>
+          );
+        })}
+
         <g mask={`url(#${uid("body")})`}>
           <image
             href={photo}
