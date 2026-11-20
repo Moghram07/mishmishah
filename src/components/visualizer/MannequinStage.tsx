@@ -6,9 +6,8 @@ import type React from "react";
 import type { BodyZone, Fabric, FabricRegionId, Outfit } from "@/types";
 import { BODY_CANVAS, bodyById } from "@/lib/mannequin/bodies";
 import { frameFor, type Viewport } from "@/lib/mannequin/frame";
-import { skinToneById } from "@/lib/data/skinTones";
-import { profileFor } from "@/lib/mannequin/profile";
-import { skinTint } from "@/lib/mannequin/skinTint";
+import { OUTLINE } from "@/lib/mannequin/outline";
+import { tintedPhoto } from "@/lib/mannequin/tinted";
 import { collarArt, garmentArt, type GarmentArt, type GarmentChoice } from "@/lib/garments/art";
 import {
   choiceOf as wornChoice,
@@ -56,6 +55,15 @@ interface Props {
    * Without it the picture is the figure's own shape, as everywhere else.
    */
   viewport?: Viewport | null;
+  /**
+   * How wide the stage is shown, in CSS pixels, when it is drawn at another
+   * size and scaled — the phone's, drawn at fewer pixels. What the cloth
+   * decides by its size on screen (a print softened, a weave shown) goes by
+   * this, so a stage drawn smaller looks the same, only softer.
+   */
+  shownWidth?: number;
+  /** The width it is drawn at when sharp, in CSS pixels, if it is drawn quick at times — its filters stay cut for that. */
+  sharpWidth?: number;
   className?: string;
   /** Pointer handlers, so the close-up can be dragged. */
   onPointerDown?: (e: React.PointerEvent<SVGSVGElement>) => void;
@@ -98,6 +106,8 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
       focus,
       pan,
       viewport,
+      shownWidth,
+      sharpWidth,
       className,
       onPointerDown,
       onPointerMove,
@@ -110,10 +120,9 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
     const uid = (name: string) => `${raw}-${name}`;
 
     const body = bodyById(outfit.bodyType);
-    const [tr, tg, tb] = skinTint(
-      skinToneById(outfit.skinTone).color,
-      profileFor(outfit.bodyType).light
-    );
+    /* the photograph in its tone, tinted once and kept, and the outline it is clipped to — see `mannequin/tinted.ts` */
+    const photo = tintedPhoto(outfit.bodyType, outfit.skinTone);
+    const outline = OUTLINE[outfit.bodyType];
 
     /*
       Nothing cut for another body gets past here, however stale the state.
@@ -237,7 +246,7 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
     const clothed = (id: string, region: FabricRegionId) => Boolean(fabrics[id]?.[region]);
     const underAll = (
       <>
-        <image href={body.view.front} x="0" y="0" width={CANVAS[0]} height={CANVAS[1]} filter={`url(#${uid("opaque")})`} />
+        <path d={outline} fill="#fff" fillRule="evenodd" />
         {layers.map(({ garment, index, cutFor, front, behind }) => (
           <g key={garment.id}>
             {behind && clothed(garment.id, "collar") && behind.shape("#fff")}
@@ -267,11 +276,11 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
     /*
       Every filter and mask cut to what is on screen, after each render and
       before the browser paints it — pixel for pixel the same picture; see
-      `viewRegions.ts`. All but the two drawn straight from the photograph.
+      `viewRegions.ts`. All but the mask the photograph is drawn through.
     */
     useBrowserLayoutEffect(() => {
       const svg = localRef.current;
-      if (svg) limitToView(svg, new Set([uid("body"), uid("opaque")]));
+      if (svg) limitToView(svg, new Set([uid("body")]), sharpWidth);
     });
 
     // A close-up frames a window of the canvas around whatever is being edited,
@@ -302,7 +311,7 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
           drawing={drawing}
           fabric={fabric}
           cmPerUnit={BODY_CANVAS.cmPerUnit}
-          pxPerUnit={renderPx / frame.w}
+          pxPerUnit={(shownWidth ?? renderPx) / frame.w}
           direction={outfit.direction}
           pivot={PIVOT}
           canvas={CANVAS}
@@ -337,21 +346,15 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
       >
         <defs>
           {/*
-            Skin tone as a tint, not as ten photographs: one lookup table per
-            channel over the photograph's own grey, so every shadow, highlight
-            and soft edge is the photograph's in all ten tones — see
-            `mannequin/skinTint.ts` for the curve and why it is not a multiply.
-            `sRGB` interpolation is required: the curve is worked out on the
-            photograph's stored values, and in the default linear space the
-            same numbers wash the tone out.
+            The body's edge: its outline, traced from the photograph and drawn
+            as curves, so it stays clean at any zoom — the photograph's own edge
+            is 1.5 pixels to a unit, steps at 8×. The skin tone is in the
+            photograph itself, tinted once by the curve of `skinTint.ts`
+            (`mannequin/tinted.ts`), not by a filter on every redraw.
           */}
-          <filter id={uid("tint")} colorInterpolationFilters="sRGB">
-            <feComponentTransfer>
-              <feFuncR type="table" tableValues={tr.join(" ")} />
-              <feFuncG type="table" tableValues={tg.join(" ")} />
-              <feFuncB type="table" tableValues={tb.join(" ")} />
-            </feComponentTransfer>
-          </filter>
+          <clipPath id={uid("figure")}>
+            <path d={outline} clipRule="evenodd" />
+          </clipPath>
 
           {/*
             What of the body is still showing. Covered zones are cut away so no
@@ -389,9 +392,6 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
             an edge lies inside only where something runs on past it; and
             `under-rim`, the rest, where an edge is against the page.
           */}
-          <filter id={uid("opaque")} filterUnits="userSpaceOnUse" x="0" y="0" width={CANVAS[0]} height={CANVAS[1]}>
-            <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0" />
-          </filter>
           {beneathDefs(uid, CANVAS, underAll, { reach: EDGE_REACH, contact: 1.6 })}
 
           {inFront.length > 0 && (
@@ -425,7 +425,7 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
               width={CANVAS[0]}
               height={CANVAS[1]}
             >
-              <image href={body.view.front} x="0" y="0" width={CANVAS[0]} height={CANVAS[1]} filter={`url(#${uid("opaque")})`} />
+              <path d={outline} fill="#fff" fillRule="evenodd" />
             </mask>
           )}
 
@@ -485,12 +485,12 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
 
         <g mask={`url(#${uid("body")})`}>
           <image
-            href={body.view.front}
+            href={photo}
             x="0"
             y="0"
             width={CANVAS[0]}
             height={CANVAS[1]}
-            filter={`url(#${uid("tint")})`}
+            clipPath={`url(#${uid("figure")})`}
           />
         </g>
 
@@ -605,12 +605,12 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
         {inFront.length > 0 && (
           <g mask={`url(#${uid("front")})`}>
             <image
-              href={body.view.front}
+              href={photo}
               x="0"
               y="0"
               width={CANVAS[0]}
               height={CANVAS[1]}
-              filter={`url(#${uid("tint")})`}
+              clipPath={`url(#${uid("figure")})`}
             />
           </g>
         )}

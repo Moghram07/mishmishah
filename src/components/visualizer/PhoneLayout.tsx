@@ -85,6 +85,8 @@ interface Props {
    */
   moverRef: React.Ref<HTMLDivElement>;
   moverSize: { width: number; height: number } | null;
+  /** What the box is drawn at, of its size on screen: two thirds is 2× pixels on a 3× phone — see `FabricVisualizer`. */
+  moverScale: number;
   gestures: {
     onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
     onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
@@ -155,9 +157,11 @@ export function PhoneLayout(p: Props) {
           ref={p.moverRef}
           className="absolute left-0 top-0 will-change-transform"
           style={{
-            width: p.moverSize ? `${p.moverSize.width}px` : "100%",
-            height: p.moverSize ? `${p.moverSize.height}px` : "100%",
+            width: p.moverSize ? `${p.moverSize.width * p.moverScale}px` : "100%",
+            height: p.moverSize ? `${p.moverSize.height * p.moverScale}px` : "100%",
             transformOrigin: "0 0",
+            // the figure's shadow, sized for the box's own scale so it falls on screen as it always has
+            filter: `drop-shadow(0 ${24 * p.moverScale}px ${48 * p.moverScale}px rgba(27,23,20,0.22))`,
           }}
         >
           {p.stage}

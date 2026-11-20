@@ -305,6 +305,16 @@ export function FabricVisualizer() {
    * size until the new one is drawn, so nothing is laid out again before.
    */
   const [shown, setShown] = useState<(Shown & { box: { width: number; height: number } }) | null>(null);
+  /**
+   * The phone's stage is drawn at 2× pixels: on a 3× screen at two thirds of
+   * its size, scaled up by the GPU — under half the pixels of filters and
+   * masks to draw. A change to the figure made while zoomed in (a neckline,
+   * at 2×) is drawn first at half that, at once — soft for a moment — and
+   * sharp right after, as a zoom is. `quickFor` is the figure drawn quick.
+   */
+  const sharpScale = typeof window === "undefined" ? 1 : Math.min(1, 2 / (window.devicePixelRatio || 1));
+  const [quickFor, setQuickFor] = useState<object | null>(null);
+  const renderScale = subject !== "wardrobe" ? 1 : quickFor ? sharpScale / 2 : sharpScale;
   /** The box the phone's stage is drawn in: what is moved and scaled. */
   const moverRef = useRef<HTMLDivElement | null>(null);
   /** A pinch or a drag under way: the stage follows the fingers, nothing else moves it. */
@@ -767,7 +777,7 @@ export function FabricVisualizer() {
     takes, and so how big a print comes out on it. Measured again whenever
     the stage swaps its drawing, since each subject draws its own.
   */
-  const [stagePx, setStagePx] = useState(0);
+  const [measuredPx, setStagePx] = useState(0);
   useEffect(() => {
     const el = stageRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -787,6 +797,8 @@ export function FabricVisualizer() {
     never where even 8× would not show it — a knit's columns on a phone.
   */
   const smallPrint = useMemo(() => {
+    // the phone's stage is drawn at a scale (see `renderScale`): its width on screen
+    const stagePx = !isDesktop && shown ? shown.box.width : measuredPx;
     if (stagePx <= 0) return false;
     // what the stage showing frames: desktop's zoom, focus and drag, or the phone's view
     const [z, at, moved]: [number, readonly [number, number] | undefined, readonly [number, number]] = isDesktop
@@ -807,7 +819,7 @@ export function FabricVisualizer() {
             Object.values(partFabrics),
           ];
     return inView.some((f) => f !== undefined && zoomWouldShow(f, pxPerUnit / cmPerUnit, mostPxPerUnit / cmPerUnit));
-  }, [stagePx, subject, zoom, focus, pan, viewport, outfitFabrics, product, partFabrics, isDesktop, view]);
+  }, [measuredPx, shown, subject, zoom, focus, pan, viewport, outfitFabrics, product, partFabrics, isDesktop, view]);
 
   const onDragStart = (e: React.PointerEvent) => {
     if (!pannable) return;
@@ -851,8 +863,9 @@ export function FabricVisualizer() {
   };
   /* the controls floating on the stage take their own taps */
   const onControl = (e: React.PointerEvent) => !!(e.target as Element).closest?.("button, a, input, [role=group], [role=menu]");
+  /* the box moved and scaled — `t` as the picture on screen goes, the box's own drawing scale undone */
   const moveTo = (t: { k: number; tx: number; ty: number }) => {
-    if (moverRef.current) moverRef.current.style.transform = cssTransform(t);
+    if (moverRef.current) moverRef.current.style.transform = cssTransform({ ...t, k: t.k / renderScale });
   };
   /* where the gesture leaves the view: drawn there sharp once — see the transition below */
   const gestureEnd = () => {
@@ -962,10 +975,39 @@ export function FabricVisualizer() {
     };
   }, [isDesktop, isOpen, view, viewport, stageBox, shown]);
 
-  /* the new view drawn: the box back where it belongs, in the same frame as the sharp picture */
+  /* the new view drawn, or the box drawn at another scale: back where it belongs — or, a step still under way, where its soft picture goes */
   useLayoutEffect(() => {
-    if (!gestureOn.current) moveTo({ k: 1, tx: 0, ty: 0 });
-  }, [shown]);
+    if (gestureOn.current || !shown) return;
+    moveTo(!viewport || (shown.view === view && shown.viewport === viewport) ? { k: 1, tx: 0, ty: 0 } : transformBetween(shown, { view, viewport }));
+    // the drawn view and the scale it is drawn at; a step to a new view sets its own soft picture
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, renderScale]);
+
+  /*
+    A new figure while zoomed in: drawn quick, in the frame it arrives in —
+    set before the browser paints — then sharp once that frame is on screen.
+  */
+  const lastFigure = useRef<{ outfit: unknown; fabrics: unknown } | null>(null);
+  useLayoutEffect(() => {
+    const was = lastFigure.current;
+    lastFigure.current = { outfit: stageOutfit, fabrics: stageFabrics };
+    if (!was || isDesktop || !shown || shown.view.zoom <= 1.001) return;
+    if (was.outfit !== stageOutfit || was.fabrics !== stageFabrics) setQuickFor({});
+    // only a new figure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageOutfit, stageFabrics]);
+  useEffect(() => {
+    if (!quickFor) return;
+    let live = true;
+    requestAnimationFrame(() =>
+      setTimeout(() => {
+        if (live) startTransition(() => setQuickFor(null));
+      }, 0)
+    );
+    return () => {
+      live = false;
+    };
+  }, [quickFor]);
 
   /* Safari's own pinch would zoom the page under the stage */
   useEffect(() => {
@@ -1925,10 +1967,9 @@ export function FabricVisualizer() {
                 zoom={shown?.view.zoom ?? 1}
                 focus={shown?.view.centre ?? undefined}
                 viewport={shown?.viewport ?? null}
-                className={cn(
-                  "absolute inset-0 z-10 h-full w-full text-foreground drop-shadow-[0_24px_48px_rgba(27,23,20,0.22)]",
-                  !shown && "invisible"
-                )}
+                shownWidth={shown?.box.width}
+                sharpWidth={shown ? shown.box.width * sharpScale : undefined}
+                className={cn("absolute inset-0 z-10 h-full w-full text-foreground", !shown && "invisible")}
               />
             ) : (
               <ProductTemplate
@@ -1947,6 +1988,7 @@ export function FabricVisualizer() {
           setStageEl={setStageEl}
           moverRef={moverRef}
           moverSize={shown ? shown.box : null}
+          moverScale={renderScale}
           gestures={{ onPointerDown: onTouchDown, onPointerMove: onTouchMove, onPointerUp: onTouchEnd, onPointerCancel: onTouchEnd }}
           zoom={view.zoom}
           narrow={(stageSize?.width ?? 390) < 380}

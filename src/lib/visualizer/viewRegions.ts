@@ -33,7 +33,7 @@
  * 4. What cannot be made identical is left as it is: anything drawn inside a
  *    turned group (its region is in turned units), anything whose region or
  *    primitives are not plain user units, and what the caller names — the
- *    two drawn straight from the mannequin photograph, which WebKit resamples
+ *    mask the mannequin photograph is drawn through, which WebKit resamples
  *    differently in a smaller buffer.
  *
  * Only an attribute whose value changes is written. What React drew is
@@ -160,10 +160,13 @@ const fraction = (v: string | null, fallback: number) => {
   return plain(pct ? v.trim().slice(0, -1) : v) / (pct ? 100 : 1);
 };
 
-/** Limit every filter and mask of `svg` to its view. `skip` names those to leave as they are. */
-export function limitToView(svg: SVGSVGElement, skip: ReadonlySet<string>): void {
+/**
+ * Limit every filter and mask of `svg` to its view. `skip` names those to
+ * leave as they are; `cssWidth`, the width it is cut for, when not the one
+ * it has now — a stage drawn quick for a moment keeps its sharp cut.
+ */
+export function limitToView(svg: SVGSVGElement, skip: ReadonlySet<string>, cssWidth: number = svg.clientWidth): void {
   const vb = svg.viewBox?.baseVal;
-  const cssWidth = svg.clientWidth;
   // content drawn again elsewhere through <use> is drawn in that place's units: leave the stage as it is
   if (!vb || !vb.width || !vb.height || !cssWidth || svg.querySelector("use")) return unlimit(svg);
   const s = (cssWidth / vb.width) * (window.devicePixelRatio || 1);

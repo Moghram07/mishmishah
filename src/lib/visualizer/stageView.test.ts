@@ -25,9 +25,9 @@ describe("the phone stage: zoom to the part", () => {
           for (const pt of points) expect(inFrame(f, pt), `${body} ${part} shows ${pt}`).toBe(true);
           return f;
         };
-        // the neckline: chin to bust, shoulder to shoulder — and close: under half the figure's height
+        // the neckline: chin to bust, shoulder to shoulder — and close: at 2×, about half the figure's height
         const neck = shows("neckline", [[a.centerX, a.chinY], [a.centerX, a.bustY], [a.shoulderX.left, a.shoulderY], [a.shoulderX.right, a.shoulderY]]);
-        expect(neck.h).toBeLessThan((a.floorY - a.crownY) / 2);
+        expect(neck.h).toBeLessThan((a.floorY - a.crownY) * 0.6);
         // the sleeves: both shoulders down to both wrists
         shows("sleeve", [[a.shoulderX.left, a.shoulderY], [a.shoulderX.right, a.shoulderY], [a.centerX - 110, p.wristY], [a.centerX + 110, p.wristY]]);
         // the waist and the belt: the waist and the hip; the belt also a sash's tails, 36 cm under it

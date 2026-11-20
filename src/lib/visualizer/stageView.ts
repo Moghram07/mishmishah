@@ -69,8 +69,9 @@ export function partView(part: string, body: BodyType, own?: readonly [number, n
   const x = a.centerX;
   switch (part) {
     case "neckline":
-      // from the chin to below the bust: the opening, the shoulders either side of it
-      return { zoom: 3, focus: [x, a.shoulderY + 45] };
+      // from the chin to below the bust: the opening, the shoulders either side of it — at 2×, not 3×:
+      // a phone draws a neckline change in under half the pixels of filters and masks
+      return { zoom: 2, focus: [x, a.shoulderY + 45] };
     case "collar":
       return { zoom: 3.2, focus: own ?? [x, a.shoulderY + 20] };
     case "sleeve":

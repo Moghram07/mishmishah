@@ -13,7 +13,12 @@ const nextConfig = {
     and fetches it again only when it is redrawn under a new hash.
   */
   async headers() {
-    return [{ source: "/options/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] }];
+    const forGood = [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }];
+    // each URL carries its file's hash (?v=): kept for good, fetched again only when remade
+    return [
+      { source: "/options/:path*", headers: forGood },
+      { source: "/mannequin/tinted/:path*", headers: forGood },
+    ];
   },
 };
 
