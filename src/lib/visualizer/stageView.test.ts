@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { bodyById } from "@/lib/mannequin/bodies";
 import { profileFor } from "@/lib/mannequin/profile";
 import { frameFor, type Viewport } from "@/lib/mannequin/frame";
-import { centreOf, frameOf, movedView, nextZoom, partView, viewForPart, WHOLE_VIEW, MOST_ZOOM, type StageView } from "./stageView";
+import { centreOf, cssTransform, frameOf, movedView, nextZoom, partView, transformBetween, viewForPart, WHOLE_VIEW, MOST_ZOOM, type StageView } from "./stageView";
 
 /** The phone stage the layout leaves on an iPhone 13 in Safari, and one held sideways. */
 const PORTRAIT: Viewport = { width: 390, height: 366, inset: [10, 10, 10, 10] };
@@ -89,5 +89,37 @@ describe("the phone stage: zoom to the part", () => {
     expect(movedView(start, PORTRAIT, from, to, 0.3)).toEqual(WHOLE_VIEW);
     // and never closer than the closest zoom
     expect(movedView(start, PORTRAIT, from, to, 50).zoom).toBe(MOST_ZOOM);
+  });
+});
+
+describe("the phone stage: the picture carried to a new view", () => {
+  const where = (s: { view: StageView; viewport: Viewport }, u: [number, number]): [number, number] => {
+    const f = frameOf(s.view, s.viewport);
+    const px = s.viewport.width / f.w;
+    return [(u[0] - f.x) * px, (u[1] - f.y) * px];
+  };
+  it("puts every canvas point of the old picture where the new picture will draw it — zoom, move, a smaller stage", () => {
+    const cases: [{ view: StageView; viewport: Viewport }, { view: StageView; viewport: Viewport }][] = [
+      // whole → the neckline at 3×
+      [{ view: WHOLE_VIEW, viewport: PORTRAIT }, { view: viewForPart(WHOLE_VIEW, partView("neckline", "female")), viewport: PORTRAIT }],
+      // a close-up moved and zoomed further
+      [{ view: { zoom: 2, centre: [300, 420], by: "viewer" }, viewport: PORTRAIT }, { view: { zoom: 4, centre: [280, 300], by: "viewer" }, viewport: PORTRAIT }],
+      // the fabrics panel rising: the same whole figure on a shorter stage
+      [{ view: WHOLE_VIEW, viewport: PORTRAIT }, { view: WHOLE_VIEW, viewport: { width: 390, height: 221, inset: [10, 10, 10, 10] } }],
+      // held sideways
+      [{ view: { zoom: 3, centre: [300, 250], by: "app" }, viewport: LANDSCAPE }, { view: WHOLE_VIEW, viewport: LANDSCAPE }],
+    ];
+    for (const [from, to] of cases) {
+      const t = transformBetween(from, to);
+      for (const u of [[300, 250], [180, 400], [420, 800], [250, 120]] as [number, number][]) {
+        const [x0, y0] = where(from, u);
+        const [x1, y1] = where(to, u);
+        expect(x0 * t.k + t.tx).toBeCloseTo(x1, 6);
+        expect(y0 * t.k + t.ty).toBeCloseTo(y1, 6);
+      }
+    }
+    // no change, no movement
+    expect(transformBetween({ view: WHOLE_VIEW, viewport: PORTRAIT }, { view: WHOLE_VIEW, viewport: PORTRAIT })).toEqual({ k: 1, tx: 0, ty: 0 });
+    expect(cssTransform({ k: 2, tx: -10, ty: 4.5 })).toBe("translate(-10px, 4.5px) scale(2)");
   });
 });

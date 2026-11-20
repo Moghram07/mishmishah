@@ -77,6 +77,14 @@ interface Props {
   /** The stage: the figure, and what it is measured and moved by. */
   stage: React.ReactNode;
   setStageEl: (el: HTMLDivElement | null) => void;
+  /**
+   * The box the figure is drawn in: a layer of its own, which the GPU moves
+   * and scales — a pinch, a drag, a step to a new view — without a redraw.
+   * Sized to what is drawn, so a stage that changes size does not redraw it
+   * until the new one is drawn sharp.
+   */
+  moverRef: React.Ref<HTMLDivElement>;
+  moverSize: { width: number; height: number } | null;
   gestures: {
     onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
     onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
@@ -143,7 +151,17 @@ export function PhoneLayout(p: Props) {
         className="relative min-h-0 flex-1 touch-none select-none overflow-hidden bg-gradient-to-b from-muted/40 to-background"
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-apricot-radial" />
-        {p.stage}
+        <div
+          ref={p.moverRef}
+          className="absolute left-0 top-0 will-change-transform"
+          style={{
+            width: p.moverSize ? `${p.moverSize.width}px` : "100%",
+            height: p.moverSize ? `${p.moverSize.height}px` : "100%",
+            transformOrigin: "0 0",
+          }}
+        >
+          {p.stage}
+        </div>
 
         <div className="pointer-events-none absolute inset-0 z-20">
           {/* top, at the start: which mannequin, and what the picture is */}

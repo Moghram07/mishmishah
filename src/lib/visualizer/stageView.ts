@@ -139,3 +139,26 @@ export function movedView(
   // through `frameFor`, so a drag past the edge stops at it rather than storing a centre off the figure
   return { zoom, centre: centreOf(frameFor(zoom, centre, [0, 0], viewport)), by: "viewer" };
 }
+
+/** What the stage has drawn, or is to draw: a view on a stage of a size. */
+export interface Shown {
+  view: StageView;
+  viewport: Viewport;
+}
+
+/**
+ * The CSS transform (from the stage's top-left corner) that carries the
+ * picture drawn for `from` to where the picture for `to` will be — the same
+ * canvas point under the same screen point — so the GPU can show the new
+ * view at once by scaling the old picture, softly, until the new one is drawn
+ * sharp. Also what a pinch or a drag shows while the fingers move.
+ */
+export function transformBetween(from: Shown, to: Shown): { k: number; tx: number; ty: number } {
+  const f0 = frameOf(from.view, from.viewport);
+  const f1 = frameOf(to.view, to.viewport);
+  const s0 = from.viewport.width / f0.w;
+  const s1 = to.viewport.width / f1.w;
+  return { k: s1 / s0, tx: (f0.x - f1.x) * s1, ty: (f0.y - f1.y) * s1 };
+}
+
+export const cssTransform = ({ k, tx, ty }: { k: number; tx: number; ty: number }) => `translate(${tx}px, ${ty}px) scale(${k})`;

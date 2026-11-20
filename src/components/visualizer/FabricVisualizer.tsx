@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 // TEMPORARY — the phone-speed measurement (?debug=perf); remove before release
 import { perfStage } from "@/lib/debug/perf";
 import {
@@ -111,10 +111,13 @@ import {
   WHOLE_VIEW,
   frameOf,
   centreOf,
+  cssTransform,
   movedView,
   nextZoom,
   partView,
+  transformBetween,
   viewForPart,
+  type Shown,
   type StageView,
 } from "@/lib/visualizer/stageView";
 import { Silhouette, boxAround } from "./Silhouette";
@@ -292,6 +295,20 @@ export function FabricVisualizer() {
   const isDesktop = useIsDesktop();
   /** The phone's stage: the whole figure, or a close-up — following the category, or where the viewer put it. */
   const [view, setView] = useState<StageView>(WHOLE_VIEW);
+  /**
+   * What the phone's stage has drawn — its view on a stage of its size. The
+   * requested `view` gets there in two steps: the picture already drawn is
+   * moved and scaled by the GPU at once (soft for a moment), then the new one
+   * is drawn sharp once — see `transformBetween`. A stage that changes size,
+   * the fabrics panel rising, goes the same way. `box` is the stage it was
+   * drawn for, to the fraction of a pixel: the box it is drawn in keeps that
+   * size until the new one is drawn, so nothing is laid out again before.
+   */
+  const [shown, setShown] = useState<(Shown & { box: { width: number; height: number } }) | null>(null);
+  /** The box the phone's stage is drawn in: what is moved and scaled. */
+  const moverRef = useRef<HTMLDivElement | null>(null);
+  /** A pinch or a drag under way: the stage follows the fingers, nothing else moves it. */
+  const gestureOn = useRef(false);
   /** The phone panel's category open in each group. */
   const [phoneCat, setPhoneCat] = useState<Partial<Record<PanelTab, string>>>({});
   /** The part the phone's fabrics cut, by garment: «whole» — the whole garment — or one of its regions. */
@@ -308,25 +325,29 @@ export function FabricVisualizer() {
   const [dockEl, setDockEl] = useState<HTMLDivElement | null>(null);
   const stageSize = useElementSize(stageEl);
   const dockSize = useElementSize(dockEl);
+  // in whole pixels: a stage grown or shrunk by a fraction alone keeps its frame, and the figure drawn in it
+  const [stageW, stageH, dockH] = [stageSize?.width, stageSize?.height, dockSize?.height];
   const viewport = useMemo<Viewport | null>(
     () =>
-      stageSize
+      stageW && stageH
         ? isDesktop
           ? {
-              width: stageSize.width,
-              height: stageSize.height,
+              width: stageW,
+              height: stageH,
               inset: [
                 STAGE_ROOM,
                 STAGE_ROOM,
-                (dockSize?.height ?? 0) + STAGE_ROOM / 3,
+                (dockH ?? 0) + STAGE_ROOM / 3,
                 STAGE_ROOM,
               ],
             }
           : // the phone's controls float in the stage's corners, clear of the figure in its middle
-            { width: stageSize.width, height: stageSize.height, inset: [PHONE_ROOM, PHONE_ROOM, PHONE_ROOM, PHONE_ROOM] }
+            { width: stageW, height: stageH, inset: [PHONE_ROOM, PHONE_ROOM, PHONE_ROOM, PHONE_ROOM] }
         : null,
-    [stageSize, dockSize, isDesktop]
+    [stageW, stageH, dockH, isDesktop]
   );
+  /* the phone stage to the fraction of a pixel: the box the figure is drawn in is sized to it, as the stage itself was */
+  const stageBox = stageSize?.exact ?? null;
   const [exporting, setExporting] = useState(false);
 
   const stageRef = useRef<SVGSVGElement>(null);
@@ -388,6 +409,7 @@ export function FabricVisualizer() {
       }));
       // the phone opens on the whole figure, at each group's first category
       setView(WHOLE_VIEW);
+      setShown(null);
       setPhoneCat({});
     }
     wasOpen.current = isOpen;
@@ -430,6 +452,14 @@ export function FabricVisualizer() {
     }
     return out;
   }, [worn, fabric]);
+
+  /*
+    The figure draws the design a moment behind the panel: a tap paints the
+    card it pressed first, then the figure — drawing it can take a while on a
+    phone, and nothing should wait on it.
+  */
+  const stageOutfit = useDeferredValue(outfit);
+  const stageFabrics = useDeferredValue(outfitFabrics);
 
   const partFabrics = useMemo(() => {
     const out: Partial<Record<GarmentPartId, Fabric>> = {};
@@ -804,39 +834,73 @@ export function FabricVisualizer() {
 
   /*
     The phone's stage, moved by hand: one finger drags a close-up, two pinch.
-    A pinch is shown as the browser scaling the picture already drawn — a
-    redraw for every move of two fingers is more than a phone can paint — and
-    the stage is drawn again once, at the new view, when the fingers lift. A
-    drag redraws as it goes, once a frame. Either is the viewer's own view,
-    which the categories then leave alone (`stageView.ts`).
+    Either is shown as the GPU moving and scaling the picture already drawn —
+    the box it is drawn in is a layer of its own — so it follows the fingers
+    without a redraw; the stage is drawn again once, sharp, when they lift.
+    Either is the viewer's own view, which the categories then leave alone
+    (`stageView.ts`).
   */
   const fingers = useRef(new Map<number, [number, number]>());
-  const pinch = useRef<{ d0: number; m0: [number, number]; m1: [number, number]; k: number; from: StageView } | null>(null);
-  const slide = useRef<[number, number] | null>(null);
-  const slideFrame = useRef<{ id: number; from: [number, number]; to: [number, number] } | null>(null);
+  const pinch = useRef<{ d0: number; m0: [number, number]; m1: [number, number]; k: number } | null>(null);
+  const slide = useRef<{ start: [number, number]; at: [number, number] } | null>(null);
+  /** The view a gesture started from: what is drawn. */
+  const gestureFrom = useRef<Shown | null>(null);
   const stagePoint = (e: React.PointerEvent<HTMLElement>): [number, number] => {
     const r = e.currentTarget.getBoundingClientRect();
     return [e.clientX - r.left, e.clientY - r.top];
   };
   /* the controls floating on the stage take their own taps */
   const onControl = (e: React.PointerEvent) => !!(e.target as Element).closest?.("button, a, input, [role=group], [role=menu]");
+  const moveTo = (t: { k: number; tx: number; ty: number }) => {
+    if (moverRef.current) moverRef.current.style.transform = cssTransform(t);
+  };
+  /* where the gesture leaves the view: drawn there sharp once — see the transition below */
+  const gestureEnd = () => {
+    const from = gestureFrom.current;
+    const pz = pinch.current;
+    const sl = slide.current;
+    gestureOn.current = false;
+    gestureFrom.current = null;
+    pinch.current = null;
+    slide.current = null;
+    if (!from) return;
+    const next = pz
+      ? pz.k !== 1 || pz.m1[0] !== pz.m0[0] || pz.m1[1] !== pz.m0[1]
+        ? movedView(from.view, from.viewport, pz.m0, pz.m1, pz.k)
+        : null
+      : sl && (sl.at[0] !== sl.start[0] || sl.at[1] !== sl.start[1])
+        ? movedView(from.view, from.viewport, sl.start, sl.at, 1)
+        : null;
+    if (next) setView(next);
+    else moveTo({ k: 1, tx: 0, ty: 0 });
+  };
 
   const onTouchDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (onControl(e) || (e.pointerType === "mouse" && e.button !== 0)) return;
-    // TEMPORARY (?debug=perf): a scripted pointer has nothing to capture — WebKit throws for one
+    // a pointer the browser does not know — a scripted one — has nothing to capture, and WebKit throws for it
     try {
       e.currentTarget.setPointerCapture?.(e.pointerId);
     } catch {
-      /* a pointer the browser does not know */
+      /* nothing to capture */
     }
     fingers.current.set(e.pointerId, stagePoint(e));
+    if (!shown) return;
+    const base = viewport && stageBox ? { view, viewport, box: stageBox } : shown;
     if (fingers.current.size === 2) {
       const [a, b] = [...fingers.current.values()];
       const m: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-      pinch.current = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, m0: m, m1: m, k: 1, from: view };
+      gestureOn.current = true;
+      // a step to a new view still under way: the gesture starts from where it was going
+      if (base.view !== shown.view || base.viewport !== shown.viewport) setShown(base);
+      gestureFrom.current = base;
+      pinch.current = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, m0: m, m1: m, k: 1 };
       slide.current = null;
     } else if (fingers.current.size === 1 && view.zoom > 1.001) {
-      slide.current = stagePoint(e);
+      gestureOn.current = true;
+      if (base.view !== shown.view || base.viewport !== shown.viewport) setShown(base);
+      gestureFrom.current = base;
+      const p = stagePoint(e);
+      slide.current = { start: p, at: p };
     }
   };
 
@@ -844,49 +908,64 @@ export function FabricVisualizer() {
     if (!fingers.current.has(e.pointerId)) return;
     fingers.current.set(e.pointerId, stagePoint(e));
     const pz = pinch.current;
-    if (pz && fingers.current.size >= 2) {
+    const from = gestureFrom.current;
+    if (pz && from && fingers.current.size >= 2) {
       const [a, b] = [...fingers.current.values()];
       const m: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
       // no closer than the closest zoom, no further out than the whole figure
-      const k = Math.min(MOST_ZOOM / pz.from.zoom, Math.max(1 / pz.from.zoom, Math.hypot(a[0] - b[0], a[1] - b[1]) / pz.d0));
+      const k = Math.min(MOST_ZOOM / from.view.zoom, Math.max(1 / from.view.zoom, Math.hypot(a[0] - b[0], a[1] - b[1]) / pz.d0));
       pz.m1 = m;
       pz.k = k;
-      const svg = stageRef.current;
-      if (svg) {
-        svg.style.transformOrigin = "0 0";
-        svg.style.transform = `translate(${m[0] - pz.m0[0] * k}px, ${m[1] - pz.m0[1] * k}px) scale(${k})`;
-      }
+      moveTo({ k, tx: m[0] - pz.m0[0] * k, ty: m[1] - pz.m0[1] * k });
       return;
     }
-    const from = slide.current;
-    if (!from || !viewport) return;
-    const to = stagePoint(e);
-    slide.current = to;
-    // at most one redraw a frame, from where the last one left off
-    if (slideFrame.current) slideFrame.current.to = to;
-    else {
-      const id = requestAnimationFrame(() => {
-        const step = slideFrame.current;
-        slideFrame.current = null;
-        if (step) setView((v) => movedView(v, viewport, step.from, step.to, 1));
-      });
-      slideFrame.current = { id, from, to };
-    }
+    const sl = slide.current;
+    if (!sl) return;
+    sl.at = stagePoint(e);
+    moveTo({ k: 1, tx: sl.at[0] - sl.start[0], ty: sl.at[1] - sl.start[1] });
   };
 
   const onTouchEnd = (e: React.PointerEvent<HTMLDivElement>) => {
     fingers.current.delete(e.pointerId);
-    const pz = pinch.current;
-    if (pz && fingers.current.size < 2) {
-      pinch.current = null;
-      const svg = stageRef.current;
-      if (svg) svg.style.transform = "";
-      if (viewport && (pz.k !== 1 || pz.m1[0] !== pz.m0[0] || pz.m1[1] !== pz.m0[1])) setView(movedView(pz.from, viewport, pz.m0, pz.m1, pz.k));
-      // the finger still down starts nothing until it lifts
-      slide.current = null;
-    }
-    if (fingers.current.size === 0) slide.current = null;
+    // a pinch ends when either finger lifts; the one still down starts nothing until it lifts too
+    if (pinch.current && fingers.current.size < 2) gestureEnd();
+    else if (slide.current && fingers.current.size === 0) gestureEnd();
   };
+
+  /*
+    The step to a new view — or to a new size of stage: the picture already
+    drawn moved and scaled there at once by the GPU, and once that frame is on
+    screen, the new view drawn sharp. Nothing waits on it: the panel answers
+    first, then the soft picture, then the sharp one.
+  */
+  useLayoutEffect(() => {
+    if (isDesktop || !isOpen || !viewport || !stageBox) return;
+    if (!shown) {
+      setShown({ view, viewport, box: stageBox });
+      return;
+    }
+    if (gestureOn.current) return;
+    if (shown.view === view && shown.viewport === viewport) {
+      // where it should be: a stage a fraction of a pixel taller or shorter only resizes the box with it
+      if (shown.box.width !== stageBox.width || shown.box.height !== stageBox.height) setShown({ ...shown, box: stageBox });
+      return;
+    }
+    moveTo(transformBetween(shown, { view, viewport }));
+    let live = true;
+    requestAnimationFrame(() =>
+      setTimeout(() => {
+        if (live) startTransition(() => setShown({ view, viewport, box: stageBox }));
+      }, 0)
+    );
+    return () => {
+      live = false;
+    };
+  }, [isDesktop, isOpen, view, viewport, stageBox, shown]);
+
+  /* the new view drawn: the box back where it belongs, in the same frame as the sharp picture */
+  useLayoutEffect(() => {
+    if (!gestureOn.current) moveTo({ k: 1, tx: 0, ty: 0 });
+  }, [shown]);
 
   /* Safari's own pinch would zoom the page under the stage */
   useEffect(() => {
@@ -1708,7 +1787,7 @@ export function FabricVisualizer() {
   /* TEMPORARY (?debug=perf): the stage was given a new figure — timed from the tap that asked for it */
   useLayoutEffect(() => {
     if (isOpen) perfStage();
-  }, [isOpen, outfit, outfitFabrics, view, zoom, pan, focus, viewport]);
+  }, [isOpen, stageOutfit, stageFabrics, shown, zoom, pan, focus, viewport]);
 
   /* choosing a category also points the fabrics at what it is about, as opening a row does on desktop */
   const chooseCat = (id: string) => {
@@ -1841,14 +1920,14 @@ export function FabricVisualizer() {
             subject === "wardrobe" ? (
               <MannequinStage
                 ref={stageRef}
-                outfit={outfit}
-                fabrics={outfitFabrics}
-                zoom={view.zoom}
-                focus={view.centre ?? undefined}
-                viewport={viewport}
+                outfit={stageOutfit}
+                fabrics={stageFabrics}
+                zoom={shown?.view.zoom ?? 1}
+                focus={shown?.view.centre ?? undefined}
+                viewport={shown?.viewport ?? null}
                 className={cn(
                   "absolute inset-0 z-10 h-full w-full text-foreground drop-shadow-[0_24px_48px_rgba(27,23,20,0.22)]",
-                  !viewport && "invisible"
+                  !shown && "invisible"
                 )}
               />
             ) : (
@@ -1866,6 +1945,8 @@ export function FabricVisualizer() {
             )
           }
           setStageEl={setStageEl}
+          moverRef={moverRef}
+          moverSize={shown ? shown.box : null}
           gestures={{ onPointerDown: onTouchDown, onPointerMove: onTouchMove, onPointerUp: onTouchEnd, onPointerCancel: onTouchEnd }}
           zoom={view.zoom}
           narrow={(stageSize?.width ?? 390) < 380}
@@ -2274,7 +2355,7 @@ function useIsDesktop() {
  * mounts after the component does (the sheet renders nothing while closed).
  */
 function useElementSize(el: HTMLElement | null) {
-  const [size, setSize] = useState<{ width: number; height: number } | null>(
+  const [size, setSize] = useState<{ width: number; height: number; exact: { width: number; height: number } } | null>(
     null
   );
 
@@ -2283,15 +2364,17 @@ function useElementSize(el: HTMLElement | null) {
       setSize(null);
       return;
     }
-    const ro = new ResizeObserver(() => {
+    const ro = new ResizeObserver(([entry]) => {
       // Padding included: what is drawn into it is positioned against that box.
       const width = el.clientWidth;
       const height = el.clientHeight;
+      // and to the fraction of a pixel those round away — what a box filling it must match (its content box)
+      const exact = { width: entry.contentRect.width, height: entry.contentRect.height };
       setSize((prev) =>
-        prev && prev.width === width && prev.height === height
+        prev && prev.width === width && prev.height === height && prev.exact.width === exact.width && prev.exact.height === exact.height
           ? prev
           : width > 0 && height > 0
-            ? { width, height }
+            ? { width, height, exact }
             : null
       );
     });

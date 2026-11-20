@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Sparkles, ArrowRight, Ruler } from "lucide-react";
@@ -9,7 +10,6 @@ import { offeredFabrics } from "@/lib/data/fabrics";
 import { categories } from "@/lib/data/categories";
 import { defaultGarment } from "@/lib/data/garments";
 import { cutFrom } from "@/lib/garments/outfit";
-import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { FabricSwatchChip } from "@/components/fabric/FabricCard";
 import { BrandMark } from "@/components/ui/Logo";
 import { Glow } from "@/components/ui/Glow";
@@ -17,6 +17,14 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import type { Outfit } from "@/types";
 import { DEFAULT_SKIN_TONE, skinTones } from "@/lib/data/skinTones";
 import { NECKLINE_IDS } from "@/lib/garments/necklines";
+
+/*
+  The mannequin and every garment's drawing are a piece of their own: drawn
+  into the page by the server as before, so the figure shows with the first
+  paint, but hydrated after the rest of the page — which is ready to use
+  sooner.
+*/
+const MannequinStage = dynamic(() => import("@/components/visualizer/MannequinStage").then((m) => m.MannequinStage));
 
 /** The hero always shows the female mannequin. */
 const HERO_GARMENT = defaultGarment("female");

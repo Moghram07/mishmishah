@@ -1,6 +1,7 @@
 "use client";
 
-import { forwardRef, Fragment, useId, useRef, type ReactNode } from "react";
+import { forwardRef, Fragment, memo, useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react";
+import { limitToView } from "@/lib/visualizer/viewRegions";
 import type React from "react";
 import type { BodyZone, Fabric, FabricRegionId, Outfit } from "@/types";
 import { BODY_CANVAS, bodyById } from "@/lib/mannequin/bodies";
@@ -81,7 +82,14 @@ const EDGE_REACH = 3;
  */
 const FALL_MARGIN = 2;
 
-export const MannequinStage = forwardRef<SVGSVGElement, Props>(
+/** A layout effect in the browser; nothing on the server, which has no layout to wait for. */
+const useBrowserLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/*
+  Memoised: the stage redraws only when what it shows changes — never for a
+  tab, a category or a filter in the panel beside it.
+*/
+export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
   function MannequinStage(
     {
       outfit,
@@ -255,6 +263,16 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
 
     const localRef = useRef<SVGSVGElement | null>(null);
     const renderPx = useRenderedWidth(localRef);
+
+    /*
+      Every filter and mask cut to what is on screen, after each render and
+      before the browser paints it — pixel for pixel the same picture; see
+      `viewRegions.ts`. All but the two drawn straight from the photograph.
+    */
+    useBrowserLayoutEffect(() => {
+      const svg = localRef.current;
+      if (svg) limitToView(svg, new Set([uid("body"), uid("opaque")]));
+    });
 
     // A close-up frames a window of the canvas around whatever is being edited,
     // plus however far the viewer has dragged it. See `mannequin/frame.ts`.
@@ -622,4 +640,4 @@ export const MannequinStage = forwardRef<SVGSVGElement, Props>(
       </svg>
     );
   }
-);
+));

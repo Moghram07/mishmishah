@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/I18nProvider";
@@ -18,12 +19,14 @@ import {
   wear,
   wornOn,
 } from "@/lib/garments/outfit";
-import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { FabricPicker } from "@/components/fabric/FabricPicker";
 import { PublishDesign } from "@/components/feedback/Feedback";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 import type { BodyType, Fabric, FabricRegionId, Outfit } from "@/types";
+
+/* the mannequin's drawings a piece of their own, hydrated after the page — see the home page's hero */
+const MannequinStage = dynamic(() => import("@/components/visualizer/MannequinStage").then((m) => m.MannequinStage));
 
 export default function VisualizerPage() {
   const { t, pick } = useI18n();

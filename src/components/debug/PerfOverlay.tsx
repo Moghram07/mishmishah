@@ -107,7 +107,7 @@ export function PerfOverlay() {
         <div data-perf-ui style={{ ...box, position: "fixed", inset: 0, zIndex: 310, background: "rgba(12,12,12,0.96)", color: "#eee", fontSize: 11, lineHeight: 1.45, overflow: "auto", padding: "max(10px, env(safe-area-inset-top)) 10px 24px" }}>
           <div style={{ fontWeight: 700 }}>perf · {device()}</div>
           <div style={{ opacity: 0.7 }}>
-            targets: card ≤ {TARGET.card} ms · figure ≤ {TARGET.figure} ms · frames ≤ {TARGET.frame} ms (green ok, amber ≤ 2×, red over)
+            targets: card ≤ {TARGET.card} ms · figure ≤ {TARGET.figure} ms · frames ≤ {TARGET.frame} ms (green ok, amber ≤ 2×, red over). card = the first frame after the tap: the card ticked — or, for a zoom, the picture shown soft at once; figure = drawn sharp.
           </div>
           <div style={{ marginTop: 8 }}>
             {recs
