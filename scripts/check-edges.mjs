@@ -154,7 +154,7 @@ const label = (edge, key) => `${edge.kind}${edge.side !== undefined ? ` ${edge.s
  * Layer 1: an edge held to the edge rules, alone. Returns what is wrong with it.
  * `twin`, for one of a pair, is the other.
  */
-function edgeProblems(edge, { twin, axis, axisTolerance = MIRRORED } = {}) {
+function edgeProblems(edge, { twin, axis, axisTolerance = MIRRORED, borderTo } = {}) {
   const problems = [];
   const ringsList = edge.pieces.map((p) => ringsOf(p.d));
   if (edge.pieces.length === 0) return ["lies on no cloth"];
@@ -162,7 +162,9 @@ function edgeProblems(edge, { twin, axis, axisTolerance = MIRRORED } = {}) {
 
   /* on its cloth's border, where it lies over its cloth */
   const span = spanOf(edge);
-  const worst = Math.max(...middle(sample(span.line), 0.9).map((p) => Math.min(...ringsList.map((r) => toRings(p, r)))));
+  /* a wrap's top panel's edge only down to where the panels cross: past it, it lies over the under panel, inside the bodice */
+  const onBorder = middle(sample(span.line), 0.9).filter((p) => !borderTo || p[1] <= borderTo[1] + 0.5);
+  const worst = Math.max(...onBorder.map((p) => Math.min(...ringsList.map((r) => toRings(p, r)))));
   const allowed = edge.room === undefined ? ON_BORDER : ON_BAND_FOOT;
   if (worst > allowed) problems.push(`strays ${worst.toFixed(1)} units off its cloth's border (≤ ${allowed})`);
 
@@ -442,7 +444,19 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
       /* mirrored about her shoulders' centre, a line cut about her throat lands twice the throat's offset away */
       const axisTolerance = throat ? 2 * Math.abs(300 - mod.NECK_CENTRE) + MIRRORED : MIRRORED;
       /* one of a pair is held to its twin; an edge across the middle, to its own mirror image */
-      for (const e of mine) edges.push({ edge: e, key, twin: mine.find((t) => t !== e && t.side !== undefined && e.side === 0), axis: e.side === undefined ? axis : undefined, axisTolerance });
+      /*
+        a wrap's two are each panel's own, as the sailor collar's down a wrap
+        are below: the top panel's on past the crossing to its waist, the
+        under panel's only to the crossing — held to neither's mirror image,
+        and the top one to its border only down to the crossing
+      */
+      const wrap = spec.kind === "neckline" ? mod.bodiceFor(key.cut, undefined, key.waist ?? "natural").cut.wrap : undefined;
+      for (const e of mine)
+        edges.push(
+          wrap
+            ? { edge: e, key, borderTo: e.side === 0 ? wrap.apex : undefined, axisTolerance }
+            : { edge: e, key, twin: mine.find((t) => t !== e && t.side !== undefined && e.side === 0), axis: e.side === undefined ? axis : undefined, axisTolerance }
+        );
     }
   }
   /*
@@ -476,13 +490,13 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
   /* an edge the same as one already checked — a sleeve's at a waist it does not hang beside — is not checked twice */
   const seen = new Set();
   let distinct = 0;
-  for (const { edge, key, twin, axis, axisTolerance } of edges) {
+  for (const { edge, key, twin, axis, axisTolerance, borderTo } of edges) {
     kinds[edge.kind] = (kinds[edge.kind] ?? 0) + 1;
-    const sig = JSON.stringify([edge.kind, edge.side, edge.line, layOf(edge), edge.room, edge.pieces.map((p) => p.d), twin?.line, axisTolerance]);
+    const sig = JSON.stringify([edge.kind, edge.side, edge.line, layOf(edge), edge.room, edge.pieces.map((p) => p.d), twin?.line, axisTolerance, borderTo]);
     if (seen.has(sig)) continue;
     seen.add(sig);
     distinct++;
-    for (const p of edgeProblems(edge, { twin, axis, axisTolerance })) edgeIssues.push(`${label(edge, key)}: ${p}`);
+    for (const p of edgeProblems(edge, { twin, axis, axisTolerance, borderTo })) edgeIssues.push(`${label(edge, key)}: ${p}`);
     for (const p of stripeProblems(edge)) stripeIssues.push(`${label(edge, key)}: ${p}`);
   }
   const counted = Object.entries(kinds).map(([k, n]) => `${n} ${k}`).join(", ");
