@@ -17,6 +17,7 @@ import {
   type Pt,
 } from "./fit.ts";
 import { profileFor } from "../mannequin/profile.ts";
+import { OUTLINE } from "../mannequin/outline.ts";
 import type { BodyType, OpeningShape } from "@/types";
 
 /**
@@ -359,6 +360,62 @@ export interface NeckLandmarks {
 /** How far below the two side points the front of the neck's base lies, in halves of the width between them. */
 const NECK_BASE_DROP = 0.42;
 
+/** Each body's drawn outline as points — the photograph is clipped to it, so it is the edge on screen. */
+const outlineKept = new Map<BodyType, Pt[]>();
+function outlineOf(body: BodyType): Pt[] {
+  const kept = outlineKept.get(body);
+  if (kept) return kept;
+  const tokens = OUTLINE[body].match(/[a-zA-Z]|-?\d*\.?\d+(?:e-?\d+)?/g) ?? [];
+  const pts: Pt[] = [];
+  let cx = 0;
+  let cy = 0;
+  let cmd = "";
+  for (let i = 0; i < tokens.length; ) {
+    if (/[a-zA-Z]/.test(tokens[i])) {
+      cmd = tokens[i++];
+      if (cmd === "z" || cmd === "Z") continue;
+    }
+    if (cmd === "M") {
+      cx = Number(tokens[i++]);
+      cy = Number(tokens[i++]);
+      pts.push([cx, cy]);
+    } else if (cmd === "c") {
+      const [x1, y1, x2, y2, x, y] = tokens.slice(i, i + 6).map(Number);
+      i += 6;
+      const p0: Pt = [cx, cy];
+      for (let k = 1; k <= 6; k++)
+        pts.push(cubicAtPt(p0, [cx + x1, cy + y1], [cx + x2, cy + y2], [cx + x, cy + y], k / 6));
+      cx += x;
+      cy += y;
+    } else i++;
+  }
+  outlineKept.set(body, pts);
+  return pts;
+}
+
+/** Where the drawn outline crosses a row, on her left (the least x) or her right (the most). */
+export function outlineX(body: BodyType, y: number, side: -1 | 1): number {
+  const pts = outlineOf(body);
+  let best = NaN;
+  for (let k = 1; k < pts.length; k++) {
+    const [x0, y0] = pts[k - 1];
+    const [x1, y1] = pts[k];
+    if ((y0 - y) * (y1 - y) > 0 || y0 === y1) continue;
+    const x = x0 + ((x1 - x0) * (y - y0)) / (y1 - y0);
+    if (Number.isNaN(best) || (side < 0 ? x < best : x > best)) best = x;
+  }
+  return best;
+}
+
+/** A point on a cubic. */
+function cubicAtPt(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
+  const u = 1 - t;
+  return [
+    u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+    u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
+  ];
+}
+
 export function neckLandmarks(body: BodyType): NeckLandmarks {
   const p = profileFor(body);
   /* where the edge's slope first reaches 45°: between the middles of two measured steps, interpolated */
@@ -377,9 +434,12 @@ export function neckLandmarks(body: BodyType): NeckLandmarks {
   };
   const l = knee(p.neckLeft);
   const r = knee(p.neckRight);
-  const axis = (l[0] + r[0]) / 2;
-  const half = (r[0] - l[0]) / 2;
   const y = (l[1] + r[1]) / 2;
+  /* on the outline as drawn — the measured edge stands a unit or two outside it there, and a corner on it stood off the neck as a point */
+  const xl = outlineX(body, y, -1);
+  const xr = outlineX(body, y, 1);
+  const axis = (xl + xr) / 2;
+  const half = (xr - xl) / 2;
   return { left: [axis - half, y], right: [axis + half, y], front: [axis, y + half * NECK_BASE_DROP], axis };
 }
 
@@ -403,7 +463,7 @@ function anatomy(body: BodyType, spec: CutSpec) {
   const waistY = spec.waistY ?? d.waistY;
   const lm = neckLandmarks(body);
   const shoulderEase = spec.shoulderEase ?? 3;
-  return { d, center, half, column, seamY, ease, tip, neckLeft, neckRight, shoulder, underarm, waistY, lm, shoulderEase };
+  return { body, d, center, half, column, seamY, ease, tip, neckLeft, neckRight, shoulder, underarm, waistY, lm, shoulderEase };
 }
 
 type Anatomy = ReturnType<typeof anatomy>;
@@ -451,8 +511,19 @@ function overShoulders(
   extras: string[] = [],
   folds: string[] = []
 ): NecklineCut {
-  const { strapLeft, strapRight, opening, cornerLeft, cornerRight } =
-    acrossShoulders(a, t, arcPts);
+  return overCorners(a, acrossShoulders(a, t, arcPts), arcPts, extras, folds);
+}
+
+/** The same, from corners and shoulders already placed. */
+function overCorners(
+  a: Anatomy,
+  corners: { strapLeft: Pt[]; strapRight: Pt[]; cornerLeft: Pt; cornerRight: Pt },
+  arcPts: (r: Pt, l: Pt) => Pt[],
+  extras: string[] = [],
+  folds: string[] = []
+): NecklineCut {
+  const { strapLeft, strapRight, cornerLeft, cornerRight } = corners;
+  const opening = arcPts(cornerRight, cornerLeft);
   /* the half-ellipse it is cut on — `arc`'s, read back off its own points */
   const seamY = (cornerLeft[1] + cornerRight[1]) / 2;
   const neck: Neckline = {
@@ -484,10 +555,10 @@ const CENTER_X = 300;
 const NECK_EASE_RUN = 8;
 /** The crew's lowest point, below the front of the neck's base: a small natural drop. */
 const CREW_DROP = 5;
-/** How high over the side points the back of the neckline shows, beside the neck. */
-const BACK_RISE = 6;
-/** How far out along each shoulder from the neck point the back of the neckline shows. */
-const BACK_OUT = 13;
+/** How far up the neck, above where it meets the shoulder, the back of the neckline shows. */
+const BACK_RISE = 4;
+/** How much of it shows at most, between the body's edge and its own: a thin band. */
+const BACK_THICK = 0.6;
 
 /**
  * The corners and shoulders of an opening cut from the neck's own points —
@@ -500,31 +571,82 @@ const BACK_OUT = 13;
  * and in proportion between, so it bends nowhere.
  */
 function atNeck(a: Anatomy) {
-  const { left, right, axis } = a.lm;
+  return onShoulder(a, 0);
+}
+
+/** How far down from the neck point the edge on screen gives way to the measured one the garment is drafted to. */
+const OUTLINE_RUN = 16;
+
+/**
+ * The body's own edge on her left at a row: near the neck the outline as
+ * drawn, which is the edge on screen; further out the measured edge — the
+ * neck's or the shoulder's, whichever is the outer — that the shoulder seam,
+ * the armhole and the sleeves are all drafted to; blended smoothly between.
+ */
+const bodyEdge = (a: Anatomy, y: number, from: number = a.lm.left[1]): number => {
+  const raw = a.d.shoulder(a.lm.left, a.tip, a.shoulderEase);
+  let measured = raw[raw.length - 1][0] + a.shoulderEase;
+  for (let i = 1; i < raw.length; i++) {
+    if (raw[i][1] < y) continue;
+    const [x0, y0] = raw[i - 1];
+    const [x1, y1] = raw[i];
+    measured = Math.min(x0 + ((x1 - x0) * (y - y0)) / (y1 - y0 || 1) + a.shoulderEase, a.d.neck(y).left);
+    break;
+  }
+  if (y < raw[0][1]) measured = a.d.neck(y).left;
+  const u = Math.min(1, Math.max(0, (y - from) / OUTLINE_RUN));
+  const w = 1 - u * u * (3 - 2 * u);
+  const drawn = outlineX(a.body, y, -1);
+  return Number.isNaN(drawn) ? measured : w * drawn + (1 - w) * measured;
+};
+
+/** Where her left is mirrored at a row: about the neck's axis at the neck, about the body's at the shoulder point, in proportion between. */
+const mirrorAxisAt = (a: Anatomy, y: number): number =>
+  a.lm.axis + (CENTER_X - a.lm.axis) * Math.min(1, Math.max(0, (y - a.lm.left[1]) / (a.tip[1] - a.lm.left[1])));
+
+/**
+ * The corners and shoulders of an opening cut from the neck's own points:
+ * each corner `t` of the way along the shoulder from where the neck meets
+ * it — the crew and the V at 0, the scoop out on the shoulder — on the body's
+ * own edge, left and right mirrored (see `mirrorAxisAt`). Each shoulder seam
+ * runs out from its corner along the body, its ease growing from nothing at
+ * the corner, so the cloth lies on the body there and the shoulder line runs
+ * on into the neck, or into the opening, as the body's own edge does — no
+ * cloth standing up into a point.
+ */
+function onShoulder(a: Anatomy, t: number) {
+  const { left } = a.lm;
   const raw = a.d.shoulder(left, a.tip, a.shoulderEase);
+  /* the body's edge from the neck point to the shoulder point; the corner on it, `t` of the way along */
+  const body = raw.map(([x, y], i) => (i === 0 ? left : i === raw.length - 1 ? ([x, y] as Pt) : ([bodyEdge(a, y), y] as Pt)));
+  /* on the outline as drawn, out on the shoulder too — a corner off it stood up as a point */
+  const onBody = t <= 0 ? left : along(body, t);
+  const cornerLeft: Pt = t <= 0 ? left : [outlineX(a.body, onBody[1], -1), onBody[1]];
   /*
     Just below the neck point the shoulder's measured envelope stands a unit
     inside the neck's own edge, and a seam on it stepped back in before going
     out — a hook of cloth at the corner. The body there is whichever edge is
-    the outer, and the seam only ever goes outward from the neck.
+    the outer, and the seam only ever goes outward from its corner.
   */
-  let last = left[0];
-  const strapLeft = raw.map(([x, y], i) => {
-    if (i === 0 || i === raw.length - 1) return [x, y] as Pt;
-    const k = Math.min(1, Math.max(0, (y - left[1]) / NECK_EASE_RUN));
-    const body = Math.min(x + a.shoulderEase, a.d.neck(y).left);
-    last = Math.min(last, body - a.shoulderEase * k);
-    return [last, y] as Pt;
-  });
-  const n = strapLeft.length;
-  const strapRight = reverse(
-    strapLeft.map(([x, y], i) => {
-      const m = axis + (CENTER_X - axis) * (i / (n - 1));
-      return [2 * m - x, y] as Pt;
-    })
-  );
-  strapRight[strapRight.length - 1] = right;
-  return { cornerLeft: left, cornerRight: right, strapLeft, strapRight };
+  let last = cornerLeft[0];
+  const strapLeft: Pt[] = [cornerLeft];
+  for (let i = 1; i < raw.length; i++) {
+    const [x, y] = raw[i];
+    if (y <= cornerLeft[1] + 1e-9) continue;
+    if (i === raw.length - 1) {
+      strapLeft.push([x, y]);
+      break;
+    }
+    const k = Math.min(1, Math.max(0, (y - cornerLeft[1]) / NECK_EASE_RUN));
+    /* the edge on screen at the corner, giving way to the measured one further out */
+    last = Math.min(last, bodyEdge(a, y, cornerLeft[1]) - a.shoulderEase * k);
+    strapLeft.push([last, y]);
+  }
+  const mirror = ([x, y]: Pt): Pt => [2 * mirrorAxisAt(a, y) - x, y];
+  const strapRight = reverse(strapLeft.map(mirror));
+  const cornerRight = mirror(cornerLeft);
+  strapRight[strapRight.length - 1] = cornerRight;
+  return { cornerLeft, cornerRight, strapLeft, strapRight };
 }
 
 /** A point on a cubic. */
@@ -536,40 +658,34 @@ const cubicAt = (p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt => {
   ];
 };
 
-/** The length along a run to its point `dist` from its start, and the run up to there. */
-function upTo(pts: Pt[], dist: number): Pt {
-  let left = dist;
-  for (let i = 1; i < pts.length; i++) {
-    const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    if (l >= left) {
-      const f = left / (l || 1);
-      return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * f, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * f];
-    }
-    left -= l;
-  }
-  return pts[pts.length - 1];
-}
-
 /**
- * The back of the neckline, behind the neck: a band from BACK_OUT down each
- * shoulder, rising to BACK_RISE over the neck point as it goes round behind
- * the neck, and across behind it. Drawn under the photograph, the body hides
- * all of it but the band either side of the neck, above the shoulder line.
+ * The back of the neckline, seen behind the neck: a thin band along the
+ * body's own edge where the neck meets the shoulder. Its edge leaves the
+ * neck's outline BACK_RISE above that point, stands off the body by
+ * BACK_THICK at most, and runs into the shoulder line where the seam's ease
+ * has grown to its own — meeting each of them along it, never at an angle,
+ * so the shoulder line flows into the neck with no tip at any zoom. Drawn
+ * under the photograph and the bodice, which hide all of it but that band.
  */
-function backNeck(a: Anatomy, strapLeft: Pt[], strapRight: Pt[]): string {
-  const { left, right } = a.lm;
-  const outL = upTo(strapLeft, BACK_OUT);
-  const outR = upTo(reverse(strapRight), BACK_OUT);
-  const topL: Pt = [left[0] + 10, left[1] - BACK_RISE];
-  const topR: Pt = [right[0] - 10, right[1] - BACK_RISE];
-  const cL: Pt = [left[0] - 2, left[1] - BACK_RISE];
-  const cR: Pt = [right[0] + 2, right[1] - BACK_RISE];
-  const f = (p: Pt) => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`;
-  const deep = 24;
-  return (
-    `M${f(outL)} Q${f(cL)} ${f(topL)} L${f(topR)} Q${f(cR)} ${f(outR)} ` +
-    `L${f([outR[0], outR[1] + deep])} L${f([outL[0], outL[1] + deep])} Z`
-  );
+function backNeck(a: Anatomy): string {
+  const { left } = a.lm;
+  const top = left[1] - BACK_RISE;
+  const end = left[1] + NECK_EASE_RUN;
+  const rows = 24;
+  const outer: Pt[] = Array.from({ length: rows + 1 }, (_, i) => {
+    const y = top + ((end - top) * i) / rows;
+    const u = i / rows;
+    /* off the body: as the seam's own ease grows below the neck point, smoothly, and a little more all along — the band */
+    const v = Math.min(1, Math.max(0, (y - left[1]) / NECK_EASE_RUN));
+    const off = a.shoulderEase * v * v * (3 - 2 * v) + BACK_THICK * Math.sin(Math.PI * u) ** 2;
+    return [bodyEdge(a, y) - off, y] as Pt;
+  });
+  /* closed inside the body, where the photograph hides it */
+  const inner: Pt[] = reverse(outer).map(([x, y]) => [x + 6, y] as Pt);
+  const half = [...outer, ...inner];
+  const mirror = ([x, y]: Pt): Pt => [2 * mirrorAxisAt(a, y) - x, y];
+  const f = (q: Pt) => `${q[0].toFixed(2)} ${q[1].toFixed(2)}`;
+  return [half, half.map(mirror)].map((ring) => `M${ring.map(f).join(" L")} Z`).join(" ");
 }
 
 /** The crew's opening, right corner round to the left: down from each side point along the base of the neck, level across the front. */
@@ -725,6 +841,68 @@ function vee(a: Anatomy, corners: { strapLeft: Pt[]; strapRight: Pt[]; cornerLef
 }
 
 /**
+ * A wrap: the top panel's edge from its corner at her left shoulder, steep
+ * from the neck and flattening as it crosses to the waist at her right, and
+ * the under panel's the same line mirrored — about `axis0` at the neck and
+ * the body's axis at the waist — to where the two cross.
+ */
+function wrapCut(a: Anatomy, corners: { strapLeft: Pt[]; strapRight: Pt[]; cornerLeft: Pt; cornerRight: Pt }, axis0: number): NecklineCut {
+  const { strapLeft, strapRight, cornerLeft, cornerRight } = corners;
+    const waistY = a.waistY;
+    const tie: Pt = [2 * CENTER_X - a.d.sideAt(waistY, a.ease) - WRAP_TIE_IN, waistY];
+    /* steep from the neck, flattening as it crosses to the waist */
+    const pull: Pt = [a.center - 6, a.seamY + WRAP_PULL];
+    const at = (u: number): Pt => {
+      const m = 1 - u;
+      return [
+        m * m * cornerLeft[0] + 2 * m * u * pull[0] + u * u * tie[0],
+        m * m * cornerLeft[1] + 2 * m * u * pull[1] + u * u * tie[1],
+      ];
+    };
+    /* the under panel's edge: the same line, mirrored — about the neck at the neck and the body below */
+    const axisAt = (y: number) => {
+      return axis0 + (CENTER_X - axis0) * Math.max(0, Math.min(1, (y - cornerLeft[1]) / (waistY - cornerLeft[1])));
+    };
+    const mirrorAt = ([x, y]: Pt): Pt => [2 * axisAt(y) - x, y];
+    /* where the two cross: where the top panel's edge reaches the axis */
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      const [x, y] = at(mid);
+      if (x < axisAt(y)) lo = mid;
+      else hi = mid;
+    }
+    const tApex = (lo + hi) / 2;
+    const apex = at(tApex);
+    const N = 40;
+    const edge = Array.from({ length: N + 1 }, (_, i) => at(i / N));
+    const upper = [...edge.filter((_, i) => i / N < tApex), apex];
+    const over = [apex, ...edge.filter((_, i) => i / N > tApex)];
+    const rightEdge = upper.map(mirrorAt);
+    rightEdge[0] = cornerRight;
+    const leftEdge = reverse(upper);
+    leftEdge[leftEdge.length - 1] = cornerLeft;
+    return {
+      tip: a.tip,
+      edge: [run(strapRight), run(rightEdge), run(leftEdge), run(strapLeft)].join(" "),
+      parts: {
+        neck: cornerLeft,
+        neckRight: cornerRight,
+        strapLeft,
+        strapRight,
+        opening: [run(rightEdge), run(leftEdge)].join(" "),
+      },
+      seam: line(rightEdge, leftEdge),
+      /* topstitched along the whole of the top panel's edge, neck to tie, on the panel */
+      stitch: line(inset(reverse(edge), 4)),
+      extras: [],
+      folds: [],
+      wrap: { edge, over, apex, tie },
+    };
+}
+
+/**
  * The crew and the V on a bare neck — no collar sewn on, which keeps the cut
  * every collar was drafted and approved against (`CUTS`): their corners where
  * the neck meets the shoulders, left and right mirrored about the neck's
@@ -760,13 +938,26 @@ const BARE: Partial<Record<NecklineId, (a: Anatomy) => NecklineCut>> = {
       folds: [],
       neck,
       parts: { neck: cornerLeft, neckRight: cornerRight, strapLeft, strapRight, opening: run(opening) },
-      backNeck: backNeck(a, strapLeft, strapRight),
+      backNeck: backNeck(a),
     };
   },
   /* from the same two points the crew is cut from, straight down to the point */
   v: (a) => {
     const corners = atNeck(a);
-    return vee(a, corners, a.lm.axis, backNeck(a, corners.strapLeft, corners.strapRight));
+    return vee(a, corners, a.lm.axis, backNeck(a));
+  },
+  /* the wrap from the same two points, its panels mirrored about the neck's axis at the neck */
+  wrap: (a) => wrapCut(a, atNeck(a), a.lm.axis),
+  /*
+    The scoop's corners out on the shoulder, a fifth of the way from the neck,
+    on the body's own edge, so the cloth lies on the body there; as deep as it
+    was cut before, and as wide.
+  */
+  scoop: (a) => {
+    const was = acrossShoulders(a, 0.2, () => []);
+    const corners = onShoulder(a, 0.2);
+    const dip = was.cornerLeft[1] + 58 - corners.cornerLeft[1];
+    return overCorners(a, corners, (r, l) => arc(r, l, dip));
   },
 };
 
@@ -981,63 +1172,8 @@ const CUTS: Record<NecklineId, (a: Anatomy) => NecklineCut> = {
    * gives it the fine dark edge and the shadow it throws there, the tie, and
    * the folds the tie pulls into the panel — see `WrapPanel`.
    */
-  wrap: (a) => {
-    const t = 0.05;
-    const { strapLeft, strapRight, cornerLeft, cornerRight } = acrossShoulders(a, t, () => []);
-    const waistY = a.waistY;
-    const tie: Pt = [2 * CENTER_X - a.d.sideAt(waistY, a.ease) - WRAP_TIE_IN, waistY];
-    /* steep from the neck, flattening as it crosses to the waist */
-    const pull: Pt = [a.center - 6, a.seamY + WRAP_PULL];
-    const at = (u: number): Pt => {
-      const m = 1 - u;
-      return [
-        m * m * cornerLeft[0] + 2 * m * u * pull[0] + u * u * tie[0],
-        m * m * cornerLeft[1] + 2 * m * u * pull[1] + u * u * tie[1],
-      ];
-    };
-    /* the under panel's edge: the same line, mirrored — about the neck at the neck and the body below */
-    const axisAt = (y: number) => {
-      const axis0 = a.center + (CENTER_X - a.center) * t;
-      return axis0 + (CENTER_X - axis0) * Math.max(0, Math.min(1, (y - cornerLeft[1]) / (waistY - cornerLeft[1])));
-    };
-    const mirrorAt = ([x, y]: Pt): Pt => [2 * axisAt(y) - x, y];
-    /* where the two cross: where the top panel's edge reaches the axis */
-    let lo = 0;
-    let hi = 1;
-    for (let i = 0; i < 40; i++) {
-      const mid = (lo + hi) / 2;
-      const [x, y] = at(mid);
-      if (x < axisAt(y)) lo = mid;
-      else hi = mid;
-    }
-    const tApex = (lo + hi) / 2;
-    const apex = at(tApex);
-    const N = 40;
-    const edge = Array.from({ length: N + 1 }, (_, i) => at(i / N));
-    const upper = [...edge.filter((_, i) => i / N < tApex), apex];
-    const over = [apex, ...edge.filter((_, i) => i / N > tApex)];
-    const rightEdge = upper.map(mirrorAt);
-    rightEdge[0] = cornerRight;
-    const leftEdge = reverse(upper);
-    leftEdge[leftEdge.length - 1] = cornerLeft;
-    return {
-      tip: a.tip,
-      edge: [run(strapRight), run(rightEdge), run(leftEdge), run(strapLeft)].join(" "),
-      parts: {
-        neck: cornerLeft,
-        neckRight: cornerRight,
-        strapLeft,
-        strapRight,
-        opening: [run(rightEdge), run(leftEdge)].join(" "),
-      },
-      seam: line(rightEdge, leftEdge),
-      /* topstitched along the whole of the top panel's edge, neck to tie, on the panel */
-      stitch: line(inset(reverse(edge), 4)),
-      extras: [],
-      folds: [],
-      wrap: { edge, over, apex, tie },
-    };
-  },
+  /** A wrap, as every collar sewn to one was drafted against; bare, see `BARE`. */
+  wrap: (a) => wrapCut(a, acrossShoulders(a, 0.05, () => []), a.center + (CENTER_X - a.center) * 0.05),
 
   /**
    * A high opening with a short placket down the centre front.

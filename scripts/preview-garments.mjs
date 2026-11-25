@@ -3179,7 +3179,8 @@ function checkClosures(bodyKey, wardrobe) {
               continue;
             }
             /* the dress as cut for it — a pleated skirt with its flat panel — without the plackets, against the dress with them */
-            const plain = rasterize([...mod.bodiceFor(cut, undefined, waist).pieces, mod.skirtFor(undefined, skirt, true).path]);
+            /* as drawn, with no collar on it: bare — as `cloth` is — so only the plackets differ */
+            const plain = rasterize([...mod.bodiceFor(cut, undefined, waist, "none", false, false, true).pieces, mod.skirtFor(undefined, skirt, true).path]);
             const sewn = rasterize(mod.cloth({ neckline: cut, skirt, buttons: "hem" }));
             let spill = 0;
             for (let i = 0; i < plain.length; i++) if (sewn[i] >= 0.5 && plain[i] < 0.5) spill++;
@@ -3424,7 +3425,8 @@ function checkBeltOnTop(bodyKey, body, wardrobe) {
       /* a wrap's edge, where it lies on the panel under it, a point a unit */
       const edges = new Map(
         cuts.map((cut) => {
-          const wrap = mod.bodiceFor(cut, undefined, waist).cut.wrap;
+          /* as drawn, with no collar on it: bare — see `CutSpec.bare` */
+          const wrap = mod.bodiceFor(cut, undefined, waist, "none", false, false, true).cut.wrap;
           const edge = [];
           for (let k = 1; wrap && k < wrap.over.length; k++) {
             const [a, b] = [wrap.over[k - 1], wrap.over[k]];

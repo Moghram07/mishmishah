@@ -9,6 +9,7 @@ import {
   necklineCut,
   type NecklineId,
   neckLandmarks,
+  outlineX,
 } from "./necklines";
 import { BODICES, bodiceFor, cloth } from "./art/female/dressCut";
 import { necklineById, necklines, necklinesForGarment } from "@/lib/data/necklines";
@@ -318,5 +319,40 @@ describe("the neck's landmarks, and the cuts on a bare neck", () => {
     // its ends on the neck's own outline, above where the neck meets the shoulders
     const lm = neckLandmarks("female");
     for (const end of [band.upper[0], band.upper[band.upper.length - 1], band.lower[0], band.lower[band.lower.length - 1]]) expect(end[1]).toBeLessThan(lm.left[1]);
+  });
+});
+
+describe("the corners on the outline as drawn, and the back band along it", () => {
+  it("puts the bare crew's, V's, wrap's and scoop's corners on the drawn outline, mirrored, the cloth lying on the body there", () => {
+    const lm = neckLandmarks("female");
+    // the side points on the drawn outline
+    expect(outlineX("female", lm.left[1], -1)).toBeCloseTo(lm.left[0], 6);
+    expect(outlineX("female", lm.right[1], 1)).toBeCloseTo(lm.right[0], 6);
+    for (const id of ["round", "v", "wrap", "scoop"] as const) {
+      const p = necklineCut("female", id, { ...spec, bare: true }).parts!;
+      // on the outline at its own row, and its twin level with it
+      expect(Math.abs(outlineX("female", p.neck[1], -1) - p.neck[0]), id).toBeLessThan(1e-6);
+      expect(p.neckRight[1], id).toBeCloseTo(p.neck[1], 9);
+      // the shoulder seam leaves the corner along the body: never further off it than the seam's own ease, and only outward
+      const strap = p.strapLeft;
+      for (let i = 1; i < strap.length; i++) expect(strap[i][0], `${id} ${i}`).toBeLessThanOrEqual(strap[i - 1][0] + 1e-9);
+    }
+    // the wrap and the V from the same two points
+    expect(necklineCut("female", "wrap", { ...spec, bare: true }).parts!.neck).toEqual(lm.left);
+  });
+
+  it("draws the back of the crew's and the V's neckline as a thin band: up the neck no higher than its rise, off the body by little", () => {
+    const lm = neckLandmarks("female");
+    for (const id of ["round", "v"] as const) {
+      const back = necklineCut("female", id, { ...spec, bare: true }).backNeck!;
+      const pts = points(back);
+      expect(Math.min(...pts.map(([, y]) => y)), id).toBeGreaterThanOrEqual(lm.left[1] - 4 - 1e-6);
+      // its outer edge on her left: past the drawn outline by no more than the seam's own ease there and a thin band
+      for (const [x, y] of pts.filter(([x]) => x < lm.axis)) {
+        const edge = outlineX("female", y, -1);
+        const ease = 3 * Math.min(1, Math.max(0, (y - lm.left[1]) / 8));
+        if (!Number.isNaN(edge) && y < lm.left[1] + 3) expect(edge - x - ease, `${id} at ${y.toFixed(1)}`).toBeLessThan(0.9);
+      }
+    }
   });
 });

@@ -210,10 +210,11 @@ describe("the sailor collar's edges and the dress's points", () => {
     expect(dressPoints({ neckline: "v" })).toEqual([{ kind: "neck", at: TIE_AT, down: [0, 1] }]);
     for (const { cut, waist } of DRESS_POINT_SPEC.every({ sleeves: { types: [] }, skirt: { shapes: [], lengths: [], waists: ["empire", "natural", "dropped"] }, buttons: [] })) {
       const choice = DRESS_POINT_SPEC.choiceFor({ cut, waist });
-      const outline = ringsOf(bodiceFor(cut, undefined, choice.skirt?.waist).pieces[0]);
+      // the bodice as drawn with a tie at its neck: no collar on it, bare — see `CutSpec.bare`
+      const outline = ringsOf(bodiceFor(cut, undefined, choice.skirt?.waist, "none", false, false, true).pieces[0]);
       for (const p of dressPoints(choice)) {
         /* the opening's own middle, a little above the point: halfway between its two edges there — a wrap's mirrored about a line that leans */
-        const top = bodiceFor(cut).cut.parts?.neck[1] ?? p.at[1] - 12;
+        const top = bodiceFor(cut, undefined, "natural", "none", false, false, true).cut.parts?.neck[1] ?? p.at[1] - 12;
         const y = p.at[1] - Math.max(1, Math.min(6, (p.at[1] - top) / 2));
         const xs = outline.flatMap((ring) => ring.flatMap((a, i) => {
           const b = ring[(i + 1) % ring.length];
@@ -254,7 +255,8 @@ describe("a wrap's stripes", () => {
   it("run the top panel's whole edge, past the crossing to its waist, and the under panel's only to the crossing — at every waist", () => {
     for (const waist of ["empire", "natural", "dropped"] as const) {
       const choice = { neckline: "wrap", skirt: { shape: "flared", length: "midi", waist }, stripes: { count: "two", on: ["neckline"] } } as Parameters<typeof dressEdges>[0];
-      const wrap = bodiceFor("wrap", undefined, waist).cut.wrap!;
+      // as drawn with no collar: bare — see `CutSpec.bare`
+      const wrap = bodiceFor("wrap", undefined, waist, "none", false, false, true).cut.wrap!;
       const necks = dressEdges(choice).filter((e) => e.kind === "neckline");
       expect(necks, waist).toHaveLength(2);
       const ends = necks.map((e) => e.line[e.line.length - 1]);

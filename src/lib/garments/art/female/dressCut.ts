@@ -1356,7 +1356,8 @@ export const cloth = (choice: GarmentChoice = {}): string[] => {
   const toHem = buttonedToHem(choice);
   return [
     /* with a collar on it, a keyhole without its own loop — see `underCollar`; in two rows, no placket */
-    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, placketButtons(choice), Boolean(opening)).pieces,
+    /* as drawn: with no collar sewn on, bare — see `CutSpec.bare` — so what is checked is what is drawn */
+    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, placketButtons(choice), Boolean(opening), false, !opening).pieces,
     /* buttoned to the hem: its placket on through the skirt, and a pleated skirt's flat panel under it */
     skirtFor(inside, skirt, toHem).path,
     ...(toHem ? [skirtPlacketFor(inside, skirt).path] : []),
