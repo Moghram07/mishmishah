@@ -1950,6 +1950,14 @@ export interface Encloses {
   envelope: string[];
   /** Just below each sleeve's cuff, as wide as it: where an inner sleeve's end shows. */
   windows: string[];
+  /**
+   * Whether its back hides the back of the neckline worn inside it: an
+   * abaya's, which comes up to the base of the neck with no collar — the back
+   * of a crew or a V, drawn behind the neck, stood above its shoulder line at
+   * each side. A jacket's collar stands round the neck, and that back shows
+   * inside it as it always has.
+   */
+  hidesBackNeck?: boolean;
 }
 
 export interface TailoredSpec extends TopSpec {
@@ -2416,6 +2424,7 @@ export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { ty
       hem: { y: hemY, x: hemLeft[0] },
       envelope: [panelOf(frame, k), ...sleeves],
       windows: [cuffWindow(cuffs[0], cuffRow), cuffWindow(cuffs[1], cuffRow)],
+      hidesBackNeck: true,
     },
   };
 }

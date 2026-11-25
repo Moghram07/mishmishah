@@ -1350,13 +1350,17 @@ export const DEFAULT_CUT: NecklineId = "round";
  * What `check:garments` rasterises. It is a function rather than a table so
  * that the checker and the renderer ask the same question and cannot be given
  * two different answers.
+ *
+ * `bare`: the cut as the stage draws it with no collar on it — see
+ * `CutSpec.bare` — which is what the checker asks for. Without it, the cut a
+ * collar is sewn to, as the shape icons have always drawn it.
  */
-export const cloth = (choice: GarmentChoice = {}): string[] => {
+export const cloth = (choice: GarmentChoice = {}, bare = false): string[] => {
   const { neckline, sleeve, inside, skirt, opening } = choice;
   const toHem = buttonedToHem(choice);
   return [
     /* with a collar on it, a keyhole without its own loop — see `underCollar`; in two rows, no placket */
-    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, placketButtons(choice), Boolean(opening)).pieces,
+    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, placketButtons(choice), Boolean(opening), false, bare && !opening).pieces,
     /* buttoned to the hem: its placket on through the skirt, and a pleated skirt's flat panel under it */
     skirtFor(inside, skirt, toHem).path,
     ...(toHem ? [skirtPlacketFor(inside, skirt).path] : []),

@@ -450,7 +450,8 @@ export function checkEdges({ garment, mod, collarMod, offer, world, holes, log =
         under panel's only to the crossing — held to neither's mirror image,
         and the top one to its border only down to the crossing
       */
-      const wrap = spec.kind === "neckline" ? mod.bodiceFor(key.cut, undefined, key.waist ?? "natural").cut.wrap : undefined;
+      /* the wrap as drawn for this choice: with a collar on it the collar's cut, without one bare — see `CutSpec.bare` */
+      const wrap = spec.kind === "neckline" ? mod.bodiceFor(key.cut, undefined, key.waist ?? "natural", "none", Boolean(key.collared), false, !key.collared).cut.wrap : undefined;
       for (const e of mine)
         edges.push(
           wrap

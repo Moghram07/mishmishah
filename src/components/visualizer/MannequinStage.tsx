@@ -487,10 +487,12 @@ export const MannequinStage = memo(forwardRef<SVGSVGElement, Props>(
           The back of a neckline, behind the neck — the crew's, the V's — in
           the garment's own cloth, a little in shade, as its inside is: the
           body hides all but the band either side of the neck. None under a
-          collar, which draws its own back.
+          collar, which draws its own back; and none inside an abaya, whose
+          own back lies over it — see `Encloses.hidesBackNeck`.
         */}
-        {visible.map(({ garment, worn }) => {
+        {visible.map(({ garment, worn }, index) => {
           if (collarOf(worn) || !clothed(garment.id, "top")) return null;
+          if (insideOf(index).some((h) => h.encloses.hidesBackNeck)) return null;
           const back = garmentArt(garment.asset.front)?.behindBody?.(choiceOf(worn));
           if (!back) return null;
           return (

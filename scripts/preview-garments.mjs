@@ -511,7 +511,7 @@ const ownCoverage = (garment, skirt = garment.skirt?.default) =>
 const defaultSleeveOf = (assetId) =>
   garments.find((g) => g.asset.front === assetId)?.sleeves?.default;
 
-function artPaths(assetId, body, { behind = false, opening = null, cut = null, sleeve = null, skirt = null, inside = null, front = null, underTop = null, leg = null } = {}) {
+function artPaths(assetId, body, { behind = false, opening = null, cut = null, sleeve = null, skirt = null, inside = null, front = null, underTop = null, leg = null, asDrafted = false } = {}) {
   if (COLLAR_CLOTH[assetId] && !behind) return COLLAR_CLOTH[assetId](cut ?? undefined, sleeve ?? undefined);
   const generated = CUT_MODULES[assetId];
   if (generated && !behind) {
@@ -525,7 +525,12 @@ function artPaths(assetId, body, { behind = false, opening = null, cut = null, s
       front: front ?? undefined,
       underTop: underTop ?? undefined,
       leg: leg ?? undefined,
-    });
+      /*
+        as the stage draws it: with no collar on it, bare — see `CutSpec.bare`.
+        `asDrafted`: the cut a collar is sewn to, which every outer layer was
+        drafted against — see `checkLayering`.
+      */
+    }, !asDrafted);
   }
 
   const table = artTable(assetId, body);
@@ -3127,8 +3132,8 @@ function checkClosures(bodyKey, wardrobe) {
         const skirt = { ...mod.DEFAULT_SKIRT, waist };
         const name = `${cut} · ${waist}, two rows`;
         const choice = { neckline: cut, skirt, buttons: "waist", buttonRows: "two" };
-        const cloth = mod.cloth(choice);
-        const bare = mod.cloth({ neckline: cut, skirt });
+        const cloth = mod.cloth(choice, true);
+        const bare = mod.cloth({ neckline: cut, skirt }, true);
         if (cloth.length !== bare.length || cloth.some((d, i) => d !== bare[i])) bad.push(`${name}: a placket is sewn on with two rows`);
         const sewn = rasterize(cloth);
         const run = mod.frontButtons(choice);
@@ -3169,8 +3174,8 @@ function checkClosures(bodyKey, wardrobe) {
           for (const cut of cuts) {
             /* a mermaid buttons to the waist only: asked for the hem, nothing is sewn down its skirt */
             if (fallOf(shape).from !== undefined) {
-              const hemmed = mod.cloth({ neckline: cut, skirt, buttons: "hem" });
-              const waisted = mod.cloth({ neckline: cut, skirt, buttons: "waist" });
+              const hemmed = mod.cloth({ neckline: cut, skirt, buttons: "hem" }, true);
+              const waisted = mod.cloth({ neckline: cut, skirt, buttons: "waist" }, true);
               const asked = mod.frontButtons({ neckline: cut, skirt, buttons: "hem" });
               const given = mod.frontButtons({ neckline: cut, skirt, buttons: "waist" });
               if (hemmed.length !== waisted.length || hemmed.some((d, i) => d !== waisted[i])) bad.push(`${cut}, ${name}: a placket runs down its skirt`);
@@ -3179,8 +3184,9 @@ function checkClosures(bodyKey, wardrobe) {
               continue;
             }
             /* the dress as cut for it — a pleated skirt with its flat panel — without the plackets, against the dress with them */
-            const plain = rasterize([...mod.bodiceFor(cut, undefined, waist).pieces, mod.skirtFor(undefined, skirt, true).path]);
-            const sewn = rasterize(mod.cloth({ neckline: cut, skirt, buttons: "hem" }));
+            /* both as drawn with no collar on it, bare — see `CutSpec.bare` — so only the plackets differ */
+            const plain = rasterize([...mod.bodiceFor(cut, undefined, waist, "none", false, false, true).pieces, mod.skirtFor(undefined, skirt, true).path]);
+            const sewn = rasterize(mod.cloth({ neckline: cut, skirt, buttons: "hem" }, true));
             let spill = 0;
             for (let i = 0; i < plain.length; i++) if (sewn[i] >= 0.5 && plain[i] < 0.5) spill++;
             plackets++;
@@ -3424,7 +3430,8 @@ function checkBeltOnTop(bodyKey, body, wardrobe) {
       /* a wrap's edge, where it lies on the panel under it, a point a unit */
       const edges = new Map(
         cuts.map((cut) => {
-          const wrap = mod.bodiceFor(cut, undefined, waist).cut.wrap;
+          /* as drawn, with no collar on it: bare — see `CutSpec.bare` */
+          const wrap = mod.bodiceFor(cut, undefined, waist, "none", false, false, true).cut.wrap;
           const edge = [];
           for (let k = 1; wrap && k < wrap.over.length; k++) {
             const [a, b] = [wrap.over[k - 1], wrap.over[k]];
@@ -4631,6 +4638,14 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
       const looseReveals = [];
       for (const { cut, sleeve, skirt, leg = null } of variants) {
         const cloth = rasterize(artPaths(inner.asset.front, body, { cut, sleeve, skirt, inside: enc.hem, leg }));
+        /*
+          The shoulder the layer sits outside of: the cut it was drafted against,
+          the one a collar is sewn to. A bare crew's or V's corner, on the neck's
+          own point, stands a little above an abaya's shoulder there — hidden
+          under it, as everything of the dress outside it is from its shoulders
+          down: what shows is held to the cut as drawn, below.
+        */
+        const drafted = rasterize(artPaths(inner.asset.front, body, { cut, sleeve, skirt, inside: enc.hem, leg, asDrafted: true }));
         /* the skirt alone, as it comes out from under the hem: one wide enough shows beside the cuff, and is not the sleeve */
         const style = CUT_MODULES[inner.asset.front]?.skirtFor && inner.skirt ? (skirt ?? inner.skirt.default) : null;
         const skirtCloth = style ? rasterize([CUT_MODULES[inner.asset.front].skirtFor(enc.hem, style).path]) : null;
@@ -4643,14 +4658,17 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
         for (let y = 0; y < H; y++) {
           for (let x = 0; x < W; x++) {
             const i = y * W + x;
-            if (!solid(cloth[i])) continue;
+            const drawnHere = solid(cloth[i]);
+            const draftedHere = solid(drafted[i]);
+            if (!drawnHere && !draftedHere) continue;
             const banded = y >= top && y < bottom;
+            const past = banded && !solid(outerCloth[i]) && !inOpening(x, y);
+            /* before the mask: a shoulder the jacket does not sit outside of */
+            if (past && y < shoulderTo && draftedHere) s++;
+            if (!drawnHere) continue;
             const shown = !banded || solid(inside[i]) || solid(windows[i]);
             if (shown) visible[i] = 1;
-            if (!banded || solid(outerCloth[i]) || inOpening(x, y)) continue;
-            /* before the mask: a shoulder the jacket does not sit outside of */
-            if (y < shoulderTo) s++;
-            if (shown && !solid(windows[i]) && !fringe(x, y)) l++;
+            if (past && shown && !solid(windows[i]) && !fringe(x, y)) l++;
           }
         }
         /*
