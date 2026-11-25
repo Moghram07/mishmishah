@@ -1134,18 +1134,6 @@ export const dressFront: GarmentArt = {
     const { buckle } = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
     return <Buckle {...buckle} />;
   },
-  behindBody: (choice) =>
-    bodiceFor(
-      (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")
-        ? (choice.neckline as NecklineId)
-        : DEFAULT_CUT,
-      choice.sleeve ?? DEFAULT_SLEEVE,
-      choice.skirt?.waist,
-      "none",
-      false,
-      false,
-      true
-    ).cut.backNeck ?? null,
   armCover: (choice) =>
     bodiceFor(
       (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")

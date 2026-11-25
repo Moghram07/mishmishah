@@ -4,20 +4,19 @@ import { MannequinStage } from "@/components/visualizer/MannequinStage";
 import { fabrics } from "@/lib/data/fabrics";
 import { garmentById } from "@/lib/data/garments";
 import { DEFAULT_SKIN_TONE } from "@/lib/data/skinTones";
+import { NECKLINE_IDS } from "./necklines";
 import { cutFrom, setFront, setNeckline } from "./outfit";
 import type { Fabric, FabricRegionId, Outfit, WornGarment } from "@/types";
 
 /**
- * The back of a crew or a V, drawn behind the neck — see `GarmentArt.behindBody`.
- *
- * Inside an abaya it stood above the abaya's shoulder line, a sliver of the
- * dress at each side of the neck: the abaya's own back lies over it, so it is
- * hidden there (`Encloses.hidesBackNeck`). A jacket's collar stands round the
- * neck, and it still shows inside it, as it always has.
+ * Nothing of a dress behind the neck. The round and the V drew the back of
+ * their neckline there, under the photograph, and it stood above the
+ * shoulder line either side of the neck, a small round lump; now the
+ * shoulder line meets the neck on them as it does on the high and the boat.
+ * Under the photograph the stage draws only a collar's back.
  */
 
 const linen = fabrics.find((f) => f.id === "fb-sky-linen")!;
-const BACK = "female-dress-back-neck";
 
 function stage(worn: WornGarment[]): string {
   const outfit: Outfit = { bodyType: "female", skinTone: DEFAULT_SKIN_TONE, direction: 0, worn };
@@ -28,21 +27,29 @@ function stage(worn: WornGarment[]): string {
   );
 }
 
+/** What the stage draws under the photograph: after its definitions, before the body's own picture. */
+function underBody(markup: string): string {
+  const from = markup.indexOf("</defs>");
+  const to = markup.indexOf('<image href="/mannequin/');
+  // both found, in that order: a stage drawn some other way fails here rather than passing with nothing to look at
+  expect(from, "the stage's definitions").toBeGreaterThan(0);
+  expect(to, "the photograph, after them").toBeGreaterThan(from);
+  return markup.slice(from, to);
+}
+
 const dress = (neck: string) => setNeckline([cutFrom(garmentById("female-dress")!, linen.id)], "female-dress", `female-${neck}-neckline`);
 const abaya = (front: "open" | "closed") => setFront([cutFrom(garmentById("female-abaya")!, linen.id)], "female-abaya", front);
 const jacket = () => [cutFrom(garmentById("female-jacket")!, linen.id)];
 
-describe("the back of a crew or a V", () => {
-  it("is hidden inside an abaya, open or closed", () => {
-    for (const neck of ["round", "v"]) {
-      for (const front of ["open", "closed"] as const) expect(stage([...dress(neck), ...abaya(front)]), `${neck} · ${front}`).not.toContain(BACK);
-    }
+describe("behind the neck", () => {
+  it("draws nothing of the dress, on any neckline: the shoulder line meets the neck", () => {
+    for (const neck of NECKLINE_IDS) expect(underBody(stage(dress(neck))), neck).not.toContain("female-dress");
   });
 
-  it("shows on the dress alone and inside a jacket's collar, as before", () => {
+  it("nor of a round or a V inside an abaya, open or closed, or a jacket", () => {
     for (const neck of ["round", "v"]) {
-      expect(stage(dress(neck)), neck).toContain(BACK);
-      expect(stage([...dress(neck), ...jacket()]), `${neck} · jacket`).toContain(BACK);
+      for (const front of ["open", "closed"] as const) expect(underBody(stage([...dress(neck), ...abaya(front)])), `${neck} · ${front}`).not.toContain("female-dress");
+      expect(underBody(stage([...dress(neck), ...jacket()])), `${neck} · jacket`).not.toContain("female-dress");
     }
   });
 });

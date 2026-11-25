@@ -292,7 +292,7 @@ describe("the neck's landmarks, and the cuts on a bare neck", () => {
     }
   });
 
-  it("cuts the crew and the V from those points: no cloth up the neck, and the back of the neckline behind it", () => {
+  it("cuts the crew and the V from those points: no cloth up the neck", () => {
     const lm = neckLandmarks("female");
     for (const id of ["round", "v"] as const) {
       const bare = necklineCut("female", id, { ...spec, bare: true });
@@ -301,10 +301,8 @@ describe("the neck's landmarks, and the cuts on a bare neck", () => {
       // nothing of its top edge higher than where the neck meets the shoulders
       const top = Math.min(...points(bare.edge).map(([, y]) => y));
       expect(top, id).toBeGreaterThan(lm.left[1] - 0.5);
-      expect(bare.backNeck, id).toBeTruthy();
       // with a collar sewn on, the cut every collar was drafted against
       expect(necklineCut("female", id, spec).edge, id).not.toBe(bare.edge);
-      expect(necklineCut("female", id, spec).backNeck, id).toBeUndefined();
     }
     // the crew's lowest point a small drop below the front of the neck's base, on its axis
     const crew = necklineCut("female", "round", { ...spec, bare: true }).neck!;

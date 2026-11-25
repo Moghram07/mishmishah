@@ -131,12 +131,6 @@ export interface NecklineCut {
   /** A halter's neckband, for the drawing to light and gather the bodice into — see `HalterBand`. */
   halter?: HalterBand;
   /**
-   * The back of the neckline, seen behind the neck: drawn under the
-   * photograph, so the body hides all but the band either side of the neck,
-   * where it shows over the shoulders — as the shirt collar's back band does.
-   */
-  backNeck?: string;
-  /**
    * A faced edge drawn as a soft fold, as every seam is now, rather than as
    * a ring of topstitch: the keyhole's opening below the neck.
    */
@@ -484,10 +478,6 @@ const CENTER_X = 300;
 const NECK_EASE_RUN = 8;
 /** The crew's lowest point, below the front of the neck's base: a small natural drop. */
 const CREW_DROP = 5;
-/** How high over the side points the back of the neckline shows, beside the neck. */
-const BACK_RISE = 6;
-/** How far out along each shoulder from the neck point the back of the neckline shows. */
-const BACK_OUT = 13;
 
 /**
  * The corners and shoulders of an opening cut from the neck's own points —
@@ -535,42 +525,6 @@ const cubicAt = (p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt => {
     u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
   ];
 };
-
-/** The length along a run to its point `dist` from its start, and the run up to there. */
-function upTo(pts: Pt[], dist: number): Pt {
-  let left = dist;
-  for (let i = 1; i < pts.length; i++) {
-    const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    if (l >= left) {
-      const f = left / (l || 1);
-      return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * f, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * f];
-    }
-    left -= l;
-  }
-  return pts[pts.length - 1];
-}
-
-/**
- * The back of the neckline, behind the neck: a band from BACK_OUT down each
- * shoulder, rising to BACK_RISE over the neck point as it goes round behind
- * the neck, and across behind it. Drawn under the photograph, the body hides
- * all of it but the band either side of the neck, above the shoulder line.
- */
-function backNeck(a: Anatomy, strapLeft: Pt[], strapRight: Pt[]): string {
-  const { left, right } = a.lm;
-  const outL = upTo(strapLeft, BACK_OUT);
-  const outR = upTo(reverse(strapRight), BACK_OUT);
-  const topL: Pt = [left[0] + 10, left[1] - BACK_RISE];
-  const topR: Pt = [right[0] - 10, right[1] - BACK_RISE];
-  const cL: Pt = [left[0] - 2, left[1] - BACK_RISE];
-  const cR: Pt = [right[0] + 2, right[1] - BACK_RISE];
-  const f = (p: Pt) => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`;
-  const deep = 24;
-  return (
-    `M${f(outL)} Q${f(cL)} ${f(topL)} L${f(topR)} Q${f(cR)} ${f(outR)} ` +
-    `L${f([outR[0], outR[1] + deep])} L${f([outL[0], outL[1] + deep])} Z`
-  );
-}
 
 /** The crew's opening, right corner round to the left: down from each side point along the base of the neck, level across the front. */
 function crewOpening(a: Anatomy): Pt[] {
@@ -696,7 +650,7 @@ function droop(right: Pt, left: Pt, dip: number, steps = 16): Pt[] {
  * because Catmull-Rom rounds whatever it passes through and a rounded V is a
  * scoop.
  */
-function vee(a: Anatomy, corners: { strapLeft: Pt[]; strapRight: Pt[]; cornerLeft: Pt; cornerRight: Pt }, axis: number, back?: string): NecklineCut {
+function vee(a: Anatomy, corners: { strapLeft: Pt[]; strapRight: Pt[]; cornerLeft: Pt; cornerRight: Pt }, axis: number): NecklineCut {
   const { strapLeft, strapRight, cornerLeft, cornerRight } = corners;
   const apex: Pt = [axis, a.seamY + 74];
     const rightEdge = span(cornerRight, apex, 6).map(
@@ -720,7 +674,6 @@ function vee(a: Anatomy, corners: { strapLeft: Pt[]; strapRight: Pt[]; cornerLef
       stitch: [line(inset(rightEdge, 5)), line(inset(leftEdge, 5))].join(" "),
       extras: [],
       folds: [],
-      ...(back ? { backNeck: back } : {}),
     };
 }
 
@@ -728,14 +681,15 @@ function vee(a: Anatomy, corners: { strapLeft: Pt[]; strapRight: Pt[]; cornerLef
  * The crew and the V on a bare neck — no collar sewn on, which keeps the cut
  * every collar was drafted and approved against (`CUTS`): their corners where
  * the neck meets the shoulders, left and right mirrored about the neck's
- * axis, the shoulder line meeting the neck as the body does, and the back of
- * the neckline showing behind the neck. See `CutSpec.bare`.
+ * axis, and the shoulder line meeting the neck as the body does. Nothing of
+ * them is drawn behind the neck, as on the high and the boat. See
+ * `CutSpec.bare`.
  */
 const BARE: Partial<Record<NecklineId, (a: Anatomy) => NecklineCut>> = {
   /**
    * The crew: round the base of the neck, touching it at the sides — its
    * corners where the neck meets the shoulders — with a small natural drop
-   * at the front, and the back of it showing behind the neck either side.
+   * at the front.
    */
   round: (a) => {
     const { strapLeft, strapRight, cornerLeft, cornerRight } = atNeck(a);
@@ -760,14 +714,10 @@ const BARE: Partial<Record<NecklineId, (a: Anatomy) => NecklineCut>> = {
       folds: [],
       neck,
       parts: { neck: cornerLeft, neckRight: cornerRight, strapLeft, strapRight, opening: run(opening) },
-      backNeck: backNeck(a, strapLeft, strapRight),
     };
   },
   /* from the same two points the crew is cut from, straight down to the point */
-  v: (a) => {
-    const corners = atNeck(a);
-    return vee(a, corners, a.lm.axis, backNeck(a, corners.strapLeft, corners.strapRight));
-  },
+  v: (a) => vee(a, atNeck(a), a.lm.axis),
 };
 
 /* ------------------------------------------------------------- the fifteen */

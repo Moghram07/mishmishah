@@ -276,13 +276,6 @@ export interface GarmentArt {
    */
   armCover?: (choice: GarmentChoice) => string[];
   /**
-   * The back of its neckline, for the choice being worn — the band seen
-   * behind the neck either side of it, drawn under the photograph in the
-   * garment's own cloth: see `NecklineCut.backNeck`. None under a collar,
-   * which draws its own.
-   */
-  behindBody?: (choice: GarmentChoice) => string | null;
-  /**
    * The garment's cloth as cut for a choice, for a picker's icon: the same
    * outline the stage fills, so the icon for a shape is exactly what picking
    * it gives.
