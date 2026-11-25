@@ -71,6 +71,18 @@ describe("each body has its own geometry", () => {
       expect(torso - across(bodies.male.zones.hip, y)[0], `y ${y}`).toBeGreaterThan(10);
     }
   });
+
+  it("leaves no row of arm between the upper arm's zone and the forearm's, on either body", () => {
+    // They used to stop at 318 and start again at 332, and in the rows between
+    // the torso's zone, erased under any top, cut a notch out of the inside of
+    // the arm on the right of the picture, under every short sleeve.
+    /* the rows a zone's corners are on: every M and L of it — its H runs along one */
+    const rows = (d: string) => [...d.matchAll(/[ML]\s*-?\d*\.?\d+\s+(-?\d*\.?\d+)/g)].map((m) => Number(m[1]));
+    for (const body of ["female", "male"] as const) {
+      const { upperArm, forearm } = bodies[body].zones;
+      expect(Math.min(...rows(forearm)), body).toBeLessThanOrEqual(Math.max(...rows(upperArm)));
+    }
+  });
 });
 
 describe("each body's landmarks are its own", () => {
