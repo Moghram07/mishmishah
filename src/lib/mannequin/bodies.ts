@@ -215,7 +215,12 @@ const FEMALE_ZONES: Record<BodyZone, string> = {
   // wide skirt behind her wrist cut a step into it. Her right arm hangs a
   // little further out than her left, and the zones are mirrored, so they are
   // cut to the wider of the two.
-  forearm: limb(332, [176, 226], 496, [168, 207]),
+  //
+  // From where the upper arm's zone stops, not the elbow: the rows between
+  // them, 318 to 332, belonged to no zone, and the torso's, under any top,
+  // erased the inside of her right arm there — it hangs a unit nearer her
+  // body than her left — a notch of page under every short sleeve.
+  forearm: limb(318, [176, 228], 496, [168, 207]),
   hand: limb(490, [162, 207], 578, [170, 203]),
   thigh: box(196, 508, 404, 692),
   knee: box(216, 668, 384, 726),
@@ -278,8 +283,9 @@ const MALE_ZONES: Record<BodyZone, string> = {
   //
   // Within it, every pixel of his arm from the elbow to the fingertips, as
   // hers: his right forearm hangs a unit or two nearer his body than his
-  // left, and his hands further out than the old zones reached.
-  forearm: limb(332, [162, 223], 496, [158, 199]),
+  // left, and his hands further out than the old zones reached. From where
+  // the upper arm's zone stops, as hers: no row of arm between them.
+  forearm: limb(318, [162, 225], 496, [158, 199]),
   hand: limb(490, [154, 197], 578, [166, 198]),
   thigh: box(194, 508, 406, 692),
   knee: box(212, 668, 388, 726),

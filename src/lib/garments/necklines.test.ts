@@ -295,10 +295,16 @@ describe("the neck's landmarks, and the cuts on a bare neck", () => {
 
   it("cuts the crew and the V from those points: no cloth up the neck, and the back of the neckline behind it", () => {
     const lm = neckLandmarks("female");
+    // the V from those points; the crew a little out onto the shoulder from them, 0.5–1 cm (2.6–5.3 units)
+    const crew = necklineCut("female", "round", { ...spec, bare: true }).parts!;
+    const out = Math.hypot(crew.neck[0] - lm.left[0], crew.neck[1] - lm.left[1]);
+    expect(out).toBeGreaterThan(2.6);
+    expect(out).toBeLessThan(5.3);
+    expect(crew.neck[0] + crew.neckRight[0]).toBeCloseTo(2 * lm.axis + 2 * (300 - lm.axis) * 0, 0);
     for (const id of ["round", "v"] as const) {
       const bare = necklineCut("female", id, { ...spec, bare: true });
-      expect(bare.parts!.neck, id).toEqual(lm.left);
-      expect(bare.parts!.neckRight, id).toEqual(lm.right);
+      if (id === "v") expect(bare.parts!.neck, id).toEqual(lm.left);
+      if (id === "v") expect(bare.parts!.neckRight, id).toEqual(lm.right);
       // nothing of its top edge higher than where the neck meets the shoulders
       const top = Math.min(...points(bare.edge).map(([, y]) => y));
       expect(top, id).toBeGreaterThan(lm.left[1] - 0.5);
@@ -307,10 +313,10 @@ describe("the neck's landmarks, and the cuts on a bare neck", () => {
       expect(necklineCut("female", id, spec).edge, id).not.toBe(bare.edge);
       expect(necklineCut("female", id, spec).backNeck, id).toBeUndefined();
     }
-    // the crew's lowest point a small drop below the front of the neck's base, on its axis
-    const crew = necklineCut("female", "round", { ...spec, bare: true }).neck!;
-    expect(crew.seamY + crew.dip - neckLandmarks("female").front[1]).toBeGreaterThan(0);
-    expect(crew.seamY + crew.dip - neckLandmarks("female").front[1]).toBeLessThan(8);
+    // the crew's lowest point 2.5–3 cm (13.2–15.8 units) below the front of the neck's base, on its axis — not a high neck
+    const opening = necklineCut("female", "round", { ...spec, bare: true }).neck!;
+    expect(opening.seamY + opening.dip - neckLandmarks("female").front[1]).toBeGreaterThan(13.2);
+    expect(opening.seamY + opening.dip - neckLandmarks("female").front[1]).toBeLessThan(15.8);
   });
 
   it("wraps a halter's band round the neck, and bares the shoulders and the upper chest beside it", () => {

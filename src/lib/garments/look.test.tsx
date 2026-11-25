@@ -1494,7 +1494,8 @@ describe("dress waists, light and dark", () => {
       `.preview/wardrobe/styles4-waists-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
     );
-  });
+    // every cut at every waist, each drafted bare as well as under a collar: a heavy sheet, as its neighbours are
+  }, 60_000);
 });
 
 /**

@@ -22,7 +22,7 @@ import {
 import { draft, line, outline, type Pt, type Tuck } from "@/lib/garments/fit";
 import { BUST } from "./yoke";
 import { NECKLINE_IDS, type CowlDrape, type HalterBand, type NecklineId, type OffShoulderBand, type WrapPanel } from "@/lib/garments/necklines";
-import { BODICES, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, beltWorn, bodiceFor, bowPlaceOf, buttonedToHem, cloth, drawnBodice, dressStripes, narrowSkirt, seamAt, shownButtons, skirtFor, placketButtons, sashOn, skirtPlacketFor, sleeveEndPieces, tiePoint } from "./dressCut";
+import { BODICES, bareOf, DEFAULT_SKIRT, DEFAULT_SLEEVE, PANEL, SKIRT, WAIST_Y, beltFor, beltWorn, bodiceFor, bowPlaceOf, buttonedToHem, cloth, drawnBodice, dressStripes, narrowSkirt, seamAt, shownButtons, skirtFor, placketButtons, sashOn, skirtPlacketFor, sleeveEndPieces, tiePoint } from "./dressCut";
 import { BOW_SHADOW, bowLayers, crispEdgeLight, tieArt as knottedTie } from "./tieArt";
 import type { FoldSpec } from "./ties";
 import type { Inlay } from "@/lib/garments/stripes";
@@ -477,8 +477,8 @@ function offRow(d: string, y: number): string {
   return dropped ? out.join(" ") : d;
 }
 
-const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons: ButtonsId = "none", collared = false, braided = false): RegionArt => {
-  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, placket } = bodiceFor(id, sleeve, waist, buttons, collared, braided, !collared);
+const topRegion = (id: NecklineId, sleeve: SleeveChoice, waist: WaistId, buttons: ButtonsId = "none", collared = false, braided = false, bare = !collared): RegionArt => {
+  const { pieces, stitch, cut, folds, seamed, cuff, edges, bandSleeves, puff, placket } = bodiceFor(id, sleeve, waist, buttons, collared, braided, bare);
   /*
     Its placket — one buttoned on, or a shirt-dress's own — lit as a collar
     is: no line round it, the soft shadow under its edges, and a little light
@@ -783,10 +783,12 @@ const topFor = (choice: GarmentChoice): RegionArt => {
   const collared = Boolean(choice.opening);
   /* braid along the neck edge covers its topstitch too */
   const braided = !collared && Boolean(choice.stripes?.on.includes("neckline"));
-  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placket ? "|placket" : ""}${collared ? "|collared" : ""}${braided ? "|braided" : ""}`;
+  /* worn inside an abaya or a jacket, the cut every outer layer was drafted against — see `bareOf` */
+  const bare = bareOf(choice);
+  const key = `${id}|${sleeve.type}|${sleeve.length}|${sleeve.cuff ?? "none"}|${waist}${placket ? "|placket" : ""}${collared ? "|collared" : ""}${braided ? "|braided" : ""}${bare ? "|bare" : ""}`;
   let region = tops.get(key);
   if (!region) {
-    region = topRegion(id, sleeve, waist, placket ? buttons : "none", collared, braided);
+    region = topRegion(id, sleeve, waist, placket ? buttons : "none", collared, braided, bare);
     tops.set(key, region);
   }
   return region;
@@ -1134,8 +1136,9 @@ export const dressFront: GarmentArt = {
     const { buckle } = beltFor({ ...DEFAULT_SKIRT, ...choice.skirt });
     return <Buckle {...buckle} />;
   },
+  /* none inside an abaya or a jacket, whose shoulders cover it, nor under a collar, which draws its own */
   behindBody: (choice) =>
-    bodiceFor(
+    !bareOf(choice) ? null : bodiceFor(
       (NECKLINE_IDS as readonly string[]).includes(choice.neckline ?? "")
         ? (choice.neckline as NecklineId)
         : DEFAULT_CUT,

@@ -554,7 +554,9 @@ const CENTER_X = 300;
 /** How far down the shoulder from the neck point the seam's ease grows from nothing to its own. */
 const NECK_EASE_RUN = 8;
 /** The crew's lowest point, below the front of the neck's base: a small natural drop. */
-const CREW_DROP = 5;
+const CREW_DROP = 14.5;
+/** How far out onto the shoulder from the neck's edge the crew's sides start: about 0.75 cm. */
+const CREW_OUT = 4;
 /** How far up the neck, above where it meets the shoulder, the back of the neckline shows. */
 const BACK_RISE = 4;
 /** How much of it shows at most, between the body's edge and its own: a thin band. */
@@ -614,11 +616,16 @@ const mirrorAxisAt = (a: Anatomy, y: number): number =>
  * on into the neck, or into the opening, as the body's own edge does — no
  * cloth standing up into a point.
  */
-function onShoulder(a: Anatomy, t: number) {
+function onShoulder(a: Anatomy, t: number, dist = 0) {
   const { left } = a.lm;
   const raw = a.d.shoulder(left, a.tip, a.shoulderEase);
-  /* the body's edge from the neck point to the shoulder point; the corner on it, `t` of the way along */
+  /* the body's edge from the neck point to the shoulder point; the corner on it, `t` of the way along — or `dist` units */
   const body = raw.map(([x, y], i) => (i === 0 ? left : i === raw.length - 1 ? ([x, y] as Pt) : ([bodyEdge(a, y), y] as Pt)));
+  if (dist > 0) {
+    let total = 0;
+    for (let i = 1; i < body.length; i++) total += Math.hypot(body[i][0] - body[i - 1][0], body[i][1] - body[i - 1][1]);
+    t = dist / total;
+  }
   /* on the outline as drawn, out on the shoulder too — a corner off it stood up as a point */
   const onBody = t <= 0 ? left : along(body, t);
   const cornerLeft: Pt = t <= 0 ? left : [outlineX(a.body, onBody[1], -1), onBody[1]];
@@ -667,16 +674,16 @@ const cubicAt = (p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt => {
  * so the shoulder line flows into the neck with no tip at any zoom. Drawn
  * under the photograph and the bodice, which hide all of it but that band.
  */
-function backNeck(a: Anatomy): string {
+function backNeck(a: Anatomy, cornerY: number = a.lm.left[1]): string {
   const { left } = a.lm;
   const top = left[1] - BACK_RISE;
-  const end = left[1] + NECK_EASE_RUN;
+  const end = cornerY + NECK_EASE_RUN;
   const rows = 24;
   const outer: Pt[] = Array.from({ length: rows + 1 }, (_, i) => {
     const y = top + ((end - top) * i) / rows;
     const u = i / rows;
     /* off the body: as the seam's own ease grows below the neck point, smoothly, and a little more all along — the band */
-    const v = Math.min(1, Math.max(0, (y - left[1]) / NECK_EASE_RUN));
+    const v = Math.min(1, Math.max(0, (y - cornerY) / NECK_EASE_RUN));
     const off = a.shoulderEase * v * v * (3 - 2 * v) + BACK_THICK * Math.sin(Math.PI * u) ** 2;
     return [bodyEdge(a, y) - off, y] as Pt;
   });
@@ -689,8 +696,8 @@ function backNeck(a: Anatomy): string {
 }
 
 /** The crew's opening, right corner round to the left: down from each side point along the base of the neck, level across the front. */
-function crewOpening(a: Anatomy): Pt[] {
-  const { left, right, front, axis } = a.lm;
+function crewOpening(a: Anatomy, left: Pt, right: Pt): Pt[] {
+  const { front, axis } = a.lm;
   const bottom: Pt = [axis, front[1] + CREW_DROP];
   const half = right[0] - axis;
   const depth = bottom[1] - right[1];
@@ -916,8 +923,9 @@ const BARE: Partial<Record<NecklineId, (a: Anatomy) => NecklineCut>> = {
    * at the front, and the back of it showing behind the neck either side.
    */
   round: (a) => {
-    const { strapLeft, strapRight, cornerLeft, cornerRight } = atNeck(a);
-    const opening = crewOpening(a);
+    /* its sides a little out onto the shoulder from the neck's edge, its front about 2.75 cm below the neck's base — a crew, not a high neck */
+    const { strapLeft, strapRight, cornerLeft, cornerRight } = onShoulder(a, 0, CREW_OUT);
+    const opening = crewOpening(a, cornerLeft, cornerRight);
     const seamY = cornerLeft[1];
     const neck: Neckline = {
       left: cornerLeft,
@@ -938,7 +946,7 @@ const BARE: Partial<Record<NecklineId, (a: Anatomy) => NecklineCut>> = {
       folds: [],
       neck,
       parts: { neck: cornerLeft, neckRight: cornerRight, strapLeft, strapRight, opening: run(opening) },
-      backNeck: backNeck(a),
+      backNeck: backNeck(a, cornerLeft[1]),
     };
   },
   /* from the same two points the crew is cut from, straight down to the point */

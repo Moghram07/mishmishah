@@ -1357,7 +1357,7 @@ export const cloth = (choice: GarmentChoice = {}): string[] => {
   return [
     /* with a collar on it, a keyhole without its own loop — see `underCollar`; in two rows, no placket */
     /* as drawn: with no collar sewn on, bare — see `CutSpec.bare` — so what is checked is what is drawn */
-    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, placketButtons(choice), Boolean(opening), false, !opening).pieces,
+    ...bodiceFor(cutOf(neckline), sleeve, skirt?.waist, placketButtons(choice), Boolean(opening), false, bareOf(choice)).pieces,
     /* buttoned to the hem: its placket on through the skirt, and a pleated skirt's flat panel under it */
     skirtFor(inside, skirt, toHem).path,
     ...(toHem ? [skirtPlacketFor(inside, skirt).path] : []),
@@ -1389,6 +1389,14 @@ export function details(id: NecklineId, waist: WaistId = "natural") {
  * the placket it is buttoned with, and taken under a collar — see `topFor`
  * in `dress.tsx`, which draws this same one.
  */
+/**
+ * Whether a choice's neck is drawn bare — see `CutSpec.bare`: with no collar
+ * sewn on, and not worn inside an abaya or a jacket, whose shoulders were
+ * drafted against the cut a collar is sewn to — bare, its neck stood above
+ * them at each side.
+ */
+export const bareOf = (choice: GarmentChoice): boolean => !choice.opening && !choice.inside;
+
 export function drawnBodice(choice: GarmentChoice): Bodice {
   const id = cutOf(choice.neckline);
   const sleeve = choice.sleeve ?? DEFAULT_SLEEVE;
@@ -1396,7 +1404,7 @@ export function drawnBodice(choice: GarmentChoice): Bodice {
   const buttons = placketButtons(choice);
   const placket = bodiceFor(id, sleeve, waist, buttons).placket !== undefined;
   /* as drawn: with no collar sewn on, bare — see `CutSpec.bare` */
-  return bodiceFor(id, sleeve, waist, placket ? buttons : "none", Boolean(choice.opening), false, !choice.opening);
+  return bodiceFor(id, sleeve, waist, placket ? buttons : "none", Boolean(choice.opening), false, bareOf(choice));
 }
 
 /**
