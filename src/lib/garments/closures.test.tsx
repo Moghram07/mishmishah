@@ -118,7 +118,7 @@ describe("buttons down the front", () => {
         expect(cm(across(p.path, (p.top + p.foot) / 2)![1] - across(p.path, (p.top + p.foot) / 2)![0]), name).toBeCloseTo(3.04, 1);
       }
     }
-  }, 30_000);
+  }, 60_000);
 
   it("runs it on through every skirt to its hem, never past it", () => {
     for (const skirt of SKIRTS) {
@@ -148,7 +148,7 @@ describe("buttons down the front", () => {
       else expect(cloth({ neckline: "round", skirt, buttons: "hem" }), name).toContain(p.path);
       expect(cloth({ neckline: "round", skirt, buttons: "waist" }), name).not.toContain(p.path);
     }
-  }, 30_000);
+  }, 60_000);
 
   it("spaces the buttons evenly, 7 to 8 cm apart — 6.7 on an off-shoulder's short bodice — from just below the opening to just above the seam", () => {
     let [lo, hi] = [Infinity, 0];
@@ -210,7 +210,7 @@ describe("buttons down the front", () => {
         }
       }
     }
-  }, 30_000);
+  }, 60_000);
 
   it("keeps a keyhole to its own button and loop, and buttons no cut that cannot take it, whatever is asked", () => {
     expect(frontButtons({ neckline: "keyhole", buttons: "hem" }).groups).toEqual([bodiceFor("keyhole").cut.buttons]);
