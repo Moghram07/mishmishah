@@ -307,10 +307,6 @@
   "v": "7e39ad10",
   "drawn": "a6ef9178bf71"
  },
- "female/look-abaya": {
-  "v": "2f667600",
-  "drawn": "be4904abffe6"
- },
  "female/look-evening": {
   "v": "576632a4",
   "drawn": "4885af698f01"
@@ -552,115 +548,119 @@
   "drawn": "4ef03d86c7d0"
  },
  "female-dress/belt-black": {
-  "v": "ead3bc59",
-  "drawn": "46554d8f720e"
+  "v": "010fb097",
+  "drawn": "74db1d1ea6d9"
  },
  "female-dress/belt-brown": {
-  "v": "056c309c",
-  "drawn": "7b2c1ed5b009"
+  "v": "55f186bd",
+  "drawn": "b4d8757e4fdd"
  },
  "female-dress/belt-none": {
-  "v": "8727dc96",
-  "drawn": "626d96b58299"
+  "v": "d79d298a",
+  "drawn": "2eeef9d299ff"
  },
  "female-dress/belt-ribbon": {
-  "v": "31d0da8b",
-  "drawn": "7537c92d3ee4"
+  "v": "5badbbdb",
+  "drawn": "637e969c3018"
  },
  "female-dress/belt-sash": {
-  "v": "0c4803bf",
-  "drawn": "d4baa946310b"
+  "v": "d0ffa5d0",
+  "drawn": "5155ac38a119"
  },
  "female-dress/belt-self": {
-  "v": "c70786a7",
-  "drawn": "1c5b4d7e8e54"
+  "v": "41fe015f",
+  "drawn": "389a76e4e66e"
  },
  "female-dress/collar-none": {
-  "v": "d4dbc09b",
-  "drawn": "09c4cc035434"
+  "v": "e9551b6d",
+  "drawn": "d77f3261833a"
  },
  "female-dress/cuff-band": {
   "v": "35c1a733",
-  "drawn": "4cced8f4cf4e"
+  "drawn": "b86a9b734977"
  },
  "female-dress/cuff-formal": {
   "v": "afa34e36",
-  "drawn": "23c46874846d"
+  "drawn": "1fa07129b2f4"
  },
  "female-dress/cuff-french": {
   "v": "aaa13c95",
-  "drawn": "d1b66cf7fbca"
+  "drawn": "5c0e648b2ccc"
  },
  "female-dress/cuff-none": {
   "v": "18618828",
-  "drawn": "4c84546ff80c"
+  "drawn": "b30c809c4b88"
  },
  "female-dress/cuff-plain": {
   "v": "71df5e59",
-  "drawn": "1c8463cb2a49"
+  "drawn": "eac6499d224c"
  },
  "female-dress/garment": {
-  "v": "88c5b3ca",
-  "drawn": "ebfc5ff5814a"
+  "v": "cbfa2857",
+  "drawn": "aae1ab0bee0e"
  },
  "female-dress/neckline-female-round-neckline": {
-  "v": "fe170a13",
-  "drawn": "2452c78a4fb6"
+  "v": "22bb0113",
+  "drawn": "3d8eafd29199"
  },
  "female-dress/neckline-female-v-neckline": {
-  "v": "eff22ece",
-  "drawn": "6da05105cacc"
+  "v": "a6f1a6e5",
+  "drawn": "02473822e67e"
  },
  "female-dress/sleeve-bell": {
-  "v": "8b131c31",
-  "drawn": "b620581be571"
+  "v": "f568ca3f",
+  "drawn": "f822c8822a87"
  },
  "female-dress/sleeve-bishop": {
-  "v": "09810d38",
-  "drawn": "7d3abf117577"
+  "v": "b09c0c1c",
+  "drawn": "ffa34063c39f"
  },
  "female-dress/sleeve-cap": {
-  "v": "7c5a18ec",
-  "drawn": "cea643d17335"
+  "v": "c97297b9",
+  "drawn": "698c2f4f3c2d"
  },
  "female-dress/sleeve-dolman": {
-  "v": "b6dc0fc2",
-  "drawn": "e07ca6e3a375"
+  "v": "96f6a784",
+  "drawn": "22e641ceb233"
  },
  "female-dress/sleeve-drop": {
-  "v": "6a0288da",
-  "drawn": "d65fbb5e5bca"
+  "v": "74acacfe",
+  "drawn": "90da8046a26d"
  },
  "female-dress/sleeve-flutter": {
-  "v": "0479f3a6",
-  "drawn": "f44117d01b4f"
+  "v": "de18109b",
+  "drawn": "c1d0b9f2ef46"
  },
  "female-dress/sleeve-kimono": {
-  "v": "301a4b55",
-  "drawn": "c38a003d0535"
+  "v": "ffa07b33",
+  "drawn": "cdcf8cd94450"
  },
  "female-dress/sleeve-puff": {
-  "v": "ba19c7fe",
-  "drawn": "f35ef1040df5"
+  "v": "a787404b",
+  "drawn": "d8bc081df29f"
  },
  "female-dress/sleeve-raglan": {
-  "v": "a8d9f1d9",
-  "drawn": "3c3730ad8efa"
+  "v": "bc4fe3d3",
+  "drawn": "463bf3cb1dbe"
  },
  "female-dress/sleeve-set-in": {
-  "v": "085af247",
-  "drawn": "138340376a8b"
+  "v": "70a8c308",
+  "drawn": "3a3e9eef1562"
  },
  "female-dress/tie-knot": {
-  "v": "2a7eb85b",
-  "drawn": "4f30d47c4a5d"
+  "v": "893a7da8",
+  "drawn": "13d0feec2a3f"
  },
  "female-dress/tie-none": {
-  "v": "e8baa374",
-  "drawn": "07c1fcc4b255"
+  "v": "57a0bb08",
+  "drawn": "d4f8fd1735db"
  },
  "female-dress/tie-scarf": {
-  "v": "e62423e2",
-  "drawn": "e65c5e7e1c1c"
+  "v": "8f5e392d",
+  "drawn": "7bc121c2d0f9"
+ },
+ "female/look-abaya": {
+  "v": "d542e85b",
+  "drawn": "28a6b1095226"
  }
 }

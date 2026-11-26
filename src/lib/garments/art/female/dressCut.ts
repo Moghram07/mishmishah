@@ -59,6 +59,7 @@ import {
 import { NECK_BASE_SEAM, NECK_LEFT, NECK_RIGHT, SHOULDER_EASE, TIP_LEFT } from "./yoke.ts";
 import { bowAt, tieAt, type BowPieces, type FoldSpec } from "./ties.ts";
 import { bodies } from "../../../mannequin/bodies.ts";
+import { OUTLINE } from "../../../mannequin/outline.ts";
 
 /**
  * Where the bodice ends and the skirt is sewn on: **her** waist, as measured.
@@ -403,13 +404,15 @@ function raglanSleeves(raglan: OffShoulderBand["raglan"], sleeve: SleeveChoice, 
 function bodice(id: NecklineId, sleeve: SleeveChoice, waist: WaistId, bare = false): Bodice {
   const sleeves = NECKLINE_SLEEVES[id];
   const S = sleevesFor(waist);
-  const cut = necklineCut("female", id, {
+  const asCut = necklineCut("female", id, {
     shoulderTip: sleeves === "both" ? S.shoulderEnd(sleeve) : TIP,
     ease: EASE,
     seamY: NECK_BASE_SEAM,
     waistY: seamAt(waist),
     bare,
   });
+  /* a bare crew's or V's edge as drawn, without the point at each corner — see `trimmedEdge`; its parts as cut */
+  const cut = bare ? { ...asCut, edge: trimmedEdge(id, asCut) } : asCut;
 
   if (sleeves === "none" || sleeves === "band") {
     /* No sleeves: the bodice is the panel below whatever the cut left. */
@@ -594,6 +597,247 @@ export function bandArm(
     fitted: b.bandSleeves.fitted,
     ...(b.bandSleeves.cuffTop !== undefined ? { cuffTop: b.bandSleeves.cuffTop } : {}),
   };
+}
+
+/**
+ * The crew's and the V's top edge as drawn on a bare neck, without the point
+ * at each corner.
+ *
+ * Each corner of the bare cut sits on the neck's measured point, three or four
+ * units outside the drawn outline the photograph is clipped to: the shoulder
+ * line rose past the neck's edge to a small point beside it, and the opening
+ * turned back down to the skin from there. As drawn, each shoulder line
+ * instead rises straight into the neck and ends where the opening meets the
+ * neck's drawn edge, as the high neckline's and his t-shirt's do: a straight
+ * line from that point to where it touches the shoulder line, so it leaves the
+ * shoulder line without a bend and never levels off. The shoulder line lies
+ * above that line all the way to the corner, so cloth is only taken away. The
+ * cut itself — its corners, its shoulder lines, its opening — is as it was,
+ * and every other part of the edge is its own drawing, byte for byte.
+ */
+
+/** Her drawn outline, as points: each of its curves sampled. */
+let herOutline: Pt[] | undefined;
+function drawnOutline(): Pt[] {
+  if (herOutline) return herOutline;
+  const tok = OUTLINE.female.match(/[a-zA-Z]|-?\d*\.?\d+(?:e-?\d+)?/g) ?? [];
+  const pts: Pt[] = [];
+  let i = 0;
+  let cmd = "";
+  let x = 0;
+  let y = 0;
+  const num = () => Number(tok[i++]);
+  while (i < tok.length) {
+    if (/[a-zA-Z]/.test(tok[i])) cmd = tok[i++];
+    const rel = cmd === cmd.toLowerCase();
+    const ox = rel ? x : 0;
+    const oy = rel ? y : 0;
+    const c = cmd.toLowerCase();
+    if (c === "m" || c === "l") {
+      x = num() + ox;
+      y = num() + oy;
+      pts.push([x, y]);
+      if (c === "m") cmd = rel ? "l" : "L";
+    } else if (c === "c") {
+      const s: Seg = [[x, y], [num() + ox, num() + oy], [num() + ox, num() + oy], [num() + ox, num() + oy]];
+      for (let k = 1; k <= 12; k++) pts.push(bezierAt(s, k / 12));
+      [x, y] = s[3];
+    } else if (c !== "z") throw new Error(`her outline: no ${cmd}`);
+  }
+  herOutline = pts;
+  return pts;
+}
+
+/** Her drawn outline's sides, filed under every unit row each one spans: a point's row holds every side that can cross it. */
+let herRows: Map<number, [number, number, number, number][]> | undefined;
+function outlineRows(): Map<number, [number, number, number, number][]> {
+  if (herRows) return herRows;
+  const poly = drawnOutline();
+  const rows = new Map<number, [number, number, number, number][]>();
+  for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) {
+    const [xa, ya] = poly[a];
+    const [xb, yb] = poly[b];
+    for (let r = Math.floor(Math.min(ya, yb)); r <= Math.floor(Math.max(ya, yb)); r++) {
+      const row = rows.get(r);
+      if (row) row.push([xa, ya, xb, yb]);
+      else rows.set(r, [[xa, ya, xb, yb]]);
+    }
+  }
+  herRows = rows;
+  return rows;
+}
+
+/** Whether a point is inside her drawn outline: its row's sides crossed, counted. */
+function onBody(p: Pt): boolean {
+  let inside = false;
+  for (const [xa, ya, xb, yb] of outlineRows().get(Math.floor(p[1])) ?? []) {
+    if (ya > p[1] !== yb > p[1] && p[0] < ((xb - xa) * (p[1] - ya)) / (yb - ya) + xa) inside = !inside;
+  }
+  return inside;
+}
+
+type Seg = [Pt, Pt, Pt, Pt];
+const bezierAt = (s: Seg, t: number): Pt => {
+  const u = 1 - t;
+  return [
+    u * u * u * s[0][0] + 3 * u * u * t * s[1][0] + 3 * u * t * t * s[2][0] + t * t * t * s[3][0],
+    u * u * u * s[0][1] + 3 * u * u * t * s[1][1] + 3 * u * t * t * s[2][1] + t * t * t * s[3][1],
+  ];
+};
+/** A cubic split at `t`: the part before, and the part after. */
+function splitAt(s: Seg, t: number): [Seg, Seg] {
+  const mix = (a: Pt, b: Pt): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const ab = mix(s[0], s[1]);
+  const bc = mix(s[1], s[2]);
+  const cd = mix(s[2], s[3]);
+  const abc = mix(ab, bc);
+  const bcd = mix(bc, cd);
+  const m = mix(abc, bcd);
+  return [
+    [s[0], ab, abc, m],
+    [m, bcd, cd, s[3]],
+  ];
+}
+/** A run as `run` draws it, read back off its own path: one cubic per `C`, from its first point. */
+function cubicsOf(from: Pt, d: string): { text: string; seg: Seg }[] {
+  let at = from;
+  return d
+    .split("C")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const v = s.split(/\s+/).map(Number);
+      const seg: Seg = [at, [v[0], v[1]], [v[2], v[3]], [v[4], v[5]]];
+      at = seg[3];
+      return { text: `C${s}`, seg };
+    });
+}
+/* as `run` writes a number: to a tenth */
+const tenth = (v: number) => {
+  const r = Math.round(v * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+};
+const cubicText = (s: Seg) => `C${tenth(s[1][0])} ${tenth(s[1][1])} ${tenth(s[2][0])} ${tenth(s[2][1])} ${tenth(s[3][0])} ${tenth(s[3][1])}`;
+/** Where along a cubic it first comes onto her (from its start), or last leaves her (from its end). */
+function meetsBody(s: Seg, fromEnd: boolean): number | null {
+  const steps = 64;
+  for (let k = 1; k <= steps; k++) {
+    const t = fromEnd ? 1 - k / steps : k / steps;
+    if (!onBody(bezierAt(s, t))) continue;
+    let off = fromEnd ? t + 1 / steps : t - 1 / steps;
+    let on = t;
+    for (let j = 0; j < 24; j++) {
+      const mid = (off + on) / 2;
+      if (onBody(bezierAt(s, mid))) on = mid;
+      else off = mid;
+    }
+    return on;
+  }
+  return null;
+}
+/**
+ * Where a straight line from `n` touches a shoulder line, nearest the neck:
+ * walking out from the corner (`fromEnd`: the corner is the run's end), the
+ * point the line to which from `n` falls most steeply, before it falls less
+ * steeply again. `outward` is which way x runs away from the neck.
+ */
+function touches(n: Pt, cubics: { seg: Seg }[], outward: 1 | -1, fromEnd: boolean): { i: number; t: number } | null {
+  const fall = (p: Pt) => {
+    const across = (p[0] - n[0]) * outward;
+    return across > 0.5 ? (p[1] - n[1]) / across : -Infinity;
+  };
+  const steps = 64;
+  let best: { i: number; t: number; f: number } | null = null;
+  walk: for (let k = 0; k < cubics.length; k++) {
+    const i = fromEnd ? cubics.length - 1 - k : k;
+    for (let j = 0; j <= steps; j++) {
+      const t = fromEnd ? 1 - j / steps : j / steps;
+      const f = fall(bezierAt(cubics[i].seg, t));
+      if (!best || f > best.f) best = { i, t, f };
+      else if (f < best.f - 0.01) break walk;
+    }
+  }
+  if (!best || best.f === -Infinity) return null;
+  /* to a hair: the steepest fall near the sample */
+  let lo = Math.max(0, best.t - 1 / steps);
+  let hi = Math.min(1, best.t + 1 / steps);
+  const seg = cubics[best.i].seg;
+  for (let j = 0; j < 40; j++) {
+    const a = lo + (hi - lo) / 3;
+    const b = hi - (hi - lo) / 3;
+    if (fall(bezierAt(seg, a)) < fall(bezierAt(seg, b))) lo = a;
+    else hi = b;
+  }
+  return { i: best.i, t: (lo + hi) / 2 };
+}
+/** A straight run from one point to another, as a cubic. */
+const straight = (a: Pt, b: Pt): Seg => [a, [a[0] + (b[0] - a[0]) / 3, a[1] + (b[1] - a[1]) / 3], [a[0] + (2 * (b[0] - a[0])) / 3, a[1] + (2 * (b[1] - a[1])) / 3], b];
+
+/* each cut's edge trimmed once: every waist, closure and sleeve length that leaves the edge as it is shares it */
+const TRIMMED = new Map<string, string>();
+function trimmedEdge(id: NecklineId, cut: NecklineCut): string {
+  const p = cut.parts;
+  const opening = id === "v" ? (cut.vee ? [cut.vee.right, cut.vee.left] : null) : cut.neck ? [cut.neck.points] : null;
+  if ((id !== "round" && id !== "v") || !p || !opening) return cut.edge;
+  const key = JSON.stringify([id, cut.edge, p.strapRight[0], p.strapLeft[0], opening.map((o) => o[0])]);
+  const known = TRIMMED.get(key);
+  if (known !== undefined) return known;
+  const trimmed = trimEdge(cut, p, opening);
+  TRIMMED.set(key, trimmed);
+  return trimmed;
+}
+
+function trimEdge(cut: NecklineCut, p: NonNullable<NecklineCut["parts"]>, opening: Pt[][]): string {
+  const runs = [p.strapRight, ...opening, p.strapLeft];
+  /* the edge is these runs, each its own `run`: anything else, and it is drawn as cut */
+  if (runs.map((r) => run(r)).join(" ") !== cut.edge) return cut.edge;
+  const right = cubicsOf(p.strapRight[0], run(p.strapRight));
+  const left = cubicsOf(p.strapLeft[0], run(p.strapLeft));
+  const firstOpen = cubicsOf(opening[0][0], run(opening[0]));
+  const lastOpen = opening.length === 2 ? cubicsOf(opening[1][0], run(opening[1])) : firstOpen;
+
+  /* where the opening meets the neck's drawn edge: on her right from the corner in, on her left out to the corner */
+  const iR = firstOpen.findIndex(({ seg }) => meetsBody(seg, false) !== null);
+  let iL = -1;
+  for (let k = lastOpen.length - 1; k >= 0; k--) if (meetsBody(lastOpen[k].seg, true) !== null) {
+    iL = k;
+    break;
+  }
+  if (iR < 0 || iL < 0) return cut.edge;
+  const tR = meetsBody(firstOpen[iR].seg, false)!;
+  const tL = meetsBody(lastOpen[iL].seg, true)!;
+  const nRight = bezierAt(firstOpen[iR].seg, tR);
+  const nLeft = bezierAt(lastOpen[iL].seg, tL);
+
+  /* where a straight line from there touches each shoulder line: her right's runs out to the shoulder, her left's in from it */
+  const atR = touches(nRight, right, 1, true);
+  const atL = touches(nLeft, left, -1, false);
+  if (!atR || !atL) return cut.edge;
+  const headR = splitAt(right[atR.i].seg, atR.t)[0];
+  const tailL = splitAt(left[atL.i].seg, atL.t)[1];
+  const curveRight = straight(headR[3], nRight);
+  const curveLeft = straight(nLeft, tailL[0]);
+
+  const openText = (cubics: { text: string; seg: Seg }[], from: number, to: number, head?: Seg, tail?: Seg) =>
+    [...(head ? [cubicText(head)] : []), ...cubics.slice(from, to).map((c) => c.text), ...(tail ? [cubicText(tail)] : [])].join(" ");
+  const opened =
+    opening.length === 2
+      ? [
+          openText(firstOpen, iR + 1, firstOpen.length, splitAt(firstOpen[iR].seg, tR)[1]),
+          openText(lastOpen, 0, iL, undefined, splitAt(lastOpen[iL].seg, tL)[0]),
+        ].join(" ")
+      : openText(firstOpen, iR + 1, iL, splitAt(firstOpen[iR].seg, tR)[1], splitAt(firstOpen[iL].seg, tL)[0]);
+  /* where the line leaves the shoulder line at one of its own points, the split's other part has no length: none drawn */
+  const some = (s: Seg) => (Math.hypot(s[3][0] - s[0][0], s[3][1] - s[0][1]) > 0.05 ? [cubicText(s)] : []);
+  return [
+    ...right.slice(0, atR.i).map((c) => c.text),
+    ...some(headR),
+    cubicText(curveRight),
+    opened,
+    cubicText(curveLeft),
+    ...some(tailL),
+    ...left.slice(atL.i + 1).map((c) => c.text),
+  ].join(" ");
 }
 
 export function bodiceFor(

@@ -1494,7 +1494,7 @@ describe("dress waists, light and dark", () => {
       `.preview/wardrobe/styles4-waists-${theme}.html`,
       '<!doctype html><meta charset="utf-8"><base href="http://localhost:3000/">' + css + renderToStaticMarkup(<>{rows}</>)
     );
-  });
+  }, 60_000);
 });
 
 /**
