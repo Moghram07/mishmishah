@@ -499,13 +499,44 @@ function atNeck(a: Anatomy) {
     the outer, and the seam only ever goes outward from the neck.
   */
   let last = left[0];
+  /* the last row the neck's own edge holds the seam out from the body's */
+  let held = 0;
   const strapLeft = raw.map(([x, y], i) => {
     if (i === 0 || i === raw.length - 1) return [x, y] as Pt;
     const k = Math.min(1, Math.max(0, (y - left[1]) / NECK_EASE_RUN));
-    const body = Math.min(x + a.shoulderEase, a.d.neck(y).left);
+    const neck = a.d.neck(y).left;
+    if (neck < x + a.shoulderEase) held = i;
+    const body = Math.min(x + a.shoulderEase, neck);
     last = Math.min(last, body - a.shoulderEase * k);
     return [last, y] as Pt;
   });
+  /*
+    Out near the shoulder point the neck's edge lets go of the seam, and it
+    dropped back onto the body's own two units at once, straight down: a step
+    in the shoulder line just before the sleeve. From the last row the neck
+    holds it at, it runs on in a straight line — the shallowest that clears
+    the rest of it, so cloth is only added, under the step — to where it meets
+    the body's line again, and follows that to the shoulder point. The corner
+    at the neck, the shoulder point and the seam over a drop shoulder's arm
+    are where they were.
+  */
+  if (held > 0 && held < strapLeft.length - 2) {
+    const [hx, hy] = strapLeft[held];
+    let to = -1;
+    let fall = Infinity;
+    for (let j = held + 1; j < strapLeft.length; j++) {
+      const out = hx - strapLeft[j][0];
+      const f = out > 0 ? (strapLeft[j][1] - hy) / out : Infinity;
+      if (f < fall) {
+        fall = f;
+        to = j;
+      }
+    }
+    for (let j = held + 1; j < to; j++) {
+      const [x, y] = strapLeft[j];
+      strapLeft[j] = [Math.min(x, hx - (y - hy) / fall), y];
+    }
+  }
   const n = strapLeft.length;
   const strapRight = reverse(
     strapLeft.map(([x, y], i) => {

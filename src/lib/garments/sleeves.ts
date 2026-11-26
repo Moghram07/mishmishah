@@ -1772,8 +1772,15 @@ export function top(body: BodyType, spec: TopDraftSpec): TopDraft {
     walked.out[0] = start;
 
     const capTop: Pt = [start[0], start[1] - (p.rise ?? SLEEVE_CAP_RISE)];
-    /* The seam the sleeve is set along: the armhole. */
-    const seamLine = seamCurve(capTop, under3, p.capBow ?? SLEEVE_SCYE_BOW, 9);
+    /*
+      The seam the sleeve is set along: the armhole, from the shoulder point,
+      where the shoulder line ends and the sleeve's outer edge begins. Run up
+      to a crown two units above it, the head stood past the shoulder line's
+      end and the outline stepped straight down onto the sleeve there. A
+      puff's crown does rise, as its own dome — see `balloon` — and a sleeve
+      hung from a band starts on the band.
+    */
+    const seamLine = seamCurve(c.type === "puff" || f.hang !== undefined ? capTop : start, under3, p.capBow ?? SLEEVE_SCYE_BOW, 9);
     const head = reverse(seamLine); // underarm → top
     /* a puff is a balloon, drafted round — see `balloon` */
     const puff = c.type === "puff" ? balloon(f, start, capTop, under3, seamLine, cuff, side) : null;
