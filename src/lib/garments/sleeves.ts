@@ -28,7 +28,7 @@ import {
   type TopSpec,
   type Tuck,
 } from "./fit.ts";
-import { cubicText, cubicsOf, neckCorners, pointText, straight, trimCorner, trimEdge, upTheNeck } from "./neckPoint.ts";
+import { cubicText, cubicsOf, evenAbout, neckCorners, pointText, straight, throatOf, trimCorner, trimEdge, upTheNeck } from "./neckPoint.ts";
 import type {
   BodyType,
   BodyZone,
@@ -1958,6 +1958,14 @@ export interface Encloses {
   envelope: string[];
   /** Just below each sleeve's cuff, as wide as it: where an inner sleeve's end shows. */
   windows: string[];
+  /**
+   * Where its corners at the neck are trimmed, across: from where the left
+   * one's straight line leaves its shoulder line to where the right one's
+   * does. Beside the neck there, what is worn under it stands above its
+   * shoulder line and is hidden — cut away by its envelope, as a puffed
+   * crown is under its own. Absent on a garment whose corners are as cut.
+   */
+  neck?: readonly [left: number, right: number];
 }
 
 export interface TailoredSpec extends TopSpec {
@@ -2277,6 +2285,22 @@ export interface ClosedFront {
  *   down its edge. Closed, they meet down the centre line under a seam, from
  *   the neckline to the hem.
  */
+/**
+ * A robe's opening up her neck, above its corners, where what it holds is cut
+ * to her neck's drawn edge — which stands up to three units further from her
+ * throat on the right as seen than on the left, so the opening, cut to it,
+ * was as lopsided; `check:garments` holds it within two and a half.
+ *
+ * There the nearer side reaches out over the page toward even: to within
+ * `within` of the further side, by at most `reach` — a third of a unit, under
+ * a pixel close up — and only across the rows where nothing worn under it
+ * comes out beside her neck: from a unit and a half below its neck points,
+ * where a halter's band does, to a unit above its higher corner, below which
+ * every neckline's own corners do. Nothing is pulled in off her neck, so
+ * nothing worn on it is cut; nothing worn beside it is shown.
+ */
+const OPENING_EVEN = { within: 1.5, reach: 0.3, below: 1.5, above: 1 };
+
 export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { type: "set-in", length: "long" }): Robe {
   const { neck, neckRight, hemY, neckDip } = spec;
   const [gapNeck, gapHem] = spec.gap;
@@ -2393,16 +2417,34 @@ export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { ty
     neck's edge to the row it closes across at. Held inside its old corners,
     a dress showed above its shoulder line beside the neck, where its point
     used to lie over it; on her neck it shows as before.
+
+    Up her neck the opening is brought nearer even about her throat, as its
+    neckline is cut, over the bare page beside it — see `OPENING_EVEN`.
   */
   const corners = neckCorners(asCut.parts!.strapRight, [arc], asCut.parts!.strapLeft, body);
+  const [leftUp, rightUp] = corners
+    ? evenAbout(
+        [corners.nLeft, ...upTheNeck(corners.nLeft, neck[1], body)],
+        [corners.nRight, ...upTheNeck(corners.nRight, neckRight[1], body)],
+        throatOf(body),
+        {
+          within: OPENING_EVEN.within,
+          reach: OPENING_EVEN.reach,
+          rows: [
+            Math.min(neck[1], neckRight[1]) + OPENING_EVEN.below,
+            Math.min(corners.nLeft[1], corners.nRight[1]) - OPENING_EVEN.above,
+          ],
+        }
+      )
+    : [[], []];
   const holdFrame: Frame = corners
     ? {
         ...frame,
         edge: [
           ...corners.rightTo,
           cubicText(straight(corners.headR[3], corners.nRight)),
-          ...upTheNeck(corners.nRight, neckRight[1], body).map((p) => `L${pointText(p)}`),
-          ...reverse(upTheNeck(corners.nLeft, neck[1], body)).map((p) => `L${pointText(p)}`),
+          ...rightUp.slice(1).map((p) => `L${pointText(p)}`),
+          ...reverse(leftUp.slice(1)).map((p) => `L${pointText(p)}`),
           `L${pointText(corners.nLeft)}`,
           cubicText(straight(corners.nLeft, corners.tailL[0])),
           ...corners.leftFrom,
@@ -2468,6 +2510,7 @@ export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { ty
       cuff: cuffRow,
       hem: { y: hemY, x: hemLeft[0] },
       envelope: [panelOf(holdFrame, kHold), ...sleeves],
+      ...(corners ? { neck: [corners.tailL[0][0], corners.headR[3][0]] as const } : {}),
       windows: [cuffWindow(cuffs[0], cuffRow), cuffWindow(cuffs[1], cuffRow)],
     },
   };

@@ -3,6 +3,8 @@
   preview-garments.mjs` imports the necklines the app draws. See `dressCut.ts`.
 */
 import { OUTLINE } from "../mannequin/outline.ts";
+import { BODY_CANVAS } from "../mannequin/bodies.ts";
+import { edgeAt, profileFor } from "../mannequin/profile.ts";
 import { run, type Pt } from "./fit.ts";
 import type { BodyType } from "@/types";
 
@@ -312,4 +314,81 @@ export function trimCorner(
     n,
     t: tail[0],
   };
+}
+
+/**
+ * The middle of a body's neck where it is narrowest: its throat, the line a
+ * neckline is cut about. Measured as `check:garments` measures it.
+ */
+export function throatOf(body: BodyType): number {
+  const p = profileFor(body);
+  let best: [number, number] | null = null;
+  for (let y = 0; y < BODY_CANVAS.height; y++) {
+    const l = edgeAt(p.neckLeft, y);
+    const r = edgeAt(p.neckRight, y);
+    if (l === null || r === null) continue;
+    if (!best || r - l < best[1] - best[0]) best = [l, r];
+  }
+  return best ? (best[0] + best[1]) / 2 : BODY_CANVAS.width / 2;
+}
+
+/** A run's x at a row, read between its points: none outside the rows it spans. */
+function xOn(run: Pt[], y: number): number | null {
+  for (let i = 1; i < run.length; i++) {
+    const [x0, y0] = run[i - 1];
+    const [x1, y1] = run[i];
+    if ((y - y0) * (y - y1) > 0) continue;
+    return y0 === y1 ? x0 : x0 + ((x1 - x0) * (y - y0)) / (y1 - y0);
+  }
+  return null;
+}
+
+/** A run with a point added on each half row across `rows`, and on both its ends, so a change across them follows them. */
+function onRows(run: Pt[], [from, to]: readonly [number, number]): Pt[] {
+  const marks: number[] = [];
+  for (let y = from; y < to; y += 0.5) marks.push(y);
+  marks.push(to);
+  const out: Pt[] = [run[0]];
+  for (let i = 1; i < run.length; i++) {
+    const [x0, y0] = run[i - 1];
+    const [x1, y1] = run[i];
+    /* the run climbs: rows passed between these two points, in the order it meets them */
+    const passed = marks.filter((m) => (m - y0) * (m - y1) < 0).sort((a, b) => (y1 < y0 ? b - a : a - b));
+    for (const m of passed) out.push([x0 + ((x1 - x0) * (m - y0)) / (y1 - y0), m]);
+    out.push(run[i]);
+  }
+  return out;
+}
+
+/**
+ * Two runs up either side of the neck, brought nearer even about the throat:
+ * on each row across `rows` that both reach, where one side stands further
+ * from the throat than the other by more than `within`, the nearer side
+ * reaches out toward it — over the page beside the neck — by at most `reach`.
+ * Neither side ever comes in, so nothing held before is let go; each run's
+ * first point, on the cloth, stays where it is.
+ */
+export function evenAbout(
+  left: Pt[],
+  right: Pt[],
+  throat: number,
+  { within, reach, rows }: { within: number; reach: number; rows: readonly [number, number] }
+): [Pt[], Pt[]] {
+  const [from, to] = rows;
+  if (!(to > from)) return [left, right];
+  const L0 = onRows(left, rows);
+  const R0 = onRows(right, rows);
+  const L = L0.map(([x, y], i) => {
+    const r = i === 0 || y < from || y > to ? null : xOn(right, y);
+    const short = r === null ? 0 : r - throat - (throat - x) - within;
+    return (short > 0 ? [x - Math.min(reach, short), y] : [x, y]) as Pt;
+  });
+  const R = R0.map(([x, y], i) => {
+    const l = i === 0 || y < from || y > to ? null : xOn(left, y);
+    const short = l === null ? 0 : throat - l - (x - throat) - within;
+    return (short > 0 ? [x + Math.min(reach, short), y] : [x, y]) as Pt;
+  });
+  /* a side that does not move keeps its own points: the ones added along it would only be rounded off it */
+  const moved = (a: Pt[], b: Pt[]) => a.some((p, i) => p[0] !== b[i][0]);
+  return [moved(L, L0) ? L : left, moved(R, R0) ? R : right];
 }

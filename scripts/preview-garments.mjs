@@ -4554,6 +4554,16 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
       .join(" · ");
     const { enc, cloth: outerCloth, inside, windows, top, bottom, inOpening, fringe } = jacket;
     const shoulderTo = top + 40;
+    /*
+      Beside the neck, where an outer garment's corners are trimmed — see
+      `Encloses.neck` — from the band's top down to the foot of the neck: what
+      stands above its shoulder line there and is cut away by its envelope is
+      hidden, as a puffed crown is under its own; anywhere else it is a
+      shoulder the outer garment does not sit outside of.
+    */
+    const neckFoot = neckColumn(profile).foot;
+    const hiddenByNeck = (x, y, i) =>
+      enc.neck !== undefined && y <= neckFoot && x >= enc.neck[0] && x <= enc.neck[1] && !solid(inside[i]) && !solid(windows[i]);
 
     /* beside the neck, where what is worn under it shows: as far on one side as on the other, from the throat */
     const neck = besideNeck(jacket, profile);
@@ -4632,6 +4642,8 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
       let stepAt = "";
       /* a loose sleeve's crown is its own business: it rises past the shoulder on purpose */
       let looseShoulder = 0;
+      /* and so is what an outer garment's trimmed corners leave above them beside the neck, hidden by its envelope */
+      let neckShoulder = 0;
       let holes = 0;
       let worst = "";
       const reveals = [];
@@ -4655,6 +4667,7 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
         const visible = new Float32Array(W * H);
         let l = 0;
         let s = 0;
+        let sNeck = 0;
         for (let y = 0; y < H; y++) {
           for (let x = 0; x < W; x++) {
             const i = y * W + x;
@@ -4663,8 +4676,11 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
             if (!drawnHere && !draftedHere) continue;
             const banded = y >= top && y < bottom;
             const past = banded && !solid(outerCloth[i]) && !inOpening(x, y);
-            /* before the mask: a shoulder the jacket does not sit outside of */
-            if (past && y < shoulderTo && draftedHere) s++;
+            /* before the mask: a shoulder the jacket does not sit outside of — but beside the neck under trimmed corners, hidden */
+            if (past && y < shoulderTo && draftedHere) {
+              if (hiddenByNeck(x, y, i)) sNeck++;
+              else s++;
+            }
             if (!drawnHere) continue;
             const shown = !banded || solid(inside[i]) || solid(windows[i]);
             if (shown) visible[i] = 1;
@@ -4732,6 +4748,7 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
         leak = Math.max(leak, l);
         if (loose) looseShoulder = Math.max(looseShoulder, s);
         else shoulder = Math.max(shoulder, s);
+        neckShoulder = Math.max(neckShoulder, sNeck);
         holes = Math.max(holes, h);
       }
       const reveal = reveals.length ? [Math.min(...reveals), Math.max(...reveals)] : null;
@@ -4744,7 +4761,8 @@ function checkLayering(bodyKey, body, cover, wardrobe) {
       console.log(
         `${bad ? "HOLE" : "ok  "} ${bodyKey.padEnd(6)} ${`${name} over ${inner.id}`.padEnd(38)} ` +
           `${String(variants.length).padStart(2)} cuts and sleeves: ${leak} px outside, ` +
-          `${shoulder} px past its shoulder${looseShoulder ? ` (a puffed crown ${looseShoulder} px, hidden)` : ""}, ${holes} px uncovered, ` +
+          `${shoulder} px past its shoulder${looseShoulder ? ` (a puffed crown ${looseShoulder} px, hidden)` : ""}` +
+          `${neckShoulder ? ` (beside the neck ${neckShoulder} px, hidden)` : ""}, ${holes} px uncovered, ` +
           `a ${step} px step at its hem${step > HEM_STEP ? ` (${stepAt})` : ""}` +
           (reveal ? `, a long sleeve shows ${cm(reveal[0])}–${cm(reveal[1])} cm below the cuff` : "") +
           (looseReveals.length ? ` (a loose one ${cm(Math.max(...looseReveals))} at most)` : "") +
