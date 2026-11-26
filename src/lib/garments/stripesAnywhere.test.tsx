@@ -225,3 +225,90 @@ describe("rows along edges that meet", () => {
     expect(Math.min(...pts.map(near))).toBeGreaterThan(0.5);
   });
 });
+
+/**
+ * A row's outline, its side nearer the edge out and its far side back, never
+ * folds over itself into a loop turned against it: filled, such a loop paints
+ * a dark triangle past the row. The round's and the V's rows had one at her
+ * right shoulder's end, up to fifteen square units, where the shoulder line
+ * stepped down just before the sleeve. What loops are left, at a boat's or a
+ * wrap's drop shoulder and a sweetheart's third row, are a fifth of a square
+ * unit at most: under a pixel even close up.
+ */
+const LOOP = 0.5;
+const loopArea = (pts: Pt[]) => pts.reduce((s, q, i) => s + q[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * q[1], 0) / 2;
+/** The loops in a closed ring turned against it, larger than `LOOP`: where its sides cross, and the area each closes. */
+function loopsAgainst(ring: Pt[]): string[] {
+  const n = ring.length;
+  const whole = Math.sign(loopArea(ring));
+  const box = ring.map((a, i) => {
+    const b = ring[(i + 1) % n];
+    return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
+  });
+  /* each side filed under the four-unit squares it reaches: only sides sharing one can cross */
+  const cells = new Map<string, number[]>();
+  box.forEach(([x0, y0, x1, y1], i) => {
+    for (let cx = Math.floor(x0 / 4); cx <= Math.floor(x1 / 4); cx++)
+      for (let cy = Math.floor(y0 / 4); cy <= Math.floor(y1 / 4); cy++) {
+        const key = `${cx},${cy}`;
+        const cell = cells.get(key);
+        if (cell) cell.push(i);
+        else cells.set(key, [i]);
+      }
+  });
+  const pairs = new Set<number>();
+  for (const cell of cells.values())
+    for (let p = 0; p < cell.length; p++)
+      for (let q = p + 1; q < cell.length; q++) pairs.add(Math.min(cell[p], cell[q]) * n + Math.max(cell[p], cell[q]));
+  const out: string[] = [];
+  for (const pair of pairs) {
+      const i = Math.floor(pair / n);
+      const j = pair % n;
+      if (j < i + 2 || (i === 0 && j === n - 1) || box[i][2] < box[j][0] || box[j][2] < box[i][0] || box[i][3] < box[j][1] || box[j][3] < box[i][1]) continue;
+      const [a, b, c, d] = [ring[i], ring[(i + 1) % n], ring[j], ring[(j + 1) % n]];
+      const r = [b[0] - a[0], b[1] - a[1]];
+      const s = [d[0] - c[0], d[1] - c[1]];
+      const den = r[0] * s[1] - r[1] * s[0];
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den;
+      const u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+      if (t <= 1e-9 || t >= 1 - 1e-9 || u <= 1e-9 || u >= 1 - 1e-9) continue;
+      const x: Pt = [a[0] + t * r[0], a[1] + t * r[1]];
+      const inner = [x, ...ring.slice(i + 1, j + 1)];
+      const outer = [x, ...ring.slice(j + 1), ...ring.slice(0, i + 1)];
+      const area = loopArea(inner.length <= outer.length ? inner : outer);
+      if (Math.sign(area) === -whole && Math.abs(area) > LOOP) out.push(`${Math.abs(area).toFixed(2)} at ${x[0].toFixed(1)},${x[1].toFixed(1)}`);
+    }
+  return out;
+}
+
+describe("rows end cleanly", () => {
+  it("on every edge they can run along, every cut, sleeve, collar and count: no row folds back into a loop", () => {
+    const linen = fabricById("fb-apricot-linen")!;
+    const one = (worn: WornGarment[]) => worn.find((w) => w.garmentId === dress.id)!;
+    const found: string[] = [];
+    let rows = 0;
+    for (const n of necklinesForGarment(dress)) {
+      let worn = setNeckline(wear([], cutFrom(dress, linen.id)), dress.id, n.id);
+      const types = sleeveTypesFor(dress, necklineOf(one(worn)));
+      for (const type of types.length ? types : (["set-in"] as const)) {
+        for (const length of types.length ? sleeveLengthsFor(type, necklineOf(one(worn)), dress) : (["short"] as const)) {
+          if (types.length) worn = setSleeve(worn, dress.id, { type, length });
+          for (const collar of [undefined, ...collarsFitting(dress, one(worn)).map((c) => c.id)]) {
+            for (const count of ["one", "two", "three"] as const) {
+              const w = one(setStripeEdges(setStripes(setCollar(worn, dress.id, collar), dress.id, count, "fb-navy"), dress.id, ["collar", "neckline", "sleeves", "hem", "belt"]));
+              for (const e of dressEdges(choiceOf(w)))
+                for (const r of stripeSides(e, STRIPES[count])) {
+                  rows++;
+                  for (const loop of loopsAgainst([...r.near, ...[...r.far].reverse()]))
+                    found.push(`${n.cut}, ${type} ${length}, ${collar ?? "no collar"}, ${count}: ${e.kind} row ${r.stripe + 1}, ${loop}`);
+                }
+            }
+          }
+        }
+      }
+    }
+    expect(rows).toBeGreaterThan(10000);
+    expect([...new Set(found)]).toEqual([]);
+  }, 240_000);
+});
