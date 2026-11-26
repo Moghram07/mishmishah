@@ -6,6 +6,9 @@ import { effectiveCoverage, frontOf, setFront, sleeveOf } from "./outfit";
 import { CLOSED_STITCH, ROBE, cloth, enclosesFor, robeFor } from "./art/female/abayaCut";
 import { draft } from "./fit";
 import { ROBE_TYPES } from "./sleeves";
+import { insideRings, ringsOf } from "./stripes";
+import { OUTER_NECK_LEFT, OUTER_NECK_RIGHT } from "./art/female/yoke";
+import type { Pt } from "./fit";
 import type { WornGarment } from "@/types";
 
 const worn = (garmentId: string, extra: Partial<WornGarment> = {}): WornGarment => ({
@@ -130,5 +133,30 @@ describe("her abaya, open and closed", () => {
     expect(seam[seam.length - 1][1]).toBeGreaterThan(906);
     expect(CLOSED_STITCH.every(([x]) => x === 295)).toBe(true);
     expect(CLOSED_STITCH[CLOSED_STITCH.length - 1][1]).toBeLessThan(seam[seam.length - 1][1] - 10);
+  });
+});
+
+describe("her abaya at the neck", () => {
+  /*
+    Each neck point it was cut from stood beside her neck, outside its drawn
+    edge, and the cloth came to a point there; the dress under it showed past
+    the point's flank. Trimmed as the dress's crew is, the shoulder line runs
+    straight into her neck: just inside where each corner was is no longer
+    its cloth, open or closed, nor where it holds the clothes under it.
+  */
+  it("meets her neck with no point, open and closed, with every sleeve: nor does it hold anything there", () => {
+    for (const type of ROBE_TYPES) {
+      const robe = robeFor({ sleeve: { type, length: "long" } });
+      for (const [x, y] of [OUTER_NECK_LEFT, OUTER_NECK_RIGHT]) {
+        const below: Pt = [x, y + 1.5];
+        for (const [name, d] of [
+          ["open, left", robe.open.left],
+          ["open, right", robe.open.right],
+          ["closed", robe.closed.body],
+          ["holding", robe.encloses.envelope[0]],
+        ] as const)
+          expect(insideRings(ringsOf(d), below), `${type}, ${name}, at ${x.toFixed(0)},${y.toFixed(0)}`).toBe(false);
+      }
+    }
   });
 });

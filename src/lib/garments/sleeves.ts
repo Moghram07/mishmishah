@@ -28,6 +28,7 @@ import {
   type TopSpec,
   type Tuck,
 } from "./fit.ts";
+import { cubicText, cubicsOf, neckCorners, pointText, straight, trimCorner, trimEdge, upTheNeck } from "./neckPoint.ts";
 import type {
   BodyType,
   BodyZone,
@@ -2341,19 +2342,38 @@ export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { ty
   const downLeft = [...hemRun, foot, ...reverse(frontEdge), ...neckRun.slice(1)];
   const downRight = [...mirror(hemRun), ...mirror([foot]), ...reverse(frontEdgeRight), ...neckRunRight.slice(1)];
 
-  const left =
-    `M${neck[0]} ${neck[1]} ${run(strapLeft.slice(1), armhole.slice(1))} ` +
-    `${run(side)} ${run(downLeft)} Z`;
-  const right =
-    `M${neckRight[0]} ${neckRight[1]} ${run(reverse(strapRight).slice(1), mirror(armhole).slice(1))} ` +
-    `${run(mirror(side))} ${run(downRight)} Z`;
+  /*
+    Each front's corner at the neck point stood beside her neck, a point of
+    cloth past its edge. Trimmed as the dress's crew is — see `trimCorner`:
+    the neckline up to where it meets her neck's drawn edge, a straight line
+    from there to where it touches the shoulder line, and the shoulder line on
+    from there. Everything else is drawn as before.
+  */
+  const shoulderLeft = run(strapLeft.slice(1), armhole.slice(1));
+  const shoulderRight = run(reverse(strapRight).slice(1), mirror(armhole).slice(1));
+  const neckLeftRun = run(downLeft);
+  const neckRightRun = run(downRight);
+  const cornerLeft = trimCorner(cubicsOf(downLeft[0], neckLeftRun), cubicsOf(neck, shoulderLeft), -1, body);
+  const cornerRight = trimCorner(cubicsOf(downRight[0], neckRightRun), cubicsOf(neckRight, shoulderRight), 1, body);
+  const left = cornerLeft
+    ? `M${pointText(cornerLeft.t)} ${cornerLeft.from} ${run(side)} ${cornerLeft.into} Z`
+    : `M${neck[0]} ${neck[1]} ${shoulderLeft} ${run(side)} ${neckLeftRun} Z`;
+  const right = cornerRight
+    ? `M${pointText(cornerRight.t)} ${cornerRight.from} ${run(mirror(side))} ${cornerRight.into} Z`
+    : `M${neckRight[0]} ${neckRight[1]} ${shoulderRight} ${run(mirror(side))} ${neckRightRun} Z`;
 
-  /* the free edges: the shoulder, and from the underarm round the side, hem, front edge and neckline */
+  /* the free edges: the shoulder, and from the underarm round the side, hem, front edge and neckline — its corner trimmed the same way */
   const under = side[0];
-  const edgeLeft = `M${neck[0]} ${neck[1]} ${run(strapLeft)} M${under[0]} ${under[1]} ${run(side)} ${run(downLeft)}`;
-  const edgeRight =
-    `M${neckRight[0]} ${neckRight[1]} ${run(reverse(strapRight))} ` +
-    `M${600 - under[0]} ${under[1]} ${run(mirror(side))} ${run(downRight)}`;
+  const strapLeftRun = run(strapLeft);
+  const strapRightRun = run(reverse(strapRight));
+  const rimLeft = trimCorner(cubicsOf(downLeft[0], neckLeftRun), cubicsOf(neck, strapLeftRun), -1, body);
+  const rimRight = trimCorner(cubicsOf(downRight[0], neckRightRun), cubicsOf(neckRight, strapRightRun), 1, body);
+  const edgeLeft = rimLeft
+    ? `M${pointText(rimLeft.t)} ${rimLeft.from} M${under[0]} ${under[1]} ${run(side)} ${rimLeft.into} ${cubicText(straight(rimLeft.n, rimLeft.t))}`
+    : `M${neck[0]} ${neck[1]} ${strapLeftRun} M${under[0]} ${under[1]} ${run(side)} ${neckLeftRun}`;
+  const edgeRight = rimRight
+    ? `M${pointText(rimRight.t)} ${rimRight.from} M${600 - under[0]} ${under[1]} ${run(mirror(side))} ${rimRight.into} ${cubicText(straight(rimRight.n, rimRight.t))}`
+    : `M${neckRight[0]} ${neckRight[1]} ${strapRightRun} M${600 - under[0]} ${under[1]} ${run(mirror(side))} ${neckRightRun}`;
 
   /*
     Closed: the two fronts met, one panel — the top's own, cut to the robe's
@@ -2362,8 +2382,34 @@ export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { ty
     are fastened under, straight down the centre line from the neckline to
     the hem.
   */
-  const arcFrame = T.frame(run(arc), sleeve);
+  const asCut = T.frame(run(arc), sleeve);
+  /* its neckline's two corners trimmed as the dress's crew's are — see `trimEdge` */
+  const arcFrame: Frame = { ...asCut, edge: trimEdge(asCut.edge, asCut.parts!.strapRight, [arc], asCut.parts!.strapLeft, body) };
   const kc = T.cut(sleeve, arcFrame);
+  /*
+    What it holds the clothes under it inside — see `Encloses.envelope` — is
+    its outline closed across the neck, its corners trimmed as its own are:
+    from each shoulder line straight to where it meets her neck, and up her
+    neck's edge to the row it closes across at. Held inside its old corners,
+    a dress showed above its shoulder line beside the neck, where its point
+    used to lie over it; on her neck it shows as before.
+  */
+  const corners = neckCorners(asCut.parts!.strapRight, [arc], asCut.parts!.strapLeft, body);
+  const holdFrame: Frame = corners
+    ? {
+        ...frame,
+        edge: [
+          ...corners.rightTo,
+          cubicText(straight(corners.headR[3], corners.nRight)),
+          ...upTheNeck(corners.nRight, neckRight[1], body).map((p) => `L${pointText(p)}`),
+          ...reverse(upTheNeck(corners.nLeft, neck[1], body)).map((p) => `L${pointText(p)}`),
+          `L${pointText(corners.nLeft)}`,
+          cubicText(straight(corners.nLeft, corners.tailL[0])),
+          ...corners.leftFrom,
+        ].join(" "),
+      }
+    : frame;
+  const kHold = corners ? T.cut(sleeve, holdFrame) : k;
   const seam = span([CENTER_X, arcAt(arc, CENTER_X)], [CENTER_X, hemAt(kc.left.hem, CENTER_X)], 24);
   /*
     Its free edges: a sewn sleeve's body leaves its armholes out, as the top's
@@ -2421,7 +2467,7 @@ export function robe(body: BodyType, spec: RobeSpec, sleeve: SleeveChoice = { ty
       band: [Math.min(neck[1], neckRight[1]), hemY - 1.5],
       cuff: cuffRow,
       hem: { y: hemY, x: hemLeft[0] },
-      envelope: [panelOf(frame, k), ...sleeves],
+      envelope: [panelOf(holdFrame, kHold), ...sleeves],
       windows: [cuffWindow(cuffs[0], cuffRow), cuffWindow(cuffs[1], cuffRow)],
     },
   };
