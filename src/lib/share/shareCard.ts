@@ -32,6 +32,8 @@ export interface ShareCardOptions {
    */
   viewBox?: string;
   brand: string;
+  /** The site, written out at the top: where the picture came from. */
+  site?: string;
   productName: string;
   tagline: string;
   entries: ShareEntry[];
@@ -231,6 +233,17 @@ export async function renderShareCard(
   ctx.textBaseline = "middle";
   ctx.fillText(brand, brandX, M + logoSize / 2);
 
+  // the site, at the other end of the masthead: Latin letters, read left to right in Arabic too
+  if (opts.site) {
+    ctx.save();
+    ctx.direction = "ltr";
+    ctx.textAlign = rtl ? "left" : "right";
+    ctx.fillStyle = c.muted;
+    ctx.font = `600 28px ${cssFont("--font-sans", "system-ui, sans-serif")}`;
+    ctx.fillText(opts.site, rtl ? M : W - M, M + logoSize / 2);
+    ctx.restore();
+  }
+
   // — the piece —
   // A dressed mannequin is twice as tall as it is wide and a pillow is square,
   // so the stage is fitted rather than assumed.
@@ -310,20 +323,29 @@ export async function renderShareCard(
   return canvas;
 }
 
-/** Render the design to a PNG and hand it to the browser as a download. */
-export async function exportShareCard(opts: ShareCardOptions): Promise<void> {
+/** The share card as a PNG. */
+export async function shareCardBlob(opts: ShareCardOptions): Promise<Blob> {
   const canvas = await renderShareCard(opts);
   const blob = await new Promise<Blob | null>((res) =>
     canvas.toBlob(res, "image/png")
   );
   if (!blob) throw new Error("Could not encode the image");
+  return blob;
+}
 
+/** Hand a picture to the browser as a download. */
+export function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = opts.fileName;
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Render the design to a PNG and hand it to the browser as a download. */
+export async function exportShareCard(opts: ShareCardOptions): Promise<void> {
+  downloadBlob(await shareCardBlob(opts), opts.fileName);
 }

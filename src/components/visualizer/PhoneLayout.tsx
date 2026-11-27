@@ -5,7 +5,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Download,
   Expand,
   Loader2,
   Maximize2,
@@ -16,6 +15,7 @@ import {
   RotateCcw,
   Ruler,
   Scissors,
+  Share,
   Sparkles,
   Undo2,
   X,
@@ -106,9 +106,14 @@ interface Props {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  /** Saves a picture of the design: the figure, and each part's fabric. */
+  /**
+   * Shares a picture of the design — the figure, and each part's fabric —
+   * with a line and the link to the design, through the phone's share sheet.
+   */
   share: () => void;
   exporting: boolean;
+  /** A note on the stage — a sent design opened, a picture ready to share — and the way to put it away. */
+  notice: { text: string; onClose: () => void } | null;
   close: () => void;
   /**
    * The figure on the whole screen: the panel and every control but the
@@ -177,9 +182,13 @@ export function PhoneLayout(p: Props) {
         </div>
 
         <div className="pointer-events-none absolute inset-0 z-20">
-          {/* on the whole screen, top, at the start: the way back, said in words */}
+          {/*
+            On the whole screen, top, at the start: the way back, said in
+            words, and sharing beside it — the design seen big is the moment
+            to send it.
+          */}
           {p.full && (
-            <div className="absolute start-3 top-3">
+            <div className="absolute start-3 top-3 flex gap-2">
               <button
                 onClick={p.onBack}
                 className="btn-focus pointer-events-auto inline-flex h-11 shrink-0 items-center gap-1 rounded-full border border-border/60 bg-card/90 pe-4 ps-2.5 text-sm font-semibold text-foreground shadow-soft hover:bg-card"
@@ -187,6 +196,7 @@ export function PhoneLayout(p: Props) {
                 <Back className="h-5 w-5" />
                 {t("viz.back")}
               </button>
+              <ShareButton onClick={p.share} busy={p.exporting} />
             </div>
           )}
 
@@ -214,15 +224,7 @@ export function PhoneLayout(p: Props) {
           {/* top, at the end: share and close, the whole screen under them, and the beta and its feedback */}
           <div className={cn("absolute end-3 top-3 flex flex-col items-end gap-2", p.full && "hidden")}>
             <div className="flex gap-2">
-              {/* it saves a picture of the design to the phone — said in words, not left to an arrow */}
-              <button
-                onClick={p.share}
-                disabled={p.exporting}
-                className="btn-focus pointer-events-auto inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card/90 px-3.5 text-sm font-semibold text-foreground shadow-soft hover:bg-card disabled:text-foreground/40"
-              >
-                {p.exporting ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Download className="h-[18px] w-[18px]" />}
-                {t("viz.saveImage")}
-              </button>
+              <ShareButton onClick={p.share} busy={p.exporting} />
               <button onClick={p.close} aria-label={t("viz.close")} title={t("viz.close")} className={FLOAT}>
                 <X className="h-5 w-5" />
               </button>
@@ -241,6 +243,17 @@ export function PhoneLayout(p: Props) {
             </button>
             <BetaButton />
           </div>
+
+          {/*
+            A note: above undo, which it may name — or, on the whole screen,
+            under the top row; above the way back to the whole figure when
+            that sits over the round buttons.
+          */}
+          {p.notice && (
+            <div className={cn("absolute inset-x-3 flex", p.full ? "top-[64px]" : zoomed && p.narrow ? "bottom-[120px]" : "bottom-[64px]")}>
+              <StageNote {...p.notice} />
+            </div>
+          )}
 
           {/* bottom, at the start: undo and redo */}
           <div className={cn("absolute bottom-3 start-3 flex gap-2", p.full && "hidden")}>
@@ -332,6 +345,34 @@ export function PhoneLayout(p: Props) {
           })}
         </nav>
       </section>
+    </div>
+  );
+}
+
+/** Sharing, said in words, with the share sign a phone uses — not left to an arrow. */
+function ShareButton({ onClick, busy }: { onClick: () => void; busy: boolean }) {
+  const { t } = useI18n();
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className="btn-focus pointer-events-auto inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card/90 px-3.5 text-sm font-semibold text-foreground shadow-soft hover:bg-card disabled:text-foreground/40"
+    >
+      {busy ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Share className="h-[18px] w-[18px]" />}
+      {t("viz.share")}
+    </button>
+  );
+}
+
+/** A short note on the stage, read out as it comes, with a way to put it away. */
+export function StageNote({ text, onClose }: { text: string; onClose: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div role="status" className="pointer-events-auto flex max-w-sm items-start gap-1 rounded-2xl border border-border/60 bg-card/95 pe-1 ps-3.5 text-[13px] font-medium leading-snug text-foreground shadow-lift">
+      <p className="py-3">{text}</p>
+      <button onClick={onClose} aria-label={t("viz.close")} title={t("viz.close")} className="btn-focus inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground">
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }

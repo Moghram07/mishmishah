@@ -5,9 +5,10 @@ import { I18nProvider } from "@/lib/i18n/I18nProvider";
 import { PhoneLayout } from "./PhoneLayout";
 
 /**
- * The phone's full-screen view: «ملء الشاشة» under the save button in the
+ * The phone's full-screen view: «ملء الشاشة» under the share button in the
  * editor; on the whole screen, the panel and every control but the close-up's
- * put away, and «رجوع» in the top corner. The page renders in English first.
+ * put away, and «رجوع» in the top corner with «مشاركة» beside it. The page
+ * renders in English first.
  */
 const props = (full: boolean): ComponentProps<typeof PhoneLayout> =>
   ({
@@ -31,6 +32,7 @@ const props = (full: boolean): ComponentProps<typeof PhoneLayout> =>
     canRedo: false,
     share: () => {},
     exporting: false,
+    notice: null,
     close: () => {},
     full,
     onFull: () => {},
@@ -48,17 +50,23 @@ const props = (full: boolean): ComponentProps<typeof PhoneLayout> =>
 const markup = (full: boolean) => renderToStaticMarkup(<I18nProvider><PhoneLayout {...props(full)} /></I18nProvider>);
 
 describe("the phone's full-screen view", () => {
-  it("is offered in the editor, in words, beside the save button's column: nothing put away, no way back", () => {
+  it("is offered in the editor, in words, under the share button: nothing put away, no way back", () => {
     const html = markup(false);
     expect(html).toContain("Full screen");
-    expect(html).toContain("Save image");
+    // on a phone the picture is shared, not saved — desktop keeps «حفظ صورة»
+    expect(html).toContain(">Share<");
+    expect(html).not.toContain("Save image");
     expect(html).not.toContain(">Back<");
     expect(html).toMatch(/<section aria-label="Visualizer" class="(?![^"]*\bhidden\b)[^"]*"/);
   });
 
-  it("puts the panel and every control but the close-up's away, with «رجوع» in the top corner", () => {
+  it("puts the panel and every control but the close-up's away, with «رجوع» in the top corner and «مشاركة» beside it", () => {
     const html = markup(true);
     expect(html).toContain(">Back<");
+    // sharing, in the same corner as the way back: the design seen big is the moment to send it
+    const corner = /<div class="absolute start-3 top-3 flex gap-2">(.*?)<\/div>/.exec(html)?.[1] ?? "";
+    expect(corner).toContain(">Back<");
+    expect(corner).toContain(">Share<");
     expect(html).toMatch(/<section aria-label="Visualizer" class="[^"]*\bhidden\b[^"]*"/);
     // the editor's top corners, and undo and redo, are put away
     expect(html, "save, close and the whole screen's own button").toMatch(/<div class="absolute end-3 top-3 [^"]*\bhidden\b/);

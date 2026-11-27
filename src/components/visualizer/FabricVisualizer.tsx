@@ -97,10 +97,12 @@ import { suitsNames } from "@/lib/fabrics/suits";
 import { FabricPicker } from "@/components/fabric/FabricPicker";
 import { PublishDesign } from "@/components/feedback/Feedback";
 import { fabricHasDirection } from "@/lib/fabrics/patterns";
-import { exportShareCard, type ShareEntry } from "@/lib/share/shareCard";
+import { GRAIN_PRESETS } from "@/lib/fabrics/grain";
+import { downloadBlob, exportShareCard, shareCardBlob, type ShareCardOptions, type ShareEntry } from "@/lib/share/shareCard";
+import { designLink, designPayload, readDesign, wearSent } from "@/lib/share/designLink";
 import { ProductTemplate, productPanBy } from "./ProductTemplate";
 import { MannequinStage } from "./MannequinStage";
-import { PhoneLayout, type PhoneCategory } from "./PhoneLayout";
+import { PhoneLayout, StageNote, type PhoneCategory } from "./PhoneLayout";
 import { PhoneFabrics } from "./PhoneFabrics";
 import { looksFor, type Look } from "@/lib/data/looks";
 import { offersWhole, wearWhole, WHOLE_NAMES } from "@/lib/visualizer/fabricParts";
@@ -168,16 +170,20 @@ const STAGE_ROOM = 24;
 /** The room the whole figure keeps from the phone stage's edges: its controls sit in the corners, beside it. */
 const PHONE_ROOM = 10;
 
+/**
+ * On the whole screen, held upright, the room above the figure: «رجوع» and
+ * «مشاركة» side by side reach past the middle of a phone, where the head is,
+ * so the figure stands under their row rather than behind it — their row
+ * ends 56 px down, and the frame has its own room above the head, which
+ * brings the crown to about 62 px on the shortest phone. Held sideways, the
+ * figure is in the middle, clear of the corner.
+ */
+const FULL_TOP = 44;
+
 /** Where desktop's layout begins. Under it, the phone's. */
 const DESKTOP = "(min-width: 1024px)";
 
-/**
- * The ways a pattern can be laid on the body, in degrees: lengthwise, across,
- * and on the bias — the three a tailor actually cuts. A free 0–360 slider
- * offered every angle in between, and none of them is a cut anyone makes.
- */
-const GRAIN_PRESETS = [0, 90, 45];
-
+/* the three ways a pattern is laid on the body — see `GRAIN_PRESETS` */
 const GRAIN_LABELS: Record<
   number,
   "viz.grainStraight" | "viz.grainBias" | "viz.grainCross"
@@ -217,11 +223,14 @@ const newDesign = (productId: ProductKind, fabric: Fabric): Design => ({
   direction: 0,
 });
 
+/** The site, written on the share card. */
+const SITE = "mishmishah.com";
+
 /** The closest the close-up goes: the zoom slider's top. */
 const MOST_ZOOM = 8;
 
 export function FabricVisualizer() {
-  const { isOpen, fabric, close, setFabric } = useVisualizer();
+  const { isOpen, fabric, close, setFabric, sent } = useVisualizer();
   const { t, pick, locale, dir } = useI18n();
   const { theme } = useTheme();
 
@@ -386,9 +395,9 @@ export function FabricVisualizer() {
               ],
             }
           : // the phone's controls float in the stage's corners, clear of the figure in its middle
-            { width: stageW, height: stageH, inset: [PHONE_ROOM, PHONE_ROOM, PHONE_ROOM, PHONE_ROOM] }
+            { width: stageW, height: stageH, inset: [full && stageH > stageW ? FULL_TOP : PHONE_ROOM, PHONE_ROOM, PHONE_ROOM, PHONE_ROOM] }
         : null,
-    [stageW, stageH, dockH, isDesktop]
+    [stageW, stageH, dockH, isDesktop, full]
   );
   /* the phone stage to the fraction of a pixel: the box the figure is drawn in is sized to it, as the stage itself was */
   const stageBox = stageSize?.exact ?? null;
@@ -407,11 +416,15 @@ export function FabricVisualizer() {
     () => garmentsFor(outfit.bodyType),
     [outfit.bodyType]
   );
-  /* the ready-made look the mannequin is wearing, untouched since it was put on — its card ticked */
+  /*
+    The ready-made look the mannequin is wearing, as drawn — its card ticked.
+    Compared as their links write them, so a look that arrived in a link is
+    ticked too.
+  */
   const lookNow = useMemo(() => {
-    const now = JSON.stringify(outfit.worn);
-    return looksFor(outfit.bodyType).find((l) => JSON.stringify(l.worn()) === now)?.id;
-  }, [outfit.worn, outfit.bodyType]);
+    const now = designPayload(outfit, fabric.id);
+    return looksFor(outfit.bodyType).find((l) => designPayload({ ...outfit, worn: l.worn() }, fabric.id) === now)?.id;
+  }, [outfit, fabric.id]);
 
   /**
    * The garment the fabric picker is cutting — only ever one that is actually
@@ -458,6 +471,55 @@ export function FabricVisualizer() {
     }
     wasOpen.current = isOpen;
   }, [isOpen, fabric, rebase]);
+
+  /*
+    A note on the stage: a sent design opened, or a picture ready to share.
+    It goes once it has been read — after a while, when the design it is
+    about changes, or with the visualizer.
+  */
+  const [notice, setNotice] = useState<{ kind: "opened" | "skipped" | "unread" | "ready"; worn?: string } | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(null), 12_000);
+    return () => clearTimeout(id);
+  }, [notice]);
+  useEffect(() => {
+    if (notice?.worn !== undefined && JSON.stringify(outfit.worn) !== notice.worn) setNotice(null);
+  }, [outfit.worn, notice]);
+  useEffect(() => {
+    if (!isOpen) setNotice(null);
+  }, [isOpen]);
+  const noticeText = notice
+    ? notice.kind === "skipped"
+      ? `${t("share.opened")} ${t("share.skipped")}`
+      : t(notice.kind === "opened" ? "share.opened" : notice.kind === "unread" ? "share.unread" : "share.ready")
+    : null;
+
+  /*
+    A design sent as a link, put on once the visualizer is open — after the
+    fresh start above, so it is one step that undo takes back, to the design
+    that was there. As a look does, it shows the whole figure and the fabrics
+    start at the whole of each garment. The note says so, and says when part
+    of the link was left out; a link with nothing in it that can be read
+    leaves the design as it was, and says that.
+  */
+  const sentDone = useRef(0);
+  useEffect(() => {
+    if (!isOpen || !sent || sentDone.current === sent.at) return;
+    sentDone.current = sent.at;
+    const { design, skipped } = readDesign(sent.payload, fabric.id);
+    if (!design) {
+      setNotice({ kind: "unread" });
+      return;
+    }
+    setOutfit((o) => wearSent(o, design, fabric.id));
+    setSubject("wardrobe");
+    const first = garmentById(design.worn[0].garmentId)!;
+    setCutting({ garmentId: first.id, region: first.fabricRegions[0] });
+    setFabricPart({});
+    setView(WHOLE_VIEW);
+    setNotice({ kind: skipped > 0 ? "skipped" : "opened", worn: JSON.stringify(design.worn) });
+  }, [isOpen, sent, fabric, setOutfit]);
 
   // Close on Escape, undo and redo on their keys, and lock body scroll while open.
   useEffect(() => {
@@ -1052,66 +1114,63 @@ export function FabricVisualizer() {
     return () => stageEl.removeEventListener("gesturestart", stop);
   }, [isDesktop, stageEl]);
 
-  const share = useCallback(async () => {
-    if (!stageRef.current) return;
-    setExporting(true);
-    try {
-      const entries: ShareEntry[] =
-        subject === "wardrobe"
-          ? visibleStack(wornOn(outfit.worn, outfit.bodyType)).flatMap(
-              ({ garment, worn: w }) => {
-                const regions = regionsOf(garment, w);
-                return regions.map((region) => {
-                  const f = outfitFabrics[garment.id]?.[region] ?? fabric;
-                  return {
-                    partLabel:
-                      regions.length > 1
-                        ? `${pick(garment.name)} · ${pick(regionLabel(region))}`
-                        : pick(garment.name),
-                    fabric: f,
-                    fabricName: pick(f.name),
-                  };
-                });
-              }
-            )
-          : product.parts.map((part) => {
-              const f = partFabrics[part.id] ?? fabric;
-              return {
-                partLabel:
-                  product.parts.length > 1
-                    ? pick(part.label)
-                    : t("share.fabric"),
-                fabric: f,
-                fabricName: pick(f.name),
-              };
-            });
-
-      await exportShareCard({
-        svg: stageRef.current,
-        /*
-          The whole figure, whatever the stage is showing. The stage is wider
-          than the figure, and a close-up of it on a card is the body cut off
-          square in the middle of the picture — the window the stage no
-          longer has. A card is for the outfit; its fabrics are listed under it.
-        */
-        viewBox: subject === "wardrobe" ? BODY_CANVAS.viewBox : undefined,
-        brand: t("brand.name"),
-        productName:
-          subject === "wardrobe" ? t("viz.wardrobe") : pick(product.label),
-        tagline: t("share.tagline"),
-        entries,
-        locale,
-        dark: theme === "dark",
-        fileName: `mishmishah-${
-          subject === "wardrobe" ? "outfit" : design.productId
-        }.png`,
-      });
-    } finally {
-      setExporting(false);
-    }
+  /** The share card's makings: the whole figure, and each part's fabric under it. */
+  const cardOptions = useCallback((): ShareCardOptions | null => {
+    if (!stageRef.current) return null;
+    const entries: ShareEntry[] =
+      subject === "wardrobe"
+        ? visibleStack(wornOn(outfit.worn, outfit.bodyType)).flatMap(
+            ({ garment, worn: w }) => {
+              const regions = regionsOf(garment, w);
+              return regions.map((region) => {
+                const f = outfitFabrics[garment.id]?.[region] ?? fabric;
+                return {
+                  partLabel:
+                    regions.length > 1
+                      ? `${pick(garment.name)} · ${pick(regionLabel(region))}`
+                      : pick(garment.name),
+                  fabric: f,
+                  fabricName: pick(f.name),
+                };
+              });
+            }
+          )
+        : product.parts.map((part) => {
+            const f = partFabrics[part.id] ?? fabric;
+            return {
+              partLabel:
+                product.parts.length > 1
+                  ? pick(part.label)
+                  : t("share.fabric"),
+              fabric: f,
+              fabricName: pick(f.name),
+            };
+          });
+    return {
+      svg: stageRef.current,
+      /*
+        The whole figure, whatever the stage is showing. The stage is wider
+        than the figure, and a close-up of it on a card is the body cut off
+        square in the middle of the picture — the window the stage no
+        longer has. A card is for the outfit; its fabrics are listed under it.
+      */
+      viewBox: subject === "wardrobe" ? BODY_CANVAS.viewBox : undefined,
+      brand: t("brand.name"),
+      site: SITE,
+      productName:
+        subject === "wardrobe" ? t("viz.wardrobe") : pick(product.label),
+      tagline: t("share.tagline"),
+      entries,
+      locale,
+      dark: theme === "dark",
+      fileName: `mishmishah-${
+        subject === "wardrobe" ? "outfit" : design.productId
+      }.png`,
+    };
   }, [
     subject,
     outfit.worn,
+    outfit.bodyType,
     outfitFabrics,
     product,
     partFabrics,
@@ -1122,6 +1181,67 @@ export function FabricVisualizer() {
     t,
     pick,
   ]);
+
+  /** Desktop's «حفظ صورة»: the card, saved as a picture. */
+  const savePicture = useCallback(async () => {
+    const opts = cardOptions();
+    if (!opts) return;
+    setExporting(true);
+    try {
+      await exportShareCard(opts);
+    } finally {
+      setExporting(false);
+    }
+  }, [cardOptions]);
+
+  /**
+   * The phone's «مشاركة»: the card, and a line with the link to the design,
+   * to the phone's share sheet — or, where a browser cannot share a picture,
+   * the card saved as one, as before.
+   *
+   * Safari opens the sheet only right after a tap. When drawing the card
+   * takes longer than it allows, the card is kept and the next tap shares it
+   * at once; the note says so. A change to the design in between draws it
+   * again.
+   */
+  const prepared = useRef<{ key: string; file: File; text: string } | null>(null);
+  const sharePicture = useCallback(async () => {
+    const key = JSON.stringify([outfit, subject, design, locale, theme]);
+    const ready = prepared.current;
+    prepared.current = null;
+    if (ready && ready.key === key) {
+      setNotice(null);
+      navigator.share({ files: [ready.file], text: ready.text }).catch((e: unknown) => {
+        if ((e as { name?: string })?.name !== "AbortError") downloadBlob(ready.file, ready.file.name);
+      });
+      return;
+    }
+    const opts = cardOptions();
+    if (!opts) return;
+    setExporting(true);
+    try {
+      const blob = await shareCardBlob(opts);
+      const file = new File([blob], opts.fileName, { type: "image/png" });
+      const link = subject === "wardrobe" ? designLink(window.location.origin, outfit, fabric.id) : window.location.origin;
+      const text = `${t("share.line")} ${link}`;
+      const data = { files: [file], text };
+      if (typeof navigator.share !== "function" || !navigator.canShare?.(data)) {
+        downloadBlob(blob, opts.fileName);
+        return;
+      }
+      try {
+        await navigator.share(data);
+      } catch (e) {
+        const name = (e as { name?: string })?.name;
+        if (name === "NotAllowedError") {
+          prepared.current = { key, file, text };
+          setNotice({ kind: "ready", worn: JSON.stringify(outfit.worn) });
+        } else if (name !== "AbortError") downloadBlob(blob, opts.fileName);
+      }
+    } finally {
+      setExporting(false);
+    }
+  }, [cardOptions, outfit, subject, design, locale, theme, fabric, t]);
 
   const wornSkirt = cuttingEntry ? skirtOf(cuttingEntry.worn) : undefined;
   const skirtShapeChoices = cuttingGarment ? skirtShapesFor(cuttingGarment) : [];
@@ -2044,7 +2164,8 @@ export function FabricVisualizer() {
           redo={redo}
           canUndo={canUndo}
           canRedo={canRedo}
-          share={share}
+          share={sharePicture}
+          notice={noticeText ? { text: noticeText, onClose: () => setNotice(null) } : null}
           exporting={exporting}
           close={close}
           full={full}
@@ -2114,7 +2235,7 @@ export function FabricVisualizer() {
               <Redo2 className="h-[18px] w-[18px] rtl:-scale-x-100" />
             </button>
             <button
-              onClick={share}
+              onClick={savePicture}
               disabled={exporting}
               aria-label={t("viz.saveImage")}
               className="btn-focus inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-border px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60 sm:px-4"
@@ -2142,6 +2263,13 @@ export function FabricVisualizer() {
             className="relative flex h-[58svh] shrink-0 items-center justify-center overflow-hidden bg-gradient-to-b from-muted/40 to-background p-6 sm:p-10 lg:h-auto lg:flex-1 lg:shrink"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-apricot-radial" />
+
+            {/* a note, under the mannequin's button: a sent design opened */}
+            {noticeText && (
+              <div className="pointer-events-none absolute inset-x-0 top-16 z-30 flex justify-center px-4">
+                <StageNote text={noticeText} onClose={() => setNotice(null)} />
+              </div>
+            )}
 
             {/* which mannequin, behind a small button in the stage's corner */}
             {subject === "wardrobe" && (
@@ -2397,7 +2525,7 @@ export function FabricVisualizer() {
                   <RotateCcw className="h-4 w-4" />
                   {t("viz.reset")}
                 </button>
-                <Button variant="primary" className="w-full" onClick={share}>
+                <Button variant="primary" className="w-full" onClick={savePicture}>
                   <Download className="h-4 w-4" />
                   {t("viz.saveImage")}
                 </Button>
