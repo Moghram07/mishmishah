@@ -291,6 +291,42 @@ export function FabricVisualizer() {
     state either way; only where you are looking is each layout's own.
   */
   const isDesktop = useIsDesktop();
+  /*
+    The figure on the whole screen, on a phone — see `PhoneLayout`'s `full`.
+    Safari on an iPhone lets a page go truly full screen only for a video, so
+    this is the visualizer's own: the panel and the controls put away and the
+    stage grown into their place — drawn soft for a moment, then sharp, as any
+    change of the stage's size is. Going in leaves a step in the browser's
+    history, so the phone's back swipe returns to the editor rather than
+    leaving the site; «رجوع» takes the same step back.
+  */
+  const [full, setFull] = useState(false);
+  /** Whether the step going in left is still the history's last. */
+  const fullStep = useRef(false);
+  const enterFull = useCallback(() => {
+    setFull(true);
+    if (fullStep.current) return;
+    window.history.pushState({ ...window.history.state, mishmishahFull: true }, "");
+    fullStep.current = true;
+  }, []);
+  const leaveFull = useCallback(() => {
+    // the step back comes round as a `popstate`, which leaves
+    if (fullStep.current) window.history.back();
+    else setFull(false);
+  }, []);
+  useEffect(() => {
+    const onPop = () => {
+      if (!fullStep.current) return;
+      fullStep.current = false;
+      setFull(false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  /* closed, or turned wide enough for the desktop's layout: off the whole screen, and its step out of the history */
+  useEffect(() => {
+    if (full && (!isOpen || isDesktop)) leaveFull();
+  }, [full, isOpen, isDesktop, leaveFull]);
   /** The phone's stage: the whole figure, or a close-up — following the category, or where the viewer put it. */
   const [view, setView] = useState<StageView>(WHOLE_VIEW);
   /**
@@ -427,7 +463,8 @@ export function FabricVisualizer() {
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") return close();
+      /* on the whole screen, Escape comes back to the editor first */
+      if (e.key === "Escape") return full ? leaveFull() : close();
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       /* by the key's place, not its letter, so they work on an Arabic keyboard too */
       if (e.code === "KeyZ" && !e.shiftKey) {
@@ -445,7 +482,7 @@ export function FabricVisualizer() {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [isOpen, close, undo, redo]);
+  }, [isOpen, close, undo, redo, full, leaveFull]);
 
   /** Every worn garment's regions, resolved to fabrics. */
   const outfitFabrics = useMemo(() => {
@@ -2010,6 +2047,9 @@ export function FabricVisualizer() {
           share={share}
           exporting={exporting}
           close={close}
+          full={full}
+          onFull={enterFull}
+          onBack={leaveFull}
           tabs={TABS}
           tab={tab}
           onTab={setTab}

@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Expand,
   Loader2,
   Maximize2,
   MessageCircle,
@@ -109,6 +110,14 @@ interface Props {
   share: () => void;
   exporting: boolean;
   close: () => void;
+  /**
+   * The figure on the whole screen: the panel and every control but the
+   * close-up's put away, and a way back in the top corner — see `full` in
+   * the visualizer, which also takes the phone's back swipe there.
+   */
+  full: boolean;
+  onFull: () => void;
+  onBack: () => void;
   /** The panel. */
   tabs: { id: PanelTab; label: string }[];
   tab: PanelTab;
@@ -141,6 +150,7 @@ const SKIN_SEEN = "mishmishah:skin-tones-seen";
 export function PhoneLayout(p: Props) {
   const { t, dir } = useI18n();
   const Forward = dir === "rtl" ? ChevronLeft : ChevronRight;
+  const Back = dir === "rtl" ? ChevronRight : ChevronLeft;
   const zoomed = p.zoom > 1.001;
 
   return (
@@ -167,8 +177,21 @@ export function PhoneLayout(p: Props) {
         </div>
 
         <div className="pointer-events-none absolute inset-0 z-20">
+          {/* on the whole screen, top, at the start: the way back, said in words */}
+          {p.full && (
+            <div className="absolute start-3 top-3">
+              <button
+                onClick={p.onBack}
+                className="btn-focus pointer-events-auto inline-flex h-11 shrink-0 items-center gap-1 rounded-full border border-border/60 bg-card/90 pe-4 ps-2.5 text-sm font-semibold text-foreground shadow-soft hover:bg-card"
+              >
+                <Back className="h-5 w-5" />
+                {t("viz.back")}
+              </button>
+            </div>
+          )}
+
           {/* top, at the start: which mannequin, and what the picture is */}
-          <div className="absolute start-3 top-3 flex flex-col items-start gap-2">
+          <div className={cn("absolute start-3 top-3 flex flex-col items-start gap-2", p.full && "hidden")}>
             {p.body && (
               <div className="pointer-events-auto">
                 <BodyButton large label={p.body.label} bodies={p.body.bodies} active={p.body.active} onPick={p.body.onPick} />
@@ -188,8 +211,8 @@ export function PhoneLayout(p: Props) {
             </span>
           </div>
 
-          {/* top, at the end: share and close, and the beta and its feedback */}
-          <div className="absolute end-3 top-3 flex flex-col items-end gap-2">
+          {/* top, at the end: share and close, the whole screen under them, and the beta and its feedback */}
+          <div className={cn("absolute end-3 top-3 flex flex-col items-end gap-2", p.full && "hidden")}>
             <div className="flex gap-2">
               {/* it saves a picture of the design to the phone — said in words, not left to an arrow */}
               <button
@@ -204,11 +227,23 @@ export function PhoneLayout(p: Props) {
                 <X className="h-5 w-5" />
               </button>
             </div>
+            {/*
+              The figure on the whole screen — said in words too. Under the
+              save button, not beside it: beside it, the row ran into the
+              mannequin's button at the other end on every phone.
+            */}
+            <button
+              onClick={p.onFull}
+              className="btn-focus pointer-events-auto inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card/90 px-3.5 text-sm font-semibold text-foreground shadow-soft hover:bg-card"
+            >
+              <Expand className="h-[18px] w-[18px]" />
+              {t("viz.fullScreen")}
+            </button>
             <BetaButton />
           </div>
 
           {/* bottom, at the start: undo and redo */}
-          <div className="absolute bottom-3 start-3 flex gap-2">
+          <div className={cn("absolute bottom-3 start-3 flex gap-2", p.full && "hidden")}>
             <button onClick={p.undo} disabled={!p.canUndo} aria-label={t("viz.undo")} title={t("viz.undo")} className={FLOAT}>
               <Undo2 className="h-5 w-5 rtl:-scale-x-100" />
             </button>
@@ -232,7 +267,7 @@ export function PhoneLayout(p: Props) {
 
           {/* bottom, at the end: the skin tone, and the close-up */}
           <div className="absolute bottom-3 end-3 flex gap-2">
-            {p.skin && <SkinButton {...p.skin} />}
+            {p.skin && !p.full && <SkinButton {...p.skin} />}
             <button onClick={p.onZoom} aria-label={`${t("viz.zoom")}: ${zoomLabel(p.zoom)}`} title={t("viz.zoom")} className={cn(FLOAT, "text-xs font-bold tabular-nums")}>
               {/* «2×», never «×2»: a number and its sign read left to right in Arabic too */}
               <span dir="ltr">{zoomLabel(p.zoom)}</span>
@@ -247,7 +282,9 @@ export function PhoneLayout(p: Props) {
         className={cn(
           "flex shrink-0 flex-col border-t border-border bg-card land:h-auto land:w-[56%] land:border-s land:border-t-0",
           // the fabrics rise to two-thirds of the screen; the figure stays in view above them
-          p.tab === "fabrics" && "h-[66.7%]"
+          p.tab === "fabrics" && "h-[66.7%]",
+          // on the whole screen, put away: the stage grows into its place
+          p.full && "hidden land:hidden"
         )}
       >
         <div
